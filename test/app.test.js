@@ -206,7 +206,7 @@ test('el listado muestra las últimas respuestas y cuántas se omitieron', async
   assert.ok((await s.texto('/h/1')).includes('r-uno'), 'el hilo completo tiene todo');
 });
 
-test('el catálogo es la vista por defecto y no filtra spoilers ni anida links', async (t) => {
+test('el catálogo es la vista por defecto, tapa spoilers y solo enlaza el asunto', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
   const ana = await s.entrar('ana');
@@ -219,8 +219,9 @@ test('el catálogo es la vista por defecto y no filtra spoilers ni anida links',
   assert.ok(portada.includes('class="catalogo"'));
   assert.ok(portada.includes('R: 0'));
   assert.ok(!portada.includes('muere el protagonista'), 'el spoiler no aparece en la ficha');
-  const ficha = portada.slice(portada.indexOf('class="ficha"'), portada.indexOf('</a>', portada.indexOf('class="ficha"')));
-  assert.ok(!ficha.includes('<a '), 'no hay un link adentro de la ficha');
+  const ficha = portada.slice(portada.indexOf('class="ficha"'), portada.indexOf('</article>', portada.indexOf('class="ficha"')));
+  assert.equal((ficha.match(/<a /g) || []).length, 1, 'solo el asunto es link');
+  assert.ok(ficha.includes('<a class="ficha-asunto" href="/h/1"><strong>Final de la serie</strong></a>'));
   assert.ok((await s.texto('/b/cultura')).includes('class="catalogo"'));
 });
 

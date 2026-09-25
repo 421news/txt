@@ -214,8 +214,10 @@ details.reportar select { width: auto; }
 .vistas { margin: 0.25rem 0 1rem; font-size: 0.78rem; color: var(--tenue); text-transform: uppercase; }
 .vistas a, .vistas strong { padding: 0 0.35rem; }
 .vistas strong { background: var(--fosforo); color: var(--fondo); }
+.solo-eww { display: none; }
 .catalogo { display: grid; grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr)); gap: 0.75rem; }
 .ficha {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -224,7 +226,6 @@ details.reportar select { width: auto; }
   background: var(--caja);
   color: var(--texto);
   border: 1px solid var(--borde);
-  text-decoration: none;
 }
 .ficha-barra {
   display: flex;
@@ -236,7 +237,9 @@ details.reportar select { width: auto; }
   font-size: 0.72rem;
   text-transform: uppercase;
 }
-.ficha-asunto { color: var(--fosforo); font-size: 0.92rem; line-height: 1.35; overflow-wrap: anywhere; }
+.ficha-asunto { color: var(--fosforo); font-size: 0.92rem; line-height: 1.35; overflow-wrap: anywhere; text-decoration: none; }
+.ficha-asunto::after { content: ''; position: absolute; inset: 0; }
+.ficha-asunto strong { font-weight: 700; }
 .ficha-texto { flex: 1; font-size: 0.8rem; line-height: 1.5; overflow-wrap: anywhere; }
 .ficha-pie { font-size: 0.7rem; color: var(--tenue); }
 .ficha:hover { background: var(--caja); color: var(--texto); border-color: var(--fosforo); }

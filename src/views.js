@@ -144,7 +144,7 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
       </details>
     </div>
   </div>
-  <nav class="secciones">${BOARDS.map((b) => html`<a href="/b/${b.slug}"${(ruta.split('?')[0].match(/^\/b\/([^/]+)/)?.[1] === b.slug) ? raw(' class="activa"') : ''}>${b.nombre}</a>`)}</nav>
+  <nav class="secciones">${BOARDS.map((b) => html` <a href="/b/${b.slug}"${(ruta.split('?')[0].match(/^\/b\/([^/]+)/)?.[1] === b.slug) ? raw(' class="activa"') : ''}>${b.nombre}</a>`)}</nav>
 </header>
 <main>
 ${aviso && Object.hasOwn(AVISOS, aviso) ? html`<p class="aviso">${AVISOS[aviso]}</p>` : ''}
@@ -177,17 +177,16 @@ function listaHilos(ctx, hilos, { conTablon = false } = {}) {
   );
 }
 
-// Catálogo: una ficha por hilo (asunto, comienzo del mensaje, respuestas). La ficha entera es
-// el link, así que el texto va plano: formatear() metería <a> de >>123 dentro de otro <a>.
+// Catálogo: una ficha por hilo (asunto, comienzo del mensaje, respuestas).
 function catalogo(hilos, { conTablon = false } = {}) {
   if (!hilos.length) return html`<p class="ayuda">No hay publicaciones todavía.</p>`;
   return html`<div class="catalogo">${hilos.map(
-    (t) => html`<a class="ficha" href="/h/${t.id}">
-    <span class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span>R: ${t.reply_count}</span></span>
-    <strong class="ficha-asunto">${t.subject}</strong>
-    <span class="ficha-texto">${extracto(textoPlano(t.op_body), 180)}</span>
-    <span class="ficha-pie">${fecha(t.bumped_at)}${t.locked ? ' · cerrada' : ''}</span>
-  </a>`,
+    (t) => html`<article class="ficha">
+    <div class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span class="solo-eww"> · </span><span>R: ${t.reply_count}</span></div>
+    <a class="ficha-asunto" href="/h/${t.id}"><strong>${t.subject}</strong></a>
+    <div class="ficha-texto">${extracto(textoPlano(t.op_body), 180)}</div>
+    <div class="ficha-pie">${fecha(t.bumped_at)}${t.locked ? ' · cerrada' : ''}</div>
+  </article>`,
   )}</div>`;
 }
 
