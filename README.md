@@ -42,6 +42,8 @@ npm test
 
 Sin credenciales de Google, en desarrollo `/entrar` ofrece un **acceso de prueba** (un nombre cualquiera y una casilla de admin). Sin `ANTHROPIC_API_KEY`, todos los mensajes van a revisión humana: el filtro falla cerrado. `npm run probar-moderacion` corre el filtro real contra casos de prueba (gasta API).
 
+Para tener algo que mirar, `npm run fixture` carga en la base local 66 publicaciones de ejemplo con respuestas, charlas sobre notas de 421 fechadas en los últimos días (alcanzan para ver la paginación). Se puede correr con el server andando y cuantas veces se quiera: cada vez reemplaza lo que cargó antes. `npm run fixture -- --borrar` las saca. Las cuentas son `fixture-01` a `fixture-16` del acceso de prueba.
+
 ## Contribuir
 
 Se aceptan pull requests. Antes, leé [CONTRIBUTING.md](CONTRIBUTING.md): ahí está qué cosas no se van a sumar aunque estén bien hechas.
