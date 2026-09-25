@@ -1,0 +1,433 @@
+/* Estética de consola de fósforo verde (oscuro) y papel crema con bordó (claro).
+   Por defecto sigue al sistema; el selector del pie fija uno con data-tema en <html>. */
+:root {
+  color-scheme: dark;
+  --fondo: #020803;
+  --caja: #041209;
+  --fosforo: #33ff66;      /* bordes, barras de título, acentos */
+  --texto: #9dffb4;        /* cuerpo: más suave que el fósforo para leer largo */
+  --tenue: #3fa35d;
+  --borde: #1d6b35;
+  --cita: #d7ff6b;         /* >texto verde: se distingue del resto en un tema todo verde */
+  --aviso: #ffcc4d;
+  --error: #ff5f56;
+  --lineas: rgba(51, 255, 102, 0.02);   /* líneas de pantalla */
+  --cabecera: rgba(2, 8, 3, 0.94);
+  --sobre-borde: var(--sobre-borde);               /* texto sobre las barras de las respuestas */
+  --mono: 'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace;
+}
+
+/* Tema claro: papel crema, acentos bordó, citas en azul. Mismos nombres de variable: --fosforo es
+   "el color de acento" en los dos temas. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-tema="oscuro"]) {
+    color-scheme: light;
+    --fondo: #f5eddc;
+    --caja: #fbf7ee;
+    --fosforo: #7b1e2c;
+    --texto: #2b211c;
+    --tenue: #6e5d52;
+    --borde: #8c5a5f;
+    --cita: #1f4f8a;
+    --aviso: #8a5a00;
+    --error: #b3261e;
+    --lineas: transparent;
+    --cabecera: rgba(245, 237, 220, 0.95);
+    --sobre-borde: #fbf7ee;
+  }
+}
+:root[data-tema="claro"] {
+  color-scheme: light;
+  --fondo: #f5eddc;
+  --caja: #fbf7ee;
+  --fosforo: #7b1e2c;
+  --texto: #2b211c;
+  --tenue: #6e5d52;
+  --borde: #8c5a5f;
+  --cita: #1f4f8a;
+  --aviso: #8a5a00;
+  --error: #b3261e;
+  --lineas: transparent;
+  --cabecera: rgba(245, 237, 220, 0.95);
+  --sobre-borde: #fbf7ee;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--fondo); }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--texto);
+  font: 15px/1.65 var(--mono);
+  /* Plano: sin halos ni resplandor. Solo quedan líneas de pantalla muy tenues. */
+  background: repeating-linear-gradient(to bottom, var(--lineas) 0 1px, transparent 1px 3px) var(--fondo);
+}
+
+::selection { background: var(--fosforo); color: var(--fondo); }
+
+a { color: var(--fosforo); text-underline-offset: 3px; }
+a:hover { background: var(--fosforo); color: var(--fondo); text-decoration: none; }
+a:focus-visible, button:focus-visible, summary:focus-visible, .spoiler:focus-visible {
+  outline: 1px dashed var(--fosforo);
+  outline-offset: 2px;
+}
+
+/* --- Barra superior -------------------------------------------------------------------- */
+
+.cabecera {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.25rem;
+  padding: 0.55rem max(1rem, calc((100vw - 52rem) / 2));
+  background: var(--cabecera);
+  border-bottom: 1px solid var(--fosforo);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.8rem;
+}
+.marca {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--fosforo);
+  text-decoration: none;
+}
+.marca::before { content: '>_ '; }
+.marca::after { content: '▮'; margin-left: 0.2em; animation: parpadeo 1.1s steps(1) infinite; }
+.tablones, .cuenta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 1rem; }
+.tablones a, .cuenta a, .cuenta button.enlace { text-decoration: none; padding: 0.05rem 0.3rem; }
+.tablones a::before { content: '['; color: var(--tenue); }
+.tablones a::after { content: ']'; color: var(--tenue); }
+.cuenta { margin-left: auto; }
+
+@keyframes parpadeo { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .marca::after { animation: none; }
+}
+
+main { max-width: 52rem; margin: 0 auto; padding: 1.25rem 1rem 4rem; }
+.pie { max-width: 52rem; margin: 0 auto; padding: 0 1rem 2rem; font-size: 0.85em; opacity: 0.8; }
+
+h1, h2 { color: var(--fosforo); font-weight: 700; }
+h1 { font-size: 1.35rem; line-height: 1.3; margin: 1rem 0 0.6rem; }
+h1::before { content: '> '; color: var(--tenue); }
+h2 { font-size: 1.05rem; line-height: 1.35; }
+
+.ayuda { font-size: 0.78rem; color: var(--tenue); }
+code { color: var(--cita); }
+
+.aviso { border: 1px solid var(--aviso); color: var(--aviso); padding: 0.5rem 0.8rem; }
+.aviso::before { content: '[!] '; }
+.error { color: var(--error); font-weight: 700; }
+.error::before { content: 'ERROR: '; }
+.nota { color: var(--aviso); font-size: 0.8rem; margin: 0.25rem 0; }
+
+/* --- Mensajes (opción B, 2026-09-25) ---------------------------------------------------- */
+/* El mensaje que abre la publicación es una "ventana" con barra de título llena. Las respuestas
+   son cajas livianas: datos en tono tenue arriba y el texto abajo. */
+
+.post {
+  background: var(--caja);
+  border: 1px solid var(--borde);
+  padding: 0.5rem 0.9rem 0.65rem;
+  margin: 0 0 0.9rem;
+}
+.post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.1rem 0.9rem;
+  margin: 0 0 0.4rem;
+  color: var(--tenue);
+  font-size: 0.76rem;
+}
+.post-meta a { color: var(--tenue); }
+.post-meta a:hover { background: transparent; color: var(--fosforo); }
+.post-meta .num { margin-left: auto; color: var(--fosforo); font-weight: 700; text-decoration: none; }
+.post-meta .anon { display: none; }
+.marca-op { background: var(--fosforo); color: var(--fondo); padding: 0 0.3rem; font-weight: 700; }
+
+/* El OP: ventana con barra llena. */
+.post.op { border-color: var(--fosforo); padding-top: 0; }
+.post.op .post-meta {
+  margin: 0 -0.9rem 0.55rem;
+  padding: 0.12rem 0.6rem;
+  background: var(--fosforo);
+  color: var(--fondo);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.74rem;
+}
+.post.op .post-meta a, .post.op .post-meta .num { color: var(--fondo); text-decoration: none; }
+.post.op .post-meta a:hover { background: var(--fondo); color: var(--fosforo); }
+.post.op .marca-op { background: var(--fondo); color: var(--fosforo); }
+
+.post.respuesta { margin-left: 1.75rem; }
+.post.en-revision { border-style: dashed; border-color: var(--aviso); }
+.post.en-revision .post-meta { color: var(--aviso); }
+.post.retirado { background: transparent; border: 1px dashed var(--borde); color: var(--tenue); padding: 0.1rem 0.9rem; }
+
+.texto { overflow-wrap: anywhere; }
+.verde { color: var(--cita); }
+.cita { color: var(--cita); }
+.spoiler { background: var(--fosforo); color: var(--fosforo); }
+.spoiler:hover, .spoiler:focus { background: transparent; color: inherit; }
+
+details.reportar { margin-top: 0.4rem; font-size: 0.75rem; color: var(--tenue); }
+details.reportar summary { cursor: pointer; }
+details.reportar form { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.4rem; }
+details.reportar select { width: auto; }
+
+/* --- Listados -------------------------------------------------------------------------- */
+
+.hilo-resumen { padding-bottom: 0.4rem; margin-bottom: 1.6rem; border-bottom: 1px dashed var(--borde); }
+.hilo-resumen h2 { margin: 1.1rem 0 0.5rem; }
+.hilo-resumen h2 a { text-decoration: none; }
+.etiqueta {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--tenue);
+  border: 1px solid var(--borde);
+  padding: 0.05rem 0.4rem;
+  text-transform: uppercase;
+  text-decoration: none;
+  vertical-align: middle;
+}
+.omitidas { margin: -0.3rem 0 0.8rem 1.75rem; font-size: 0.78rem; color: var(--tenue); }
+.omitidas::before { content: '… '; }
+@media (max-width: 32rem) {
+  .post.respuesta, .omitidas { margin-left: 0.6rem; }
+}
+
+/* Catálogo: grilla de fichas. La ficha entera es un link. */
+.vistas { margin: 0.25rem 0 1rem; font-size: 0.78rem; color: var(--tenue); text-transform: uppercase; }
+.vistas a, .vistas strong { padding: 0 0.35rem; }
+.vistas strong { background: var(--fosforo); color: var(--fondo); }
+.catalogo { display: grid; grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr)); gap: 0.75rem; }
+.ficha {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 10.5rem;
+  padding: 0 0.7rem 0.55rem;
+  background: var(--caja);
+  color: var(--texto);
+  border: 1px solid var(--borde);
+  text-decoration: none;
+}
+.ficha-barra {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0 0.3rem;
+  border-bottom: 1px dashed var(--borde);
+  color: var(--tenue);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+.ficha-asunto { color: var(--fosforo); font-size: 0.92rem; line-height: 1.35; overflow-wrap: anywhere; }
+.ficha-texto { flex: 1; font-size: 0.8rem; line-height: 1.5; overflow-wrap: anywhere; }
+.ficha-pie { font-size: 0.7rem; color: var(--tenue); }
+.ficha:hover { background: var(--caja); color: var(--texto); border-color: var(--fosforo); }
+.ficha:hover .ficha-barra { color: var(--fosforo); border-bottom-color: var(--fosforo); }
+
+.paginas { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.5rem; }
+.paginas strong { background: var(--fosforo); color: var(--fondo); padding: 0 0.4rem; }
+
+/* --- Formularios ----------------------------------------------------------------------- */
+
+.nuevo-hilo { margin: 0.5rem 0 1rem; border: 1px solid var(--borde); padding: 0.4rem 0.8rem; }
+.nuevo-hilo[open] { border-color: var(--fosforo); }
+.nuevo-hilo summary { cursor: pointer; color: var(--fosforo); font-weight: 700; text-transform: uppercase; font-size: 0.85rem; }
+.nuevo-hilo summary::marker { content: '+ '; }
+.nuevo-hilo[open] summary::marker { content: '- '; }
+
+.form-post label { display: block; margin: 0.6rem 0; font-size: 0.8rem; color: var(--tenue); text-transform: uppercase; }
+.form-post label.ayuda { display: flex; gap: 0.4rem; align-items: center; text-transform: none; }
+
+input[type='text'], input[type='number'], textarea, select {
+  width: 100%;
+  margin-top: 0.2rem;
+  padding: 0.5rem;
+  font: 0.95rem/1.5 var(--mono);
+  color: var(--texto);
+  caret-color: var(--fosforo);
+  background: var(--fondo);
+  border: 1px solid var(--borde);
+  border-radius: 0;
+}
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--fosforo); }
+textarea { resize: vertical; }
+input[type='checkbox'] { accent-color: var(--fosforo); }
+
+button, a.boton {
+  display: inline-block;
+  padding: 0.4rem 1rem;
+  font: 700 0.8rem var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+  color: var(--fosforo);
+  background: transparent;
+  border: 1px solid var(--fosforo);
+  border-radius: 0;
+  cursor: pointer;
+}
+button:hover, a.boton:hover { background: var(--fosforo); color: var(--fondo); }
+button::before, a.boton::before { content: '['; margin-right: 0.35em; }
+button::after, a.boton::after { content: ']'; margin-left: 0.35em; }
+button.enlace { border: 0; padding: 0; font-size: inherit; letter-spacing: inherit; }
+button.enlace::before, button.enlace::after { content: none; }
+.en-linea { display: inline; }
+
+/* --- Moderación y normas --------------------------------------------------------------- */
+
+.acciones { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }
+.banear { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.banear input[type='number'] { width: 5rem; }
+.banear input[type='text'] { width: 12rem; }
+
+.normas { padding-left: 1.5rem; }
+.normas li { margin-bottom: 0.6rem; }
+.normas li::marker { color: var(--fosforo); }
+.normas strong { color: var(--fosforo); }
+.marca-vos { opacity: 0.8; }
+.post-meta .citar { text-decoration: none; }
+.respuestas { font-size: 0.85em; opacity: 0.85; margin: 0.4rem 0 0; }
+.respuestas a { margin-right: 0.3em; }
+.mias { padding-left: 1.2rem; }
+.formato-ejemplo { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.75rem; }
+.formato-ejemplo pre { white-space: pre-wrap; word-break: break-word; margin: 0; padding: 0.5rem; border: 1px dashed currentColor; }
+.formato-ejemplo .texto { padding: 0.5rem; border: 1px solid currentColor; }
+.cuenta a.hay-novedades { color: var(--aviso); font-weight: 700; }
+.avisos { list-style: none; padding: 0; }
+.avisos li { border-left: 2px solid var(--borde); padding: 0.4rem 0.7rem; margin-bottom: 0.6rem; }
+.avisos li.nueva { border-left-color: var(--aviso); }
+.avisos .extracto { opacity: 0.85; margin-top: 0.2rem; }
+
+.pie .tema strong { text-decoration: underline; }
+
+/* --- Barra de arriba (escritorio: dos filas) -------------------------------------------- */
+.cabecera { display: block; }
+.cab-fila { display: flex; align-items: center; gap: 0.6rem; }
+.cab-der { margin-left: auto; display: flex; align-items: center; gap: 0.45rem; }
+.icono {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--fosforo);
+  color: var(--fosforo);
+  padding: 0.2rem 0.45rem;
+  text-decoration: none;
+  cursor: pointer;
+  line-height: 1;
+  font: inherit;
+}
+.icono { min-height: 2rem; box-sizing: border-box; }
+.icono svg { display: block; }
+.icono:hover { background: var(--fosforo); color: var(--fondo); }
+.correo.hay-novedades { border-color: var(--aviso); color: var(--aviso); }
+.menu-cab { position: relative; }
+.menu-cab > summary { list-style: none; }
+.menu-cab > summary::-webkit-details-marker { display: none; }
+.menu-cab[open] > summary { background: var(--fosforo); color: var(--fondo); }
+.menu-desplegable {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  min-width: 12rem;
+  background: var(--caja);
+  border: 1px solid var(--fosforo);
+  z-index: 3;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.menu-desplegable a, .menu-desplegable button.enlace {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid var(--borde);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.menu-desplegable form { margin: 0; }
+.menu-desplegable button.enlace { border-bottom: 0; color: var(--fosforo); cursor: pointer; }
+.secciones { display: flex; gap: 1.4rem; overflow-x: auto; white-space: nowrap; margin-top: 0.5rem; scrollbar-width: none; }
+.secciones a { text-decoration: none; color: var(--tenue); padding-bottom: 0.15rem; }
+.secciones a:hover { background: transparent; color: var(--fosforo); }
+.secciones a.activa { color: var(--fosforo); border-bottom: 2px solid var(--fosforo); }
+
+/* --- Botón de tema ---------------------------------------------------------------------- */
+/* Se dibujan sol y luna; se ve el que lleva al tema contrario del que se está mostrando. */
+.boton-tema .a-oscuro { display: none; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-tema="oscuro"]) .boton-tema .a-claro { display: none; }
+  :root:not([data-tema="oscuro"]) .boton-tema .a-oscuro { display: inline-flex; }
+}
+:root[data-tema="claro"] .boton-tema .a-claro { display: none; }
+:root[data-tema="claro"] .boton-tema .a-oscuro { display: inline-flex; }
+
+/* --- Barra inferior (solo celular) ------------------------------------------------------ */
+.abajo { display: none; }
+.badge { background: var(--aviso); color: var(--fondo); padding: 0 0.3rem; margin-left: 0.2rem; font-size: 0.7rem; font-weight: 700; }
+
+@media (max-width: 40rem) {
+  /* Arriba queda solo la marca y el tema; lo demás baja a la barra inferior. */
+  .cabecera .secciones, .cabecera .correo, .cabecera .menu-cab, .cab-der > a.icono:not(.a-claro):not(.a-oscuro) { display: none; }
+  body { padding-bottom: 4.2rem; }
+
+  .abajo {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 2;
+    background: var(--fondo);
+    border-top: 1px solid var(--fosforo);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .abajo > a, .abajo > details { flex: 1; }
+  .abajo > a, .abajo summary {
+    display: block;
+    text-align: center;
+    padding: 0.4rem 0 0.55rem;
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    text-decoration: none;
+    color: var(--tenue);
+    cursor: pointer;
+    list-style: none;
+  }
+  .abajo summary::-webkit-details-marker { display: none; }
+  .abajo b { display: block; font-size: 1.1rem; line-height: 1.3; color: var(--fosforo); }
+  .abajo .activa, .abajo details[open] > summary { color: var(--fosforo); }
+  .abajo a:hover, .abajo summary:hover { background: transparent; color: var(--fosforo); }
+  .abajo details { position: relative; }
+  .menu-abajo {
+    position: absolute;
+    bottom: calc(100% + 1px);
+    left: 0;
+    min-width: 11rem;
+    background: var(--caja);
+    border: 1px solid var(--fosforo);
+  }
+  .abajo details.derecha .menu-abajo { left: auto; right: 0; }
+  .menu-abajo a, .menu-abajo button.enlace {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--borde);
+    text-decoration: none;
+    font-size: 0.85rem;
+  }
+  .menu-abajo form { margin: 0; }
+  .menu-abajo button.enlace { border-bottom: 0; color: var(--fosforo); }
+}
