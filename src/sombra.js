@@ -45,10 +45,6 @@ const PREGUNTAS_NORMAS = {
     instructions: 'Is the `message` advertising, referral links, gambling promotion or investment schemes?',
     criteria: { true: 'Spam or promotion', false: 'Not spam' },
   },
-  ruido: {
-    instructions: 'Is the `message` empty of content: only emojis, only a number, or just "bump"?',
-    criteria: { true: 'Says nothing', false: 'Says something, even if short' },
-  },
 };
 
 const PREGUNTA_GRAVE = {

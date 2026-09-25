@@ -9,6 +9,13 @@ const PRECIO = { entrada: 2, salida: 10 };
 const CASOS = [
   {
     esperado: 'approve',
+    tablon: 'Juegos',
+    asunto: 'Puntajes',
+    cuerpo: '7',
+    esHilo: false,
+  },
+  {
+    esperado: 'approve',
     grave: 'ninguna',
     tablon: 'Vida real',
     asunto: 'Algo que nunca conté',

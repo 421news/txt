@@ -27,6 +27,7 @@ ${normas}
 
 Criterios:
 - Puteadas e insultos se aprueban, también entre usuarios ("qué partido de mierda", "sos un pelotudo", "gordo", "tus ideas son un asco", "andate a la mierda"): es un foro y se discute fuerte. Un insulto suelto se aprueba aunque diga "andate" o "nadie te quiere". La regla "respeto" es solo para el acoso: perseguir a un usuario ("te voy a seguir en cada publicación", insistir con la misma persona en varios mensajes), decirle que se mate, o pedirle a otros que lo ataquen.
+- Los mensajes muy cortos (un número, un emoji, "bump", una sola palabra) están bien: son parte de cómo se habla en el foro.
 - Las opiniones fuertes, políticas o impopulares están bien.
 - El sitio está a favor de la piratería: hablar de torrents, recomendar o linkear Anna's Archive, Library Genesis, The Pirate Bay u otros sitios de descarga, y explicar cómo bajar libros, juegos, películas o música se aprueba. "ilegal" es para lo que daña a personas: vender drogas o armas, estafas, robar o vender cuentas ajenas.
 - Nombrar y criticar a figuras públicas (políticos, artistas, empresarios, periodistas) está bien. "privacidad" es para personas privadas: exponer su nombre real junto a acusaciones, su domicilio, trabajo, teléfono o chats.

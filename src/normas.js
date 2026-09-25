@@ -10,5 +10,4 @@ export const NORMAS = [
   { id: 'autolesion', titulo: 'Cuidado con la autolesión', texto: 'Hablar de salud mental está bien. Alentar la autolesión, no.' },
   { id: 'ilegal', titulo: 'Nada ilegal', texto: 'Nada que facilite delitos: vender drogas o armas, estafas, meterse en cuentas ajenas.' },
   { id: 'spam', titulo: 'Sin spam', texto: 'Ni publicidad, ni referidos, ni apuestas.' },
-  { id: 'ruido', titulo: 'Aportar algo', texto: 'Nada de mensajes vacíos, solo emojis o solo "bump".' },
 ];
