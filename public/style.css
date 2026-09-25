@@ -15,6 +15,7 @@
   --cabecera: rgba(2, 8, 3, 0.94);
   --sobre-borde: var(--sobre-borde);               /* texto sobre las barras de las respuestas */
   --mono: 'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace;
+  --cabecera-height: 82px;
 }
 
 /* Tema claro: papel crema, acentos bordó, citas en azul. Mismos nombres de variable: --fosforo es
@@ -57,8 +58,12 @@
 html { background: var(--fondo); }
 
 body {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   margin: 0;
-  min-height: 100vh;
+  min-height: 100%;
   color: var(--texto);
   font: 15px/1.65 var(--mono);
   /* Plano: sin halos ni resplandor. Solo quedan líneas de pantalla muy tenues. */
@@ -77,7 +82,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible, .spoiler:focus-vis
 /* --- Barra superior -------------------------------------------------------------------- */
 
 .cabecera {
-  position: sticky;
+  position: fixed;
   top: 0;
   z-index: 1;
   display: flex;
@@ -90,7 +95,10 @@ a:focus-visible, button:focus-visible, summary:focus-visible, .spoiler:focus-vis
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-size: 0.8rem;
+  height: var(--cabecera-height);
+  width: 100%;
 }
+
 .marca {
   font-weight: 700;
   font-size: 1rem;
@@ -110,7 +118,15 @@ a:focus-visible, button:focus-visible, summary:focus-visible, .spoiler:focus-vis
   .marca::after { animation: none; }
 }
 
-main { max-width: 52rem; margin: 0 auto; padding: 1.25rem 1rem 4rem; }
+main {
+  position: relative;
+  top: var(--cabecera-height);
+  max-height: calc(100% - var(--cabecera-height));
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 4rem;
+  scroll-margin-block-start: var(--cabecera-height);
+}
 .pie { max-width: 52rem; margin: 0 auto; padding: 0 1rem 2rem; font-size: 0.85em; opacity: 0.8; }
 
 h1, h2 { color: var(--fosforo); font-weight: 700; }
