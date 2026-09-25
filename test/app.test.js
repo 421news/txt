@@ -562,4 +562,8 @@ test('cápsula Gemini: portada, publicación, 51 y host ajeno', async (t) => {
   assert.ok(hilo.includes('## Libros') && hilo.includes('> cita') && hilo.includes('=> https://prueba/h/1 Responder en la web'));
   assert.ok((await pedir('gemini://localhost/h/99')).startsWith('51'));
   assert.ok((await pedir('gemini://otro.sitio/')).startsWith('53'));
+  // Auditoría 2026-09-25: un % inválido tiraba abajo todo el proceso (web incluida).
+  assert.ok((await pedir('gemini://localhost/%E0')).startsWith('59'));
+  assert.ok((await pedir('gemini://localhost/%ZZ')).startsWith('59'));
+  assert.ok((await pedir('gemini://localhost/')).startsWith('20'), 'la cápsula sigue viva');
 });
