@@ -20,7 +20,7 @@
 /* Tema claro: papel crema, acentos bordó, citas en azul. Mismos nombres de variable: --fosforo es
    "el color de acento" en los dos temas. */
 @media (prefers-color-scheme: light) {
-  :root:not([data-tema="oscuro"]) {
+  :root:not([data-tema]) {
     color-scheme: light;
     --fondo: #f5eddc;
     --caja: #fbf7ee;
@@ -51,6 +51,45 @@
   --cabecera: rgba(245, 237, 220, 0.95);
   --sobre-borde: #fbf7ee;
 }
+
+:root[data-tema="descanso"] {
+  color-scheme: dark;
+  --fondo: #191a1d;
+  --caja: #212327;
+  --fosforo: #5cc988;
+  --texto: #d2d0c8;
+  --tenue: #8e939b;
+  --borde: #33363c;
+  --cita: #c2d38a;
+  --aviso: #e0c068;
+  --error: #e3897e;
+  --lineas: transparent;
+  --cabecera: rgba(25, 26, 29, 0.95);
+  --sobre-borde: #191a1d;
+}
+:root[data-tema="monocromo"] {
+  color-scheme: dark;
+  --fondo: #161616;
+  --caja: #1c1c1c;
+  --fosforo: #e4dfd4;
+  --texto: #bfbab0;
+  --tenue: #8a857c;
+  --borde: #2e2e2e;
+  --cita: #a9b59a;
+  --aviso: #d4b56a;
+  --error: #de8a7e;
+  --lineas: transparent;
+  --cabecera: rgba(22, 22, 22, 0.95);
+  --sobre-borde: #161616;
+}
+/* Contorno de campos a 3:1 (WCAG); el borde de las cajas es decorativo. */
+:root[data-tema="descanso"] :is(input[type='text'], input[type='number'], textarea, select) { border-color: #666b73; }
+:root[data-tema="monocromo"] :is(input[type='text'], input[type='number'], textarea, select) { border-color: #69655e; }
+/* Sin bloques llenos de color: la barra del OP va con el fondo de la caja. */
+:root:is([data-tema="descanso"], [data-tema="monocromo"]) .post.op .post-meta { background: var(--caja); color: var(--tenue); border-bottom: 1px solid var(--borde); }
+:root:is([data-tema="descanso"], [data-tema="monocromo"]) .post.op .post-meta :is(a, .num) { color: var(--tenue); }
+:root:is([data-tema="descanso"], [data-tema="monocromo"]) .post.op .marca-op { background: var(--fosforo); color: var(--fondo); }
+:root[data-tema="monocromo"] .post.op { border-color: #77736b; }
 
 * { box-sizing: border-box; }
 
@@ -298,6 +337,17 @@ button.enlace::before, button.enlace::after { content: none; }
 .banear input[type='number'] { width: 5rem; }
 .banear input[type='text'] { width: 12rem; }
 
+/* --- Preferencias ---------------------------------------------------------------------- */
+.temas { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.temas a { text-transform: capitalize; display: inline-flex; gap: 0.5rem; align-items: center; padding: 0.3rem 0.6rem; border: 1px solid var(--borde); text-decoration: none; }
+.temas a[aria-current] { background: var(--fosforo); color: var(--fondo); border-color: var(--fosforo); font-weight: 700; }
+.temas a[aria-current]::after { content: '✓'; }
+.muestra { padding: 0 0.4rem; border: 1px solid; font-weight: 700; }
+.muestra-oscuro { background: #020803; color: #33ff66; border-color: #33ff66; }
+.muestra-claro { background: #f5eddc; color: #7b1e2c; border-color: #8c5a5f; }
+.muestra-descanso { background: #191a1d; color: #d2d0c8; border-color: #5cc988; }
+.muestra-monocromo { background: #161616; color: #bfbab0; border-color: #e4dfd4; }
+
 .normas { padding-left: 1.5rem; }
 .normas li { margin-bottom: 0.6rem; }
 .normas li::marker { color: var(--fosforo); }
@@ -373,8 +423,8 @@ button.enlace::before, button.enlace::after { content: none; }
 /* Se dibujan sol y luna; se ve el que lleva al tema contrario del que se está mostrando. */
 .boton-tema .a-oscuro { display: none; }
 @media (prefers-color-scheme: light) {
-  :root:not([data-tema="oscuro"]) .boton-tema .a-claro { display: none; }
-  :root:not([data-tema="oscuro"]) .boton-tema .a-oscuro { display: inline-flex; }
+  :root:not([data-tema]) .boton-tema .a-claro { display: none; }
+  :root:not([data-tema]) .boton-tema .a-oscuro { display: inline-flex; }
 }
 :root[data-tema="claro"] .boton-tema .a-claro { display: none; }
 :root[data-tema="claro"] .boton-tema .a-oscuro { display: inline-flex; }

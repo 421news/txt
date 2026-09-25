@@ -517,6 +517,19 @@ test('tema claro/oscuro por cookie, sin JavaScript', async (t) => {
   assert.equal((await s.pedir('/tema?t=oscuro&volver=//evil.com')).headers.get('location'), '/');
 });
 
+test('temas descanso y monocromo desde Mi cuenta', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const cuenta = await s.texto('/cuenta', ana);
+  assert.ok(cuenta.includes('href="/tema?t=descanso&amp;volver=%2Fcuenta"') && cuenta.includes('href="/tema?t=monocromo&amp;volver=%2Fcuenta"'));
+  for (const [tema, fondo] of [['descanso', '#191a1d'], ['monocromo', '#161616']]) {
+    const cookie = (await s.pedir(`/tema?t=${tema}&volver=%2Fcuenta`)).headers.getSetCookie()[0].split(';')[0];
+    const pagina = await (await s.pedir('/normas', { cookie })).text();
+    assert.ok(pagina.includes(`data-tema="${tema}"`) && pagina.includes(`content="${fondo}"`));
+  }
+});
+
 test('tolerancia cero: un caso grave rechaza, suspende la cuenta y un mod la puede levantar', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
