@@ -500,44 +500,65 @@ ${gravesEscapados.length ? html`<h2>Graves que se le escaparon a Jev</h2><ul cla
 ${desacuerdos.length ? html`<ul class="resultados">${desacuerdos.map(fila)}</ul>` : html`<p class="ayuda">Ninguno todavía.</p>`}`;
 }
 
-// Gráfico de barras en SVG inline, sin JS: una serie, color de acento del tema, barras con la punta
-// redondeada apoyadas en la base, 2 px de separación. El detalle de cada día va en <title> (tooltip
-// nativo al pasar el mouse) y los números completos en la tabla de abajo.
-function barras(titulo, datos) {
+// Gráfico de líneas en SVG inline, sin JS, en el estilo del panel de analíticas de 421: curva suave,
+// área rellena muy suave, un punto por día. Curva monótona (Fritsch-Carlson): no inventa picos ni
+// baja de cero entre dos puntos. El detalle de cada día va en <title> sobre un área de toque ancha.
+function lineas(titulo, datos) {
   const W = 600;
-  const H = 160;
+  const H = 170;
+  const arriba = 18;
   const base = H - 26;
   const maximo = Math.max(0, ...datos.map((d) => d.n));
-  const max = Math.max(1, maximo); // para la escala; el que se muestra es `maximo`
-  const paso = W / datos.length;
-  const ancho = Math.max(2, paso - 2);
+  const max = Math.max(1, maximo);
+  const n = datos.length;
+  const paso = W / Math.max(1, n - 1);
+  const pts = datos.map((d, i) => [i * paso, base - (d.n / max) * (base - arriba)]);
+  // Pendientes monótonas.
+  const dx = pts.slice(1).map((p, i) => p[0] - pts[i][0]);
+  const pend = pts.slice(1).map((p, i) => (p[1] - pts[i][1]) / dx[i]);
+  const m = pts.map((_, i) => {
+    if (i === 0) return pend[0] ?? 0;
+    if (i === n - 1) return pend[n - 2] ?? 0;
+    return pend[i - 1] * pend[i] <= 0 ? 0 : (pend[i - 1] + pend[i]) / 2;
+  });
+  for (let i = 0; i < n - 1; i++) {
+    if (pend[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / pend[i];
+    const b = m[i + 1] / pend[i];
+    const h = a * a + b * b;
+    if (h > 9) { const t = 3 / Math.sqrt(h); m[i] = t * a * pend[i]; m[i + 1] = t * b * pend[i]; }
+  }
+  const f = (v) => v.toFixed(1);
+  let curva = `M${f(pts[0][0])},${f(pts[0][1])}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[i + 1];
+    const d = (x1 - x0) / 3;
+    curva += `C${f(x0 + d)},${f(y0 + m[i] * d)} ${f(x1 - d)},${f(y1 - m[i + 1] * d)} ${f(x1)},${f(y1)}`;
+  }
+  const area = `${curva}L${f(pts[n - 1][0])},${base}L${f(pts[0][0])},${base}Z`;
   const etiqueta = (dia) => dia.slice(8, 10) + '/' + dia.slice(5, 7);
-  const barrasSvg = datos
+  const puntos = datos
     .map((d, i) => {
-      const alto = d.n ? Math.max(3, (d.n / max) * (base - 14)) : 0;
-      const x = i * paso + 1;
-      const y = base - alto;
-      const r = Math.min(4, ancho / 2, alto);
-      // Rectángulo con solo las esquinas de arriba redondeadas.
-      const camino = alto
-        ? `M${x},${base}V${y + r}Q${x},${y} ${x + r},${y}H${x + ancho - r}Q${x + ancho},${y} ${x + ancho},${y + r}V${base}Z`
-        : '';
-      return `<g class="barra"><rect x="${x}" y="0" width="${paso}" height="${base}" class="hit"/>${camino ? `<path d="${camino}"/>` : ''}<title>${etiqueta(d.dia)}: ${d.n}</title></g>`;
+      const [x, y] = pts[i];
+      return `<g class="punto"><rect x="${f(x - paso / 2)}" y="0" width="${f(paso)}" height="${base}" class="hit"/><circle cx="${f(x)}" cy="${f(y)}" r="3.5"/><title>${etiqueta(d.dia)}: ${d.n}</title></g>`;
     })
+    .join('');
+  const grilla = [0.5, 1]
+    .map((k) => `<line x1="0" x2="${W}" y1="${f(base - k * (base - arriba))}" y2="${f(base - k * (base - arriba))}" class="grilla"/>`)
     .join('');
   const ejeX = datos
     .map((d, i) => {
-      const ultimo = i === datos.length - 1;
-      if (!(i % 7 === 0 || ultimo) || (!ultimo && datos.length - 1 - i < 4)) return '';
-      // Las puntas se alinean hacia adentro para que no se corten.
-      const [x, anclaje] = i === 0 ? [0, 'start'] : ultimo ? [W, 'end'] : [i * paso + paso / 2, 'middle'];
-      return `<text x="${x}" y="${H - 4}" text-anchor="${anclaje}">${etiqueta(d.dia)}</text>`;
+      const ultimo = i === n - 1;
+      if (!(i % 7 === 0 || ultimo) || (!ultimo && n - 1 - i < 4)) return '';
+      const [x, anclaje] = i === 0 ? [0, 'start'] : ultimo ? [W, 'end'] : [i * paso, 'middle'];
+      return `<text x="${f(x)}" y="${H - 4}" text-anchor="${anclaje}">${etiqueta(d.dia)}</text>`;
     })
     .join('');
-  const hoy = datos[datos.length - 1]?.n ?? 0;
+  const hoy = datos[n - 1]?.n ?? 0;
   return html`<figure class="grafico">
   <figcaption><strong>${titulo}</strong> <span class="ayuda">hoy ${hoy} · máximo ${maximo}</span></figcaption>
-  ${raw(`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(titulo)}, últimos ${datos.length} días"><line x1="0" y1="${base + 0.5}" x2="${W}" y2="${base + 0.5}" class="base"/><text x="0" y="13" class="tope">${maximo}</text>${barrasSvg}${ejeX}</svg>`)}
+  ${raw(`<svg viewBox="-4 0 ${W + 8} ${H}" role="img" aria-label="${esc(titulo)}, últimos ${n} días">${grilla}<line x1="0" y1="${base + 0.5}" x2="${W}" y2="${base + 0.5}" class="base"/><text x="0" y="12" class="tope">${maximo}</text><path d="${area}" class="area"/><path d="${curva}" class="linea"/>${puntos}${ejeX}</svg>`)}
 </figure>`;
 }
 
@@ -557,7 +578,7 @@ export function estadisticas(ctx, { hoy, total, desdeVisitas, series }) {
   return html`<h1>Estadísticas</h1>
 <p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas. "Usuarios activos" = cuentas que entraron al sitio ese día; los días anteriores se reconstruyeron con inicios de sesión, mensajes y reportes.</p>
 <div class="tiles">${tiles.map(([k, v]) => html`<div class="tile"><span class="tile-n">${v.toLocaleString('es-AR')}</span><span class="tile-k">${k}</span></div>`)}</div>
-<div class="graficos">${orden.map((k) => barras(nombres[k], series[k]))}</div>
+<div class="graficos">${orden.map((k) => lineas(nombres[k], series[k]))}</div>
 <details class="tabla-datos"><summary>Ver los números</summary>
 <table class="cruce"><tr><th>Día</th>${orden.map((k) => html`<th>${nombres[k]}</th>`)}</tr>
 ${series.vistas

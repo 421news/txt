@@ -461,9 +461,12 @@ mark { background: var(--fosforo); color: var(--fondo); padding: 0 0.1rem; }
 .grafico { margin: 0; }
 .grafico figcaption { font-size: 0.85rem; margin-bottom: 0.3rem; }
 .grafico svg { width: 100%; height: auto; display: block; }
-.grafico .barra path { fill: var(--fosforo); }
-.grafico .barra .hit { fill: transparent; }
-.grafico .barra:hover path { opacity: 0.75; }
+.grafico .linea { fill: none; stroke: var(--fosforo); stroke-width: 2; stroke-linejoin: round; }
+.grafico .area { fill: var(--fosforo); opacity: 0.1; }
+.grafico .grilla { stroke: var(--borde); stroke-width: 1; stroke-dasharray: 2 4; opacity: 0.6; }
+.grafico .punto circle { fill: var(--fondo); stroke: var(--fosforo); stroke-width: 2; }
+.grafico .punto .hit { fill: transparent; }
+.grafico .punto:hover circle { fill: var(--fosforo); r: 5; }
 .grafico .base { stroke: var(--borde); stroke-width: 1; }
 .grafico text { fill: var(--tenue); font-size: 15px; font-family: var(--mono); }
 .tabla-datos { margin-top: 1.4rem; font-size: 0.85rem; }
