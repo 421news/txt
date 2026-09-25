@@ -136,6 +136,14 @@ export function openDb(archivo) {
   db.exec(`CREATE TABLE IF NOT EXISTS visitas_dia (dia TEXT PRIMARY KEY, vistas INTEGER NOT NULL DEFAULT 0, visitantes INTEGER NOT NULL DEFAULT 0)`);
   db.exec(`CREATE TABLE IF NOT EXISTS visitantes_dia (dia TEXT NOT NULL, h TEXT NOT NULL, PRIMARY KEY (dia, h))`);
   db.exec(`CREATE TABLE IF NOT EXISTS actividad_dia (dia TEXT NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY (dia, user_id))`);
+  // Historial de usuarios activos anterior a que se contaran las visitas (2026-09-25): se reconstruye con
+  // lo que ya está en la base (inicios de sesión, mensajes, rechazos y reportes). Idempotente.
+  const dia = (col) => `strftime('%Y-%m-%d', ${col} / 1000, 'unixepoch', '-3 hours')`;
+  db.exec(`INSERT OR IGNORE INTO actividad_dia (dia, user_id)
+    SELECT ${dia('created_at')}, user_id FROM sessions
+    UNION SELECT ${dia('created_at')}, user_id FROM posts
+    UNION SELECT ${dia('created_at')}, user_id FROM rechazos
+    UNION SELECT ${dia('created_at')}, user_id FROM reports`);
   // Prueba en sombra de Jev (sombra.js): lo que decidió Claude y lo que habría decidido Jev.
   db.exec(`CREATE TABLE IF NOT EXISTS sombra_jev (
     id INTEGER PRIMARY KEY,

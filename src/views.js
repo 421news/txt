@@ -555,7 +555,7 @@ export function estadisticas(ctx, { hoy, total, desdeVisitas, series }) {
   const nombres = { vistas: 'Visitas', visitantes: 'Visitantes únicos', activos: 'Usuarios activos', publicaciones: 'Publicaciones', respuestas: 'Respuestas', nuevas: 'Cuentas nuevas' };
   const orden = ['vistas', 'visitantes', 'activos', 'publicaciones', 'respuestas', 'nuevas'];
   return html`<h1>Estadísticas</h1>
-<p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas ni de usuarios activos. "Usuarios activos" = cuentas que entraron al sitio ese día.</p>
+<p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas. "Usuarios activos" = cuentas que entraron al sitio ese día; los días anteriores se reconstruyeron con inicios de sesión, mensajes y reportes.</p>
 <div class="tiles">${tiles.map(([k, v]) => html`<div class="tile"><span class="tile-n">${v.toLocaleString('es-AR')}</span><span class="tile-k">${k}</span></div>`)}</div>
 <div class="graficos">${orden.map((k) => barras(nombres[k], series[k]))}</div>
 <details class="tabla-datos"><summary>Ver los números</summary>
