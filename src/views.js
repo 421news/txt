@@ -199,12 +199,57 @@ function selectorVista(vista) {
 const listado = (ctx, hilos, vista, opciones) =>
   vista === 'lista' ? listaHilos(ctx, hilos, opciones) : catalogo(hilos, opciones);
 
-function paginacion(actual, paginas, vista) {
-  if (paginas <= 1) return '';
-  const prefijo = vista === 'lista' ? 'vista=lista&' : '';
-  return html`<nav class="paginas">${Array.from({ length: paginas }, (_, i) => i + 1).map((n) =>
-    n === actual ? html`<strong>${n}</strong>` : html`<a href="?${prefijo}pagina=${n}">${n}</a>`,
-  )}</nav>`;
+function paginacion(paginaActual, totalPaginas, parametros = {}) {
+  if (totalPaginas <= 1) return '';
+
+  const url = (pagina) => `?${new URLSearchParams({ ...parametros, pagina })}`;
+
+  function renderPagina(pagina) {
+    if (pagina === paginaActual) {
+      return html`<strong aria-current="page" aria-label="Página ${pagina}">${pagina}</strong>`;
+    }
+    return html`<a href="${url(pagina)}" aria-label="Página ${pagina}">${pagina}</a>`;
+  }
+
+  const paginasVisibles = [];
+
+  if (totalPaginas <= 7) {
+    for (let pagina = 1; pagina <= totalPaginas; pagina++) paginasVisibles.push(pagina);
+  } else {
+    let primeraPaginaVisible = paginaActual - 1;
+
+    if (primeraPaginaVisible < 2) primeraPaginaVisible = 2;
+    if (primeraPaginaVisible > totalPaginas - 3) primeraPaginaVisible = totalPaginas - 3;
+    const ultimaPaginaVisible = primeraPaginaVisible + 2;
+
+    paginasVisibles.push(1);
+
+    for (let pagina = primeraPaginaVisible; pagina <= ultimaPaginaVisible; pagina++) {
+      paginasVisibles.push(pagina);
+    }
+
+    paginasVisibles.push(totalPaginas);
+  }
+
+  const elementosPaginacion = [];
+  let ultimaPaginaAgregada = 0;
+
+  for (const pagina of paginasVisibles) {
+    const paginasOmitidas = pagina - ultimaPaginaAgregada - 1;
+    if (paginasOmitidas === 1) {
+      elementosPaginacion.push(renderPagina(pagina - 1));
+    } else if (paginasOmitidas > 1) {
+      elementosPaginacion.push(html`<span aria-hidden="true">…</span>`);
+    }
+    elementosPaginacion.push(renderPagina(pagina));
+    ultimaPaginaAgregada = pagina;
+  }
+
+  return html`<nav class="paginas" aria-label="Paginación">
+${paginaActual > 1 ? html`<a href="${url(paginaActual - 1)}" rel="prev">← Anterior</a>` : ''}
+${elementosPaginacion}
+${paginaActual < totalPaginas ? html`<a href="${url(paginaActual + 1)}" rel="next">Siguiente →</a>` : ''}
+</nav>`;
 }
 
 // La portada son los hilos de todos los tablones, ordenados por última respuesta.
@@ -213,7 +258,7 @@ export function portada(ctx, { hilos, vista, pagina: actual, paginas, form }) {
 <p class="ayuda">Pseudoanónimo y moderado: cada mensaje se revisa antes de publicarse. <a href="/normas">Normas</a></p>
 ${selectorVista(vista)}
 ${listado(ctx, hilos, vista, { conTablon: true })}
-${paginacion(actual, paginas, vista)}`;
+${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}`;
 }
 
 function bloqueoPublicar(ctx, accion) {
@@ -285,7 +330,7 @@ export function tablon(ctx, { board, hilos, vista, pagina: actual, paginas, arch
 ${archivo ? '' : formHilo(ctx, board, form)}
 ${selectorVista(vista)}
 ${listado(ctx, hilos, vista, {})}
-${paginacion(actual, paginas, vista)}`;
+${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}`;
 }
 
 // resumen: versión para listados (texto recortado, sin reportar, sin ancla propia).
@@ -445,7 +490,6 @@ export function buscar(ctx, { texto, resultados, pagina, paginas }) {
   // El fragmento viene de FTS con marcas \u0001/\u0002 alrededor de lo encontrado (el texto guardado
   // no puede tenerlas: limpiarTexto saca los controles). Se escapa todo y recién después se marca.
   const resaltar = (s) => raw(esc(s ?? '').replace(/\u0001/g, '<mark>').replace(/\u0002/g, '</mark>'));
-  const q = encodeURIComponent(texto);
   return html`<h1>Buscar</h1>
 <form class="form-buscar" method="get" action="/buscar" role="search">
   <input type="search" name="q" value="${texto}" maxlength="100" placeholder="Palabras a buscar" aria-label="Buscar" ${texto ? '' : raw('autofocus')}>
@@ -461,11 +505,7 @@ ${resultados.length
   ${r.fragmento ? html`<p class="res-fragmento">${resaltar(r.fragmento)}</p>` : ''}
 </li>`,
     )}</ol>
-${paginas > 1
-  ? html`<nav class="paginas">${Array.from({ length: paginas }, (_, i) => i + 1).map((n) =>
-      n === pagina ? html`<strong>${n}</strong>` : html`<a href="/buscar?q=${raw(q)}&amp;pagina=${n}">${n}</a>`,
-    )}</nav>`
-  : ''}`
+${paginacion(pagina, paginas, { q: texto })}`
   : ''}`;
 }
 
