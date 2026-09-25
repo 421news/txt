@@ -105,6 +105,14 @@ CREATE TABLE IF NOT EXISTS notificaciones (
   UNIQUE (user_id, post_id)
 );
 CREATE INDEX IF NOT EXISTS notificaciones_usuario ON notificaciones (user_id, leida);
+
+-- Publicaciones guardadas para leer después. Solo las ve quien las guardó.
+CREATE TABLE IF NOT EXISTS guardados (
+  user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  thread_id INTEGER NOT NULL REFERENCES threads (id),
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, thread_id)
+);
 `;
 
 export function openDb(archivo) {

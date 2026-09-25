@@ -130,6 +130,12 @@ export function createApp({
       FROM notificaciones x JOIN posts p ON p.id = x.post_id JOIN threads t ON t.id = p.thread_id
       WHERE x.user_id = ? AND p.status = 'published' AND t.visible = 1 ORDER BY x.id DESC LIMIT 100`),
     marcarLeidas: db.prepare('UPDATE notificaciones SET leida = 1 WHERE user_id = ? AND leida = 0'),
+    guardado: db.prepare('SELECT 1 FROM guardados WHERE user_id = ? AND thread_id = ?'),
+    guardar: db.prepare('INSERT OR IGNORE INTO guardados (user_id, thread_id, created_at) VALUES (?, ?, ?)'),
+    olvidar: db.prepare('DELETE FROM guardados WHERE user_id = ? AND thread_id = ?'),
+    guardados: db.prepare(`SELECT t.id, t.subject, t.board, t.reply_count, t.bumped_at, t.archived
+      FROM guardados g JOIN threads t ON t.id = g.thread_id
+      WHERE g.user_id = ? AND t.visible = 1 ORDER BY g.created_at DESC LIMIT 200`),
     crearUsuario: db.prepare('INSERT INTO users (identidad, role, created_at) VALUES (?, ?, ?)'),
     hacerAdmin: db.prepare("UPDATE users SET role = 'admin' WHERE id = ?"),
     quitarAdmin: db.prepare("UPDATE users SET role = 'user' WHERE id = ?"),
@@ -515,7 +521,8 @@ export function createApp({
     // ?cita=N abre el formulario con >>N ya escrito (no hay JavaScript).
     const cita = Number(req.query.cita);
     if (!form.cuerpo && ids.has(cita)) form = { ...form, cuerpo: `>>${cita}\n` };
-    const cuerpo = V.hilo(res.locals.ctx, { thread, board, posts, ids, form });
+    const guardado = !!req.user && !!q.guardado.get(req.user.id, thread.id);
+    const cuerpo = V.hilo(res.locals.ctx, { thread, board, posts, ids, form, guardado });
     const op = posts.find((p) => p.id === thread.op_post_id);
     const publica = thread.visible && op?.status === 'published';
     const resumen = publica ? extracto(textoPlano(op.body), 155) : undefined;
@@ -908,6 +915,16 @@ export function createApp({
     res.redirect(303, `/h/${post.thread_id}?aviso=reportado#p${post.id}`);
   });
 
+  // Guardar una publicación para leer después, o sacarla de guardados (el mismo botón).
+  app.post('/h/:id/guardar', (req, res) => {
+    const thread = hiloVisible(req, Number(req.params.id));
+    if (!thread || !thread.visible) return noEncontrado(res);
+    if (!exigirUsuario(req, res)) return;
+    if (req.body.quitar === '1') q.olvidar.run(req.user.id, thread.id);
+    else q.guardar.run(req.user.id, thread.id, now());
+    res.redirect(303, `/h/${thread.id}`);
+  });
+
   // --- Moderación ----------------------------------------------------------------------------
 
   app.get('/mod', (req, res) => {
@@ -1109,6 +1126,7 @@ export function createApp({
     db.prepare('DELETE FROM rechazos WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM reports WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM notificaciones WHERE user_id = ? OR post_id IN (SELECT id FROM posts WHERE user_id = ?)').run(userId, userId);
+    db.prepare('DELETE FROM guardados WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
     db.prepare("UPDATE users SET identidad = 'borrada:' || id, role = 'user', ban_reason = NULL WHERE id = ?").run(userId);
     q.log.run(null, 'borrar-cuenta', null, userId, null, now());
@@ -1120,6 +1138,11 @@ export function createApp({
     const lista = q.notificaciones.all(req.user.id);
     q.marcarLeidas.run(req.user.id);
     enviar(res, { titulo: 'Respuestas', indexar: false, cuerpo: V.respuestas(res.locals.ctx, { lista }) });
+  });
+
+  app.get('/guardados', (req, res) => {
+    if (!req.user) return res.redirect(303, '/entrar');
+    enviar(res, { titulo: 'Guardados', indexar: false, cuerpo: V.guardados(res.locals.ctx, { lista: q.guardados.all(req.user.id) }) });
   });
 
   app.get('/cuenta', (req, res) => {
