@@ -622,3 +622,17 @@ test('doble toque: el mismo envío repetido termina en un solo mensaje y sin err
   assert.equal(otra.headers.get('location'), '/h/1#p2');
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM posts').get().n, 2);
 });
+
+test('vista previa: formatea sin publicar y sin pasar por el filtro', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  s.filtro.decision = 'reject';   // si se llamara al filtro, rechazaría
+  const r = await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Borrador', cuerpo: '>una cita\nhola', vista: '1' } });
+  assert.equal(r.status, 200);
+  const html = await r.text();
+  assert.ok(html.includes('class="vista-previa"') && html.includes('<span class="verde">&gt;una cita</span>'));
+  assert.ok(html.includes('>&gt;una cita\nhola</textarea>'));
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM threads').get().n, 0);
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM rechazos').get().n, 0);
+});

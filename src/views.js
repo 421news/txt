@@ -223,11 +223,23 @@ function bloqueoPublicar(ctx, accion) {
 }
 
 // Sin board (portada), el formulario pide elegir el tablón.
-function formHilo(ctx, board, { asunto = '', cuerpo = '', tablon = '', error, abrir } = {}) {
+// Vista previa: el mensaje formateado con el mismo formatear() que usa el sitio, sin publicarlo ni
+// pasarlo por el filtro (no gasta API). Va arriba del formulario, que conserva el texto.
+function vistaPrevia(asunto, cuerpo, ids = new Set()) {
+  if (!cuerpo) return '';
+  return html`<section class="vista-previa" aria-label="Vista previa">
+  <p class="ayuda">Vista previa: todavía no se publicó.</p>
+  ${asunto ? html`<h2>${asunto}</h2>` : ''}
+  <div class="texto">${raw(formatear(cuerpo, { idsLocales: ids }))}</div>
+</section>`;
+}
+
+function formHilo(ctx, board, { asunto = '', cuerpo = '', tablon = '', error, abrir, previa } = {}) {
   const bloqueo = bloqueoPublicar(ctx, 'publicar');
   if (bloqueo) return bloqueo;
   return html`<details class="nuevo-hilo" id="publicar"${error || asunto || cuerpo || abrir ? raw(' open') : ''}>
   <summary>Publicar${board ? ` en ${board.nombre}` : ''}</summary>
+  ${previa ? vistaPrevia(asunto, cuerpo) : ''}
   <form class="form-post" method="post" action="${board ? `/b/${board.slug}/hilo` : '/hilo'}">
     ${error ? html`<p class="error">${error}</p>` : ''}
     <input type="hidden" name="_csrf" value="${ctx.csrf}">
@@ -240,22 +252,23 @@ function formHilo(ctx, board, { asunto = '', cuerpo = '', tablon = '', error, ab
     <label>Asunto <input type="text" name="asunto" maxlength="${LIMITS.asunto}" required value="${asunto}"></label>
     <label>Mensaje <textarea name="cuerpo" rows="8" maxlength="${LIMITS.cuerpo}" required>${cuerpo}</textarea></label>
     <p class="ayuda">${AYUDA}</p>
-    <p><button>Publicar</button></p>
+    <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button></p>
   </form>
 </details>`;
 }
 
-function formRespuesta(ctx, thread, { cuerpo = '', sage = false, error } = {}) {
+function formRespuesta(ctx, thread, { cuerpo = '', sage = false, error, previa, ids } = {}) {
   const bloqueo = bloqueoPublicar(ctx, 'responder');
   if (bloqueo) return bloqueo;
   return html`<form class="form-post" method="post" action="/h/${thread.id}/responder" id="responder">
   <h2>Responder</h2>
+  ${previa ? vistaPrevia('', cuerpo, ids) : ''}
   ${error ? html`<p class="error">${error}</p>` : ''}
   <input type="hidden" name="_csrf" value="${ctx.csrf}">
-  <textarea name="cuerpo" rows="6" maxlength="${LIMITS.cuerpo}" required aria-label="Mensaje">${cuerpo}</textarea>
+  <textarea name="cuerpo" rows="6" maxlength="${LIMITS.cuerpo}" required aria-label="Mensaje"${previa ? raw(' autofocus') : ''}>${cuerpo}</textarea>
   <p class="ayuda">${AYUDA}</p>
   <label class="ayuda"><input type="checkbox" name="sage" value="1"${sage ? raw(' checked') : ''}> sage: responder sin subir la publicación</label>
-  <p><button>Publicar</button></p>
+  <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button></p>
 </form>`;
 }
 
@@ -327,7 +340,7 @@ ${estado}
 ${postsSueltos(ctx, { thread, posts, ids })}
 </div>
 <p id="vivo-aviso" class="ayuda" hidden></p>
-${abierto ? formRespuesta(ctx, thread, form) : ''}
+${abierto ? formRespuesta(ctx, thread, { ...form, ids }) : ''}
 ${abierto ? html`<script src="${estatico('vivo.js')}" defer></script>` : ''}`;
 }
 

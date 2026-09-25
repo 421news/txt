@@ -431,3 +431,11 @@ button.enlace::before, button.enlace::after { content: none; }
   .menu-abajo form { margin: 0; }
   .menu-abajo button.enlace { border-bottom: 0; color: var(--fosforo); }
 }
+
+/* --- Vista previa, contador y botón secundario ------------------------------------------ */
+.vista-previa { border: 1px dashed var(--fosforo); padding: 0.4rem 0.9rem 0.6rem; margin: 0.6rem 0 1rem; background: var(--caja); }
+.vista-previa h2 { margin: 0.3rem 0 0.4rem; }
+.botones { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+button.secundario { border-style: dashed; opacity: 0.85; }
+.contador { margin: 0.15rem 0 0; font-size: 0.72rem; color: var(--tenue); text-align: right; }
+.contador.cerca { color: var(--aviso); }

@@ -699,6 +699,7 @@ export function createApp({
     const asunto = limpiarTexto(req.body.asunto).replace(/\n+/g, ' ');
     const cuerpo = limpiarTexto(req.body.cuerpo);
     const fallar = (error, status = 422) => render({ asunto, cuerpo, tablon: board?.slug ?? '', error }, status);
+    if (req.body.vista === '1') return render({ asunto, cuerpo, tablon: board?.slug ?? '', previa: true, abrir: true }, 200);
 
     const firma = firmaDe('hilo', board?.slug, asunto, cuerpo);
     const responder = (r) => (r.destino ? res.redirect(303, r.destino) : fallar(r.error, r.status));
@@ -749,6 +750,7 @@ export function createApp({
     const cuerpo = limpiarTexto(req.body.cuerpo);
     const sage = req.body.sage === '1';
     const fallar = (error, status = 422) => renderHilo(req, res, thread, { cuerpo, sage, error }, status);
+    if (req.body.vista === '1') return renderHilo(req, res, thread, { cuerpo, sage, previa: true }, 200);
 
     const firma = firmaDe('respuesta', thread.id, cuerpo);
     const responder = (r) => (r.destino ? res.redirect(303, r.destino) : fallar(r.error, r.status));
