@@ -687,3 +687,26 @@ test('prueba en sombra: guarda lo que diría Jev, no decide nada y un error no m
   assert.equal((await s.pedir('/mod/sombra', { sesion: ana })).status, 404);
   assert.ok((await s.texto('/privacidad')).includes('TypeSafe'));
 });
+
+test('estadísticas: cuenta visitas sin bots ni estáticos, activos, y solo la ven los mods', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const nav = { 'user-agent': 'Mozilla/5.0 (iPhone)' };
+  await fetch(s.base + '/', { headers: nav });
+  await fetch(s.base + '/normas', { headers: nav });
+  await fetch(s.base + '/', { headers: { 'user-agent': 'Googlebot/2.1' } });
+  await fetch(s.base + '/static/style.css', { headers: nav });
+  await fetch(s.base + '/index.txt', { headers: nav });
+  const v = s.db.prepare('SELECT vistas, visitantes FROM visitas_dia').get();
+  assert.deepEqual(v, { vistas: 2, visitantes: 1 });
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Hola', cuerpo: 'algo' } });
+  const mod = await s.entrar('mod');
+  const r = await fetch(s.base + '/mod/estadisticas', { headers: { cookie: mod.cookie, ...nav } });
+  const html = await r.text();
+  assert.ok(html.includes('Publicaciones hoy') && html.includes('<svg viewBox'));
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM actividad_dia').get().n >= 1, true);
+  assert.equal((await s.pedir('/mod/estadisticas', { sesion: ana })).status, 404);
+  // No queda ninguna IP guardada: solo hashes del día.
+  assert.ok(!JSON.stringify(s.db.prepare('SELECT * FROM visitantes_dia').all()).includes('127.0.0.1'));
+});

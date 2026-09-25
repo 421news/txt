@@ -58,7 +58,7 @@ function barraAbajo(ctx) {
   <details class="abajo-menu derecha"><summary${activa(camino === '/cuenta' || camino === '/mod')}><b>☺</b>Cuenta</summary>
     <div class="menu-abajo">
       <a href="/cuenta">Mi cuenta</a>
-      ${esMod(user) ? html`<a href="/mod">Moderación</a>` : ''}
+      ${esMod(user) ? html`<a href="/mod">Moderación</a><a href="/mod/estadisticas">Estadísticas</a>` : ''}
       <a href="/normas">Normas</a>
       <a href="/formato">Formato</a>
       <form method="post" action="/salir"><input type="hidden" name="_csrf" value="${csrf}"><button class="enlace">Salir</button></form>
@@ -136,7 +136,7 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
         <summary class="icono" aria-label="Menú">${ICONOS.menu}<span>Menú</span></summary>
         <div class="menu-desplegable">
           ${user ? html`<a href="/respuestas">Respuestas${ctx.novedades ? ` (${ctx.novedades})` : ''}</a><a href="/cuenta">Mi cuenta</a>` : html`<a href="/entrar">Entrar</a>`}
-          ${esMod(user) ? html`<a href="/mod">Moderación</a>` : ''}
+          ${esMod(user) ? html`<a href="/mod">Moderación</a><a href="/mod/estadisticas">Estadísticas</a>` : ''}
           <a href="/normas">Normas</a>
           <a href="/formato">Formato</a>
           ${user ? html`<form method="post" action="/salir"><input type="hidden" name="_csrf" value="${csrf}"><button class="enlace">Salir</button></form>` : ''}
@@ -370,6 +370,7 @@ export function privacidad(ctx) {
   <li><strong>Lo que publicás</strong>, con la fecha. Para el resto de los usuarios es pseudoanónimo: cada persona aparece con un código distinto en cada publicación. Internamente, cada mensaje queda asociado a tu cuenta, para poder moderar.</li>
   <li><strong>Los mensajes que el filtro rechazó</strong>, con el motivo, para detectar abusos.</li>
   <li><strong>Los reportes que hacés</strong> y las decisiones de moderación sobre tus mensajes o tu cuenta.</li>
+  <li><strong>Estadísticas de uso, sin rastreo.</strong> Contamos cuántas páginas se ven por día y cuántas personas distintas, sin cookies ni IP guardadas: para no contar dos veces a la misma persona usamos un código anónimo que se descarta al día siguiente. Si tenés cuenta, registramos qué días entraste, solo para saber cuántos usuarios activos hay.</li>
   <li><strong>Una cookie de sesión</strong> (dura 30 días o hasta que salgas) y otra de un solo uso durante el ingreso con Google. No usamos cookies de publicidad ni de analítica.</li>
 </ul>
 
@@ -497,6 +498,72 @@ ${cruce.map((c) => html`<tr${c.c === c.j ? '' : raw(' class="distinto"')}><td>${
 ${gravesEscapados.length ? html`<h2>Graves que se le escaparon a Jev</h2><ul class="resultados">${gravesEscapados.map(fila)}</ul>` : ''}
 <h2>Últimos desacuerdos</h2>
 ${desacuerdos.length ? html`<ul class="resultados">${desacuerdos.map(fila)}</ul>` : html`<p class="ayuda">Ninguno todavía.</p>`}`;
+}
+
+// Gráfico de barras en SVG inline, sin JS: una serie, color de acento del tema, barras con la punta
+// redondeada apoyadas en la base, 2 px de separación. El detalle de cada día va en <title> (tooltip
+// nativo al pasar el mouse) y los números completos en la tabla de abajo.
+function barras(titulo, datos) {
+  const W = 600;
+  const H = 160;
+  const base = H - 26;
+  const maximo = Math.max(0, ...datos.map((d) => d.n));
+  const max = Math.max(1, maximo); // para la escala; el que se muestra es `maximo`
+  const paso = W / datos.length;
+  const ancho = Math.max(2, paso - 2);
+  const etiqueta = (dia) => dia.slice(8, 10) + '/' + dia.slice(5, 7);
+  const barrasSvg = datos
+    .map((d, i) => {
+      const alto = d.n ? Math.max(3, (d.n / max) * (base - 14)) : 0;
+      const x = i * paso + 1;
+      const y = base - alto;
+      const r = Math.min(4, ancho / 2, alto);
+      // Rectángulo con solo las esquinas de arriba redondeadas.
+      const camino = alto
+        ? `M${x},${base}V${y + r}Q${x},${y} ${x + r},${y}H${x + ancho - r}Q${x + ancho},${y} ${x + ancho},${y + r}V${base}Z`
+        : '';
+      return `<g class="barra"><rect x="${x}" y="0" width="${paso}" height="${base}" class="hit"/>${camino ? `<path d="${camino}"/>` : ''}<title>${etiqueta(d.dia)}: ${d.n}</title></g>`;
+    })
+    .join('');
+  const ejeX = datos
+    .map((d, i) => {
+      const ultimo = i === datos.length - 1;
+      if (!(i % 7 === 0 || ultimo) || (!ultimo && datos.length - 1 - i < 4)) return '';
+      // Las puntas se alinean hacia adentro para que no se corten.
+      const [x, anclaje] = i === 0 ? [0, 'start'] : ultimo ? [W, 'end'] : [i * paso + paso / 2, 'middle'];
+      return `<text x="${x}" y="${H - 4}" text-anchor="${anclaje}">${etiqueta(d.dia)}</text>`;
+    })
+    .join('');
+  const hoy = datos[datos.length - 1]?.n ?? 0;
+  return html`<figure class="grafico">
+  <figcaption><strong>${titulo}</strong> <span class="ayuda">hoy ${hoy} · máximo ${maximo}</span></figcaption>
+  ${raw(`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(titulo)}, últimos ${datos.length} días"><line x1="0" y1="${base + 0.5}" x2="${W}" y2="${base + 0.5}" class="base"/><text x="0" y="13" class="tope">${maximo}</text>${barrasSvg}${ejeX}</svg>`)}
+</figure>`;
+}
+
+export function estadisticas(ctx, { hoy, total, desdeVisitas, series }) {
+  const ultimo = (k) => series[k][series[k].length - 1]?.n ?? 0;
+  const tiles = [
+    ['Usuarios registrados', total],
+    ['Cuentas nuevas hoy', ultimo('nuevas')],
+    ['Usuarios activos hoy', ultimo('activos')],
+    ['Visitas hoy', ultimo('vistas')],
+    ['Visitantes hoy', ultimo('visitantes')],
+    ['Publicaciones hoy', ultimo('publicaciones')],
+    ['Respuestas hoy', ultimo('respuestas')],
+  ];
+  const nombres = { vistas: 'Visitas', visitantes: 'Visitantes únicos', activos: 'Usuarios activos', publicaciones: 'Publicaciones', respuestas: 'Respuestas', nuevas: 'Cuentas nuevas' };
+  const orden = ['vistas', 'visitantes', 'activos', 'publicaciones', 'respuestas', 'nuevas'];
+  return html`<h1>Estadísticas</h1>
+<p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas ni de usuarios activos. "Usuarios activos" = cuentas que entraron al sitio ese día.</p>
+<div class="tiles">${tiles.map(([k, v]) => html`<div class="tile"><span class="tile-n">${v.toLocaleString('es-AR')}</span><span class="tile-k">${k}</span></div>`)}</div>
+<div class="graficos">${orden.map((k) => barras(nombres[k], series[k]))}</div>
+<details class="tabla-datos"><summary>Ver los números</summary>
+<table class="cruce"><tr><th>Día</th>${orden.map((k) => html`<th>${nombres[k]}</th>`)}</tr>
+${series.vistas
+  .map((_, i) => html`<tr><td>${series.vistas[i].dia}</td>${orden.map((k) => html`<td>${series[k][i].n}</td>`)}</tr>`)
+  .reverse()}</table>
+</details>`;
 }
 
 export function texto(ctx, { gemini } = {}) {

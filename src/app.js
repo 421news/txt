@@ -289,6 +289,37 @@ export function createApp({
     return null;
   }
 
+  // --- Estadísticas (sin cookies ni IPs guardadas) -------------------------------------------
+  const diaDe = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: process.env.TZ_SITIO || 'America/Argentina/Buenos_Aires' }).format(new Date(ms));
+  const BOT = /bot|crawl|spider|slurp|curl|wget|httpie|python|go-http|preview|monitor|uptime|facebookexternalhit|whatsapp/i;
+  let sal = { dia: null, valor: null };
+  const q_vista = db.prepare(`INSERT INTO visitas_dia (dia, vistas, visitantes) VALUES (?, 1, 0)
+    ON CONFLICT (dia) DO UPDATE SET vistas = vistas + 1`);
+  const q_visitante = db.prepare('INSERT OR IGNORE INTO visitantes_dia (dia, h) VALUES (?, ?)');
+  const q_sumarVisitante = db.prepare('UPDATE visitas_dia SET visitantes = visitantes + 1 WHERE dia = ?');
+  const q_activo = db.prepare('INSERT OR IGNORE INTO actividad_dia (dia, user_id) VALUES (?, ?)');
+  // Solo páginas HTML vistas por personas: nada de /static, versión texto, la consulta en vivo ni bots.
+  function contarVisita(req) {
+    if (req.method !== 'GET') return;
+    const ua = req.get('user-agent') ?? '';
+    if (!ua || BOT.test(ua)) return;
+    if (/^\/(static|auth)\/|\.(txt|xml)$|\/nuevos$|^\/(robots\.txt|favicon)/.test(req.path)) return;
+    try {
+      const dia = diaDe(now());
+      if (sal.dia !== dia) {
+        // Sal nueva cada día; los hashes del día anterior se borran: no se puede reconstruir quién fue.
+        sal = { dia, valor: crypto.randomBytes(16).toString('hex') };
+        db.prepare('DELETE FROM visitantes_dia WHERE dia != ?').run(dia);
+      }
+      q_vista.run(dia);
+      const h = sha256(`${sal.valor}|${req.ip}|${ua}`).slice(0, 16);
+      if (q_visitante.run(dia, h).changes) q_sumarVisitante.run(dia);
+      if (req.user) q_activo.run(dia, req.user.id);
+    } catch (err) {
+      console.error('[estadísticas]', err.message);
+    }
+  }
+
   // --- Middleware ----------------------------------------------------------------------------
 
   app.use((req, res, next) => {
@@ -331,6 +362,7 @@ export function createApp({
         req.csrf = hmac(`csrf:${u.id_hash}`);
       }
     }
+    contarVisita(req);
     // Las páginas con sesión llevan el token CSRF y datos propios: que ninguna caché intermedia las guarde.
     if (req.user) res.set('Cache-Control', 'private, no-store');
     const novedades = req.user ? q.contarNovedades.get(req.user.id).n : 0;
@@ -871,6 +903,44 @@ export function createApp({
       .all();
     const cuerpo = V.mod(res.locals.ctx, { cola: q.colaMod.all().map(nombrar), reportados: q.reportadosMod.all().map(nombrar), graves });
     enviar(res, { titulo: 'Moderación', indexar: false, cuerpo });
+  });
+
+  // Estadísticas para mods: últimos 30 días.
+  app.get('/mod/estadisticas', (req, res) => {
+    if (!esMod(req.user)) return noEncontrado(res);
+    const hoy = diaDe(now());
+    const dias = Array.from({ length: 30 }, (_, i) => diaDe(now() - (29 - i) * DIA));
+    const desde = now() - 31 * DIA;
+    const porDia = (sql, ...args) => Object.fromEntries(db.prepare(sql).all(...args).map((r) => [r.dia, r.n]));
+    const diaSql = "strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', '-3 hours')";
+    const vistas = porDia('SELECT dia, vistas AS n FROM visitas_dia WHERE dia >= ?', dias[0]);
+    const visitantes = porDia('SELECT dia, visitantes AS n FROM visitas_dia WHERE dia >= ?', dias[0]);
+    const activos = porDia('SELECT dia, COUNT(*) AS n FROM actividad_dia WHERE dia >= ? GROUP BY dia', dias[0]);
+    const publicaciones = porDia(`SELECT ${diaSql.replace('created_at', 'p.created_at')} AS dia, COUNT(*) AS n FROM posts p JOIN threads t ON t.op_post_id = p.id
+      WHERE p.created_at >= ? AND p.status != 'removed' GROUP BY 1`, desde);
+    const respuestas = porDia(`SELECT ${diaSql.replace('created_at', 'p.created_at')} AS dia, COUNT(*) AS n FROM posts p JOIN threads t ON t.id = p.thread_id
+      WHERE t.op_post_id != p.id AND p.created_at >= ? AND p.status != 'removed' GROUP BY 1`, desde);
+    const nuevas = porDia(`SELECT ${diaSql} AS dia, COUNT(*) AS n FROM users WHERE created_at >= ? AND identidad NOT LIKE 'borrada:%' GROUP BY 1`, desde);
+    const serie = (m) => dias.map((dia) => ({ dia, n: m[dia] ?? 0 }));
+    const total = db.prepare("SELECT COUNT(*) AS n FROM users WHERE identidad NOT LIKE 'borrada:%'").get().n;
+    const desdeVisitas = db.prepare('SELECT MIN(dia) AS d FROM visitas_dia').get().d;
+    enviar(res, {
+      titulo: 'Estadísticas',
+      indexar: false,
+      cuerpo: V.estadisticas(res.locals.ctx, {
+        hoy,
+        total,
+        desdeVisitas,
+        series: {
+          vistas: serie(vistas),
+          visitantes: serie(visitantes),
+          activos: serie(activos),
+          publicaciones: serie(publicaciones),
+          respuestas: serie(respuestas),
+          nuevas: serie(nuevas),
+        },
+      }),
+    });
   });
 
   // Panel de la prueba en sombra: cuánto coincide Jev con Claude, qué graves se le escaparon, costo.

@@ -129,6 +129,13 @@ export function openDb(archivo) {
   agregar('rechazos', 'grave');
   db.exec('CREATE INDEX IF NOT EXISTS threads_portada ON threads (visible, archived, bumped_at)');
   db.exec('CREATE INDEX IF NOT EXISTS threads_op ON threads (op_post_id)');
+  // Estadísticas para mods (/mod/estadisticas). Visitas contadas en el servidor, sin cookies ni IPs:
+  // `visitantes_dia` guarda un hash con sal diaria (que vive solo en memoria) para no contar dos veces
+  // a la misma persona en el día; se vacía al cambiar de día. `actividad_dia`: qué cuentas usaron el
+  // sitio cada día (para "usuarios activos").
+  db.exec(`CREATE TABLE IF NOT EXISTS visitas_dia (dia TEXT PRIMARY KEY, vistas INTEGER NOT NULL DEFAULT 0, visitantes INTEGER NOT NULL DEFAULT 0)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS visitantes_dia (dia TEXT NOT NULL, h TEXT NOT NULL, PRIMARY KEY (dia, h))`);
+  db.exec(`CREATE TABLE IF NOT EXISTS actividad_dia (dia TEXT NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY (dia, user_id))`);
   // Prueba en sombra de Jev (sombra.js): lo que decidió Claude y lo que habría decidido Jev.
   db.exec(`CREATE TABLE IF NOT EXISTS sombra_jev (
     id INTEGER PRIMARY KEY,

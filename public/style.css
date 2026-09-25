@@ -451,3 +451,20 @@ mark { background: var(--fosforo); color: var(--fondo); padding: 0 0.1rem; }
 .cruce { border-collapse: collapse; font-size: 0.85rem; }
 .cruce th, .cruce td { border: 1px solid var(--borde); padding: 0.2rem 0.7rem; text-align: left; }
 .cruce tr.distinto td { color: var(--aviso); }
+
+/* --- Estadísticas (mods) ----------------------------------------------------------------- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 0.6rem; margin: 1rem 0 1.4rem; }
+.tile { border: 1px solid var(--borde); background: var(--caja); padding: 0.6rem 0.8rem; display: flex; flex-direction: column; }
+.tile-n { font-size: 1.6rem; font-weight: 700; color: var(--texto); line-height: 1.2; }
+.tile-k { font-size: 0.72rem; color: var(--tenue); text-transform: uppercase; letter-spacing: 0.03em; }
+.graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1rem 1.4rem; }
+.grafico { margin: 0; }
+.grafico figcaption { font-size: 0.85rem; margin-bottom: 0.3rem; }
+.grafico svg { width: 100%; height: auto; display: block; }
+.grafico .barra path { fill: var(--fosforo); }
+.grafico .barra .hit { fill: transparent; }
+.grafico .barra:hover path { opacity: 0.75; }
+.grafico .base { stroke: var(--borde); stroke-width: 1; }
+.grafico text { fill: var(--tenue); font-size: 15px; font-family: var(--mono); }
+.tabla-datos { margin-top: 1.4rem; font-size: 0.85rem; }
+.tabla-datos table { width: 100%; overflow-x: auto; display: block; }
