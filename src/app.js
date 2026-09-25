@@ -433,7 +433,20 @@ export function createApp({
     indexar: vista !== 'lista',
   });
 
+  // La URL de la página, no la del POST que la dibujó. /hilo, /b/:board/hilo y /h/:id/responder
+  // solo aceptan POST: si el botón de tema volvía a la ruta del request, el 303 caía en un 404 y,
+  // además, se perdía el formulario (que era el motivo de volver).
+  // `sin` saca parámetros que son de una sola vez, no parte de la página: ?cita= vuelve a escribir
+  // el >>N en el mensaje, y ese mensaje ya está en el borrador.
+  const rutaDeLaPagina = (req, camino, sin = []) => {
+    const query = new URLSearchParams(req.originalUrl.split('?')[1] ?? '');
+    for (const nombre of sin) query.delete(nombre);
+    const resto = query.toString();
+    return resto ? `${camino}?${resto}` : camino;
+  };
+
   function renderPortada(req, res, { form = { abrir: !!req.query.publicar }, status = 200 } = {}) {
+    res.locals.ctx.ruta = rutaDeLaPagina(req, '/');
     const vista = vistaDe(req);
     const { pagina, paginas, porPagina, offset } = paginar(req, q.contarPortada.get().n, porPaginaDe(vista));
     const filas = q.hilosPortada.all(porPagina, offset);
@@ -443,6 +456,7 @@ export function createApp({
   }
 
   function renderTablon(req, res, board, { archivo = false, form = { abrir: !!req.query.publicar }, status = 200 } = {}) {
+    res.locals.ctx.ruta = rutaDeLaPagina(req, `/b/${board.slug}${archivo ? '/archivo' : ''}`);
     const vista = vistaDe(req);
     const total = q.contarTablon.get(board.slug, archivo ? 1 : 0).n;
     const { pagina, paginas, porPagina, offset } = paginar(req, total, porPaginaDe(vista));
@@ -495,6 +509,7 @@ export function createApp({
   }
 
   function renderHilo(req, res, thread, form = {}, status = 200) {
+    res.locals.ctx.ruta = rutaDeLaPagina(req, `/h/${thread.id}`, ['cita']);
     const board = boardBySlug(thread.board);
     const { posts, ids } = postsVisibles(req, thread);
     // ?cita=N abre el formulario con >>N ya escrito (no hay JavaScript).

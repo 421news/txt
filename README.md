@@ -10,7 +10,7 @@ Sin imágenes, sin likes, sin seguidores, sin algoritmo. Las publicaciones se or
 - **Pseudoanónimo.** Se entra con una cuenta de Google, pero nadie la ve: en cada publicación aparecés con un ID distinto. La cuenta existe para poder suspender a quien no respete las normas. No se guarda el correo.
 - **Moderado antes de publicar.** Cada mensaje pasa por un filtro con [Claude](https://www.anthropic.com/claude) antes de aparecer. Si tiene dudas, lo mira una persona. Además, cualquiera puede reportar y hay moderadores.
 - **Tolerancia cero** con el abuso infantil, el abuso sexual y la violencia explícita: la cuenta se suspende en el acto.
-- **Casi sin JavaScript.** Dos scripts propios y chicos: uno actualiza las publicaciones en vivo y otro evita el doble envío al publicar. Sin ellos, el sitio funciona igual.
+- **Casi sin JavaScript.** Dos scripts propios y chicos: uno actualiza las publicaciones en vivo y otro evita el doble envío al publicar y guarda un borrador de lo que estás escribiendo, para que cambiar el tema o recargar no lo borre. Sin ellos, el sitio funciona igual.
 - **También en texto plano y en Gemini.** Cualquier página se puede leer como `.txt` (y con `curl`), y hay una cápsula Gemini de solo lectura.
 
 Las normas completas están en [txt.421.news/normas](https://txt.421.news/normas).

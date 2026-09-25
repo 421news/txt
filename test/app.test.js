@@ -677,6 +677,33 @@ test('vista previa: formatea sin publicar y sin pasar por el filtro', async (t) 
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM rechazos').get().n, 0);
 });
 
+test('cambiar el tema nunca manda a una ruta que solo acepta POST', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Libros', cuerpo: 'hola' } });
+  const volver = (html, esperado) => {
+    const href = html.match(/class="icono a-claro" href="\/tema\?t=claro&amp;volver=([^"]+)"/)[1];
+    assert.equal(decodeURIComponent(href), esperado);
+  };
+
+  // La página se dibujó desde un POST (vista previa o error): /b/cultura/hilo no acepta GET.
+  const previa = await (await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Borrador', cuerpo: 'hola', vista: '1' } })).text();
+  volver(previa, '/b/cultura');
+
+  s.filtro.decision = 'reject';
+  const error = await (await s.pedir('/hilo', { sesion: ana, datos: { tablon: 'cultura', asunto: 'Rechazado', cuerpo: 'nope' } })).text();
+  volver(error, '/');
+  const hilo = await (await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'nope', vista: '1' } })).text();
+  volver(hilo, '/h/1');
+
+  // ?cita= es de una sola vez: si volviera con ella, el servidor escribiría el >>N otra vez en el
+  // mensaje y el borrador (que ya lo tiene adentro) no entraría.
+  volver(await s.texto('/h/1?cita=1', ana), '/h/1');
+  volver(await s.texto('/h/1?vista=lista', ana), '/h/1?vista=lista');
+  volver(await s.texto('/b/cultura?publicar=1', ana), '/b/cultura?publicar=1');
+});
+
 test('lupa: busca sin tildes, incluye el archivo, no muestra lo oculto y no rompe con sintaxis rara', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
