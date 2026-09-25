@@ -652,7 +652,11 @@ export function createApp({
   // Una moderación en vuelo por cuenta: sin esto, varios POST simultáneos pasaban todos los límites
   // antes de que se guardara el primero (spam y gasto de API sin techo), y un borrado de cuenta en
   // paralelo podía dejar el post publicado o esquivar una suspensión (auditoría 2026-09-25).
-  const enVuelo = new Set();
+  // userId → { firma, promesa }. La firma identifica el envío (dónde + texto): si llega el mismo envío
+  // dos veces (doble toque en el celular, pasó mucho desde iPhone), el segundo espera al primero y
+  // termina en el mismo lugar, sin duplicar y sin mostrar un error.
+  const enVuelo = new Map();
+  const firmaDe = (...partes) => sha256(partes.join('\u0000'));
   // Tope global de llamadas al filtro por minuto: si alguien encuentra otra forma de inundarlo, el
   // sitio se frena en vez de gastar sin límite.
   const llamadas = [];
@@ -664,16 +668,24 @@ export function createApp({
     llamadas.push(now());
     return true;
   }
-  async function moderarConCandado(userId, datos, fallar) {
-    if (enVuelo.has(userId)) return fallar('Esperá a que termine de revisarse tu mensaje anterior.', 429), null;
-    if (!hayCupo()) return fallar('Hay mucho movimiento en este momento. Probá de nuevo en un minuto.', 503), null;
-    enVuelo.add(userId);
-    try {
-      return await moderar(datos);
-    } finally {
-      enVuelo.delete(userId);
+  // Corre `tarea` (moderar y guardar) una sola vez por cuenta. Devuelve { destino } o { error, status }.
+  async function unaVez(userId, firma, tarea) {
+    const actual = enVuelo.get(userId);
+    if (actual) {
+      if (actual.firma === firma) return actual.promesa;
+      return { error: 'Esperá a que termine de revisarse tu mensaje anterior.', status: 429 };
     }
+    if (!hayCupo()) return { error: 'Hay mucho movimiento en este momento. Probá de nuevo en un minuto.', status: 503 };
+    const promesa = tarea().finally(() => enVuelo.delete(userId));
+    enVuelo.set(userId, { firma, promesa });
+    return promesa;
   }
+  // El mismo texto recién publicado en el mismo lugar (el segundo toque llegó cuando el primero ya había terminado).
+  const reciente = (userId, cuerpo, threadId) =>
+    db
+      .prepare(`SELECT id, thread_id FROM posts WHERE user_id = ? AND body = ? AND created_at > ? AND status != 'removed'
+        ${threadId ? 'AND thread_id = ?' : ''} ORDER BY id DESC LIMIT 1`)
+      .get(...[userId, cuerpo, now() - 120_000, ...(threadId ? [threadId] : [])]);
   // Después de moderar, se vuelve a leer la cuenta: si se borró o la suspendieron mientras tanto, no se publica.
   const cuentaVigente = (userId) => {
     const u = db.prepare('SELECT identidad, banned_until FROM users WHERE id = ?').get(userId);
@@ -688,6 +700,12 @@ export function createApp({
     const cuerpo = limpiarTexto(req.body.cuerpo);
     const fallar = (error, status = 422) => render({ asunto, cuerpo, tablon: board?.slug ?? '', error }, status);
 
+    const firma = firmaDe('hilo', board?.slug, asunto, cuerpo);
+    const responder = (r) => (r.destino ? res.redirect(303, r.destino) : fallar(r.error, r.status));
+    if (enVuelo.get(req.user.id)?.firma === firma) return responder(await enVuelo.get(req.user.id).promesa);
+    const repetido = cuerpo && reciente(req.user.id, cuerpo, null);
+    if (repetido && q.hilo.get(repetido.thread_id)?.op_post_id === repetido.id) return res.redirect(303, `/h/${repetido.thread_id}`);
+
     const bloqueo = motivoBloqueo(req.user, 'hilo');
     if (bloqueo) return fallar(bloqueo, 429);
     if (!board) return fallar('Elegí en qué tablón publicarlo.');
@@ -696,15 +714,18 @@ export function createApp({
     if (!cuerpo) return fallar('El mensaje está vacío.');
     if (cuerpo.length > LIMITS.cuerpo) return fallar(`El mensaje puede tener hasta ${LIMITS.cuerpo} caracteres.`);
 
-    const v = await moderarConCandado(req.user.id, { tablon: board.nombre, asunto, cuerpo, esHilo: true }, fallar);
-    if (!v) return;
-    if (!cuentaVigente(req.user.id)) return res.redirect(303, '/');
-    if (v.decision === 'reject') {
-      registrarRechazo(req.user.id, board.slug, null, asunto, cuerpo, v);
-      return fallar('No se publicó: el mensaje no cumple las normas.');
-    }
-    const threadId = crearHilo(board.slug, asunto, req.user.id, cuerpo, v);
-    res.redirect(303, `/h/${threadId}${v.decision === 'queue' ? '?aviso=cola' : ''}`);
+    const userId = req.user.id;
+    const r = await unaVez(userId, firma, async () => {
+      const v = await moderar({ tablon: board.nombre, asunto, cuerpo, esHilo: true });
+      if (!cuentaVigente(userId)) return { destino: '/' };
+      if (v.decision === 'reject') {
+        registrarRechazo(userId, board.slug, null, asunto, cuerpo, v);
+        return { error: 'No se publicó: el mensaje no cumple las normas.', status: 422 };
+      }
+      const threadId = crearHilo(board.slug, asunto, userId, cuerpo, v);
+      return { destino: `/h/${threadId}${v.decision === 'queue' ? '?aviso=cola' : ''}` };
+    });
+    responder(r);
   }
 
   app.post('/hilo', (req, res) =>
@@ -729,24 +750,33 @@ export function createApp({
     const sage = req.body.sage === '1';
     const fallar = (error, status = 422) => renderHilo(req, res, thread, { cuerpo, sage, error }, status);
 
+    const firma = firmaDe('respuesta', thread.id, cuerpo);
+    const responder = (r) => (r.destino ? res.redirect(303, r.destino) : fallar(r.error, r.status));
+    if (enVuelo.get(req.user.id)?.firma === firma) return responder(await enVuelo.get(req.user.id).promesa);
+    const repetido = cuerpo && reciente(req.user.id, cuerpo, thread.id);
+    if (repetido) return res.redirect(303, `/h/${thread.id}#p${repetido.id}`);
+
     if (thread.archived || thread.locked) return fallar('Esta publicación ya no acepta respuestas.', 409);
     const bloqueo = motivoBloqueo(req.user, 'respuesta');
     if (bloqueo) return fallar(bloqueo, 429);
     if (!cuerpo) return fallar('El mensaje está vacío.');
     if (cuerpo.length > LIMITS.cuerpo) return fallar(`El mensaje puede tener hasta ${LIMITS.cuerpo} caracteres.`);
 
-    const v = await moderarConCandado(req.user.id, { tablon: boardBySlug(thread.board).nombre, asunto: thread.subject, cuerpo, esHilo: false }, fallar);
-    if (!v) return;
-    if (!cuentaVigente(req.user.id)) return res.redirect(303, '/');
-    if (v.decision === 'reject') {
-      registrarRechazo(req.user.id, thread.board, thread.id, null, cuerpo, v);
-      return fallar('No se publicó: el mensaje no cumple las normas.');
-    }
-    // El estado de la publicación se vuelve a leer: pudo cerrarse, archivarse u ocultarse mientras se moderaba.
-    const ahora = q.hilo.get(thread.id);
-    if (!ahora.visible || ahora.archived || ahora.locked) return fallar('Esta publicación ya no acepta respuestas.', 409);
-    const postId = crearRespuesta(thread.id, req.user.id, cuerpo, sage, v);
-    res.redirect(303, `/h/${thread.id}${v.decision === 'queue' ? '?aviso=cola' : ''}#p${postId}`);
+    const userId = req.user.id;
+    const r = await unaVez(userId, firma, async () => {
+      const v = await moderar({ tablon: boardBySlug(thread.board).nombre, asunto: thread.subject, cuerpo, esHilo: false });
+      if (!cuentaVigente(userId)) return { destino: '/' };
+      if (v.decision === 'reject') {
+        registrarRechazo(userId, thread.board, thread.id, null, cuerpo, v);
+        return { error: 'No se publicó: el mensaje no cumple las normas.', status: 422 };
+      }
+      // El estado de la publicación se vuelve a leer: pudo cerrarse, archivarse u ocultarse mientras se moderaba.
+      const ahora = q.hilo.get(thread.id);
+      if (!ahora.visible || ahora.archived || ahora.locked) return { error: 'Esta publicación ya no acepta respuestas.', status: 409 };
+      const postId = crearRespuesta(thread.id, userId, cuerpo, sage, v);
+      return { destino: `/h/${thread.id}${v.decision === 'queue' ? '?aviso=cola' : ''}#p${postId}` };
+    });
+    responder(r);
   });
 
   app.post('/p/:id/reportar', (req, res) => {

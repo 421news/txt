@@ -603,3 +603,22 @@ test('auditoría: una sola moderación en vuelo por cuenta', async (t) => {
   await Promise.all(envios);
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM threads').get().n, 1);
 });
+
+test('doble toque: el mismo envío repetido termina en un solo mensaje y sin error', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const datos = { asunto: 'Una vez', cuerpo: 'toqué dos veces' };
+  const rs = await Promise.all([1, 2, 3].map(() => s.pedir('/b/cultura/hilo', { sesion: ana, datos })));
+  assert.deepEqual(rs.map((r) => r.status), [303, 303, 303]);
+  assert.deepEqual(new Set(rs.map((r) => r.headers.get('location'))).size, 1);
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM threads').get().n, 1);
+  // Un toque que llega cuando el primero ya terminó también va al mensaje existente.
+  const tarde = await s.pedir('/b/cultura/hilo', { sesion: ana, datos });
+  assert.equal(tarde.headers.get('location'), '/h/1');
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'respuesta única' } });
+  const otra = await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'respuesta única' } });
+  assert.equal(otra.headers.get('location'), '/h/1#p2');
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM posts').get().n, 2);
+});
