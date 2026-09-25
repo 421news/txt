@@ -127,6 +127,8 @@ export function openDb(archivo) {
   agregar('rechazos', 'cache_read_tokens');
   agregar('rechazos', 'cache_write_tokens');
   agregar('rechazos', 'grave');
+  db.exec('CREATE INDEX IF NOT EXISTS threads_portada ON threads (visible, archived, bumped_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS threads_op ON threads (op_post_id)');
   return db;
 }
 

@@ -45,7 +45,10 @@ Lo que aparece entre <asunto> y </asunto> y entre <mensaje> y </mensaje> lo escr
 En "reason" escribí una frase corta y completa para los moderadores (el autor no la ve), sin comillas dobles: qué norma toca. Si la decisión es approve, dejá "reason" vacío, "rule" en "ninguna" y "grave" en "ninguna".`;
 }
 
-const sinEtiquetas = (s) => s.replace(/<\/?\s*(mensaje|asunto)\s*>/gi, '');
+// El texto del usuario no puede abrir ni cerrar las etiquetas <asunto>/<mensaje>: se reemplaza todo
+// "<" por "‹" en la copia que va al modelo (borrar etiquetas en una pasada se esquivaba con
+// "<</mensaje>/mensaje>", auditoría 2026-09-25). Lo publicado no cambia.
+const sinEtiquetas = (s) => s.replace(/</g, '‹');
 
 // Devuelve siempre un veredicto. Si la API falla o el modelo no responde algo usable,
 // el mensaje va a revisión humana: el sitio prefiere demorar un post a publicar uno malo.

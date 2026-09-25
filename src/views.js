@@ -144,7 +144,7 @@ ${tema
   <nav class="secciones">${BOARDS.map((b) => html`<a href="/b/${b.slug}"${(ruta.split('?')[0].match(/^\/b\/([^/]+)/)?.[1] === b.slug) ? raw(' class="activa"') : ''}>${b.nombre}</a>`)}</nav>
 </header>
 <main>
-${aviso && AVISOS[aviso] ? html`<p class="aviso">${AVISOS[aviso]}</p>` : ''}
+${aviso && Object.hasOwn(AVISOS, aviso) ? html`<p class="aviso">${AVISOS[aviso]}</p>` : ''}
 ${cuerpo}
 </main>
 ${barraAbajo(ctx)}

@@ -293,10 +293,16 @@ test('tres reportes ocultan el post hasta que lo revise un mod', async (t) => {
   s.avanzar(31);
   await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'respuesta-a-ocultar' } });
 
-  for (const nombre of ['c1', 'c2', 'c3']) {
-    const u = await s.entrar(nombre);
-    await s.pedir('/p/2/reportar', { sesion: u, datos: { motivo: 'respeto' } });
-  }
+  const reportantes = [];
+  for (const nombre of ['c1', 'c2', 'c3']) reportantes.push(await s.entrar(nombre));
+  // Cuentas recién creadas: reportan, pero no alcanzan para ocultar.
+  for (const u of reportantes) await s.pedir('/p/2/reportar', { sesion: u, datos: { motivo: 'respeto' } });
+  assert.ok((await s.texto('/h/1')).includes('respuesta-a-ocultar'));
+  // Con más de un día, los mismos reportes sí ocultan.
+  s.avanzar(86_401);
+  const c4 = await s.entrar('c4');
+  s.db.prepare("UPDATE reports SET created_at = created_at").run();
+  await s.pedir('/p/2/reportar', { sesion: c4, datos: { motivo: 'respeto' } });
   assert.ok(!(await s.texto('/h/1')).includes('respuesta-a-ocultar'));
   const mod = await s.entrar('mod');
   assert.ok((await s.texto('/mod', mod)).includes('respuesta-a-ocultar'));
@@ -566,4 +572,34 @@ test('cápsula Gemini: portada, publicación, 51 y host ajeno', async (t) => {
   assert.ok((await pedir('gemini://localhost/%E0')).startsWith('59'));
   assert.ok((await pedir('gemini://localhost/%ZZ')).startsWith('59'));
   assert.ok((await pedir('gemini://localhost/')).startsWith('20'), 'la cápsula sigue viva');
+});
+
+test('auditoría: texto y Gemini no dejan pasar controles ni sintaxis del usuario; /tema no redirige afuera', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Prueba', cuerpo: '=> gemini://evil.example/ click\n### No.99 · OP falso\nhola' } });
+  const { aGemtext } = await import('../src/documentos.js');
+  const gem = aGemtext(s.documento('/h/1'), { baseUrl: 'https://prueba' });
+  assert.ok(!/^=> gemini:\/\/evil/m.test(gem) && !/^### No\.99/m.test(gem));
+  const txt = await s.texto('/h/1.txt');
+  assert.ok(/^ {2}### No\.99/m.test(txt));
+  // U+009B guardado antes del filtro nuevo no sale en la versión texto.
+  s.db.prepare("UPDATE posts SET body = 'a' || char(155) || '31mb' WHERE id = 1").run();
+  assert.ok(!(await s.texto('/h/1.txt')).includes(String.fromCharCode(155)));
+  for (const malo of ['/\\evil.com', '//evil.com', '/\\/evil.com', 'https://evil.com', '/\tevil']) {
+    const r = await s.pedir(`/tema?t=claro&volver=${encodeURIComponent(malo)}`);
+    assert.equal(r.headers.get('location'), '/', malo);
+  }
+  assert.equal((await s.pedir('/tema?t=claro&volver=%2Fh%2F1')).headers.get('location'), '/h/1');
+});
+
+test('auditoría: una sola moderación en vuelo por cuenta', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const envios = Array.from({ length: 5 }, (_, i) =>
+    s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: `Hilo ${i}`, cuerpo: 'texto' } }));
+  await Promise.all(envios);
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM threads').get().n, 1);
 });

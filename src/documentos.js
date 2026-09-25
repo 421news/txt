@@ -82,7 +82,7 @@ export function docHilo({ siteName, thread, board, posts }) {
     bloques.push(t(3, `No.${post.id} · ID ${post.anon}${marcas ? ` · ${marcas}` : ''} · ${fecha(post.created_at)}`));
     // Las líneas que empiezan con > (sin ser >>123) son citas, igual que en la web.
     for (const linea of sinSpoilers(post.body).replace(/\r\n?/g, '\n').split('\n')) {
-      bloques.push(/^>(?!>\d)/.test(linea) ? { tipo: 'cita', texto: linea.replace(/^>\s?/, '') } : p(linea));
+      bloques.push(/^>(?!>\d)/.test(linea) ? { tipo: 'cita', texto: linea.replace(/^>\s?/, '') } : { tipo: 'usuario', texto: linea });
     }
     if (post.respuestas?.length) bloques.push(p(`Respuestas: ${post.respuestas.map((n) => `>>${n}`).join(' ')}`));
   }
@@ -124,14 +124,21 @@ export function rutaTxt(ruta) {
   return `${base}.txt${query ? `?${query}` : ''}`;
 }
 
+// Controles y caracteres de formato fuera (salvo \n y \t): en texto plano, un U+009B se lee en
+// algunas terminales como secuencia de escape (auditoría 2026-09-25). Cubre también lo ya guardado.
+const limpio = (s) => String(s ?? '').replace(/(?![\n\t])[\p{Cc}\p{Cf}]/gu, '');
+const limpiarBloque = (b) => ({ ...b, texto: limpio(b.texto), items: b.items?.map((i) => ({ ...i, texto: limpio(i.texto) })) });
+
 export function aTexto(bloques, { baseUrl, ancho = 78 }) {
   const salida = [];
-  for (const b of bloques) {
+  for (const b of bloques.map(limpiarBloque)) {
     if (b.tipo === 'titulo') {
       const texto = b.nivel === 1 ? b.texto.toUpperCase() : b.texto;
       salida.push('', texto, (b.nivel === 3 ? '-' : '=').repeat(Math.min(ancho, texto.length)));
     } else if (b.tipo === 'parrafo') salida.push(...envolver(b.texto, ancho));
-    else if (b.tipo === 'cita') salida.push(...envolver(b.texto, ancho, '> '));
+    // El texto de la gente va con sangría: así no puede imitar un encabezado ni un separador.
+    else if (b.tipo === 'usuario') salida.push(...envolver(b.texto, ancho, '  '));
+    else if (b.tipo === 'cita') salida.push(...envolver(b.texto, ancho, '  > '));
     else if (b.tipo === 'link') salida.push(...envolver(b.texto, ancho), `  → ${baseUrl}${b.web ? b.ruta : rutaTxt(b.ruta)}`);
     else if (b.tipo === 'menu') {
       const col = Math.max(...b.items.map((i) => i.texto.length)) + 2;
@@ -147,10 +154,13 @@ export function aTexto(bloques, { baseUrl, ancho = 78 }) {
 export function aGemtext(bloques, { baseUrl }) {
   const salida = [];
   const destino = (l) => (l.web ? `${baseUrl}${l.ruta}` : l.ruta);
-  for (const b of bloques) {
+  for (const b of bloques.map(limpiarBloque)) {
     if (b.tipo === 'titulo') salida.push('', `${'#'.repeat(b.nivel)} ${b.texto}`);
     else if (b.tipo === 'parrafo' || b.tipo === 'detalle') salida.push(b.texto);
     else if (b.tipo === 'cita') salida.push(`> ${b.texto}`);
+    // Una línea de la gente que empieza como sintaxis de gemtext se neutraliza con un espacio: si no,
+    // "=> gemini://…" sería un link, "###" un encabezado falso y "```" se tragaría el resto.
+    else if (b.tipo === 'usuario') salida.push(/^(=>|#|\*|```|>)/.test(b.texto) ? ` ${b.texto}` : b.texto);
     else if (b.tipo === 'link') salida.push(`=> ${destino(b)} ${b.texto}`);
     else if (b.tipo === 'menu') salida.push('', ...b.items.map((i) => `=> ${destino(i)} ${i.texto}`));
     else if (b.tipo === 'separador') salida.push('');

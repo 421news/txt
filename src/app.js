@@ -27,21 +27,11 @@ function leerCookies(header = '') {
 
 // Caracteres de control, de ancho cero y de dirección (se usan para esconder texto o dar vuelta
 // palabras). Se arma con códigos para que el archivo no tenga caracteres invisibles adentro.
-const INVISIBLES = new RegExp(
-  `[${[
-    [0x00, 0x08],
-    [0x0b, 0x0c],
-    [0x0e, 0x1f],
-    [0x7f, 0x7f],
-    [0x200b, 0x200f],
-    [0x202a, 0x202e],
-    [0x2066, 0x2069],
-    [0xfeff, 0xfeff],
-  ]
-    .map(([desde, hasta]) => `${String.fromCharCode(desde)}-${String.fromCharCode(hasta)}`)
-    .join('')}]`,
-  'g',
-);
+// Desde la auditoría del 2026-09-25 cubre todas las categorías Unicode Cc (controles, incluidos los
+// C1 como U+009B, que algunas terminales leen como secuencias de escape) y Cf (formato: ancho cero,
+// dirección, U+00AD, los "tag" U+E0000-E007F que sirven para esconderle texto al filtro).
+// Se respetan \n y \t.
+const INVISIBLES = /(?![\n\t])[\p{Cc}\p{Cf}]/gu;
 
 // Normaliza lo que escribe el usuario: saca caracteres invisibles y colapsa líneas vacías de más.
 export function limpiarTexto(valor) {
@@ -132,10 +122,11 @@ export function createApp({
     ),
     usuarioPorIdentidad: db.prepare('SELECT * FROM users WHERE identidad = ?'),
     contarNovedades: db.prepare(`SELECT COUNT(*) AS n FROM notificaciones x JOIN posts p ON p.id = x.post_id
-      WHERE x.user_id = ? AND x.leida = 0 AND p.status = 'published'`),
+      JOIN threads t ON t.id = p.thread_id
+      WHERE x.user_id = ? AND x.leida = 0 AND p.status = 'published' AND t.visible = 1`),
     notificaciones: db.prepare(`SELECT x.tipo, x.leida, x.created_at, p.id AS post_id, p.body, t.id AS thread_id, t.subject
       FROM notificaciones x JOIN posts p ON p.id = x.post_id JOIN threads t ON t.id = p.thread_id
-      WHERE x.user_id = ? AND p.status = 'published' ORDER BY x.id DESC LIMIT 100`),
+      WHERE x.user_id = ? AND p.status = 'published' AND t.visible = 1 ORDER BY x.id DESC LIMIT 100`),
     marcarLeidas: db.prepare('UPDATE notificaciones SET leida = 1 WHERE user_id = ? AND leida = 0'),
     crearUsuario: db.prepare('INSERT INTO users (identidad, role, created_at) VALUES (?, ?, ?)'),
     hacerAdmin: db.prepare("UPDATE users SET role = 'admin' WHERE id = ?"),
@@ -167,10 +158,14 @@ export function createApp({
   // Nunca a uno mismo; si alguien es citado y además es el OP, recibe un solo aviso (UNIQUE).
   function notificar(p, t) {
     const insertar = db.prepare('INSERT OR IGNORE INTO notificaciones (user_id, post_id, tipo, created_at) VALUES (?, ?, ?, ?)');
-    const citados = new Set([...p.body.matchAll(/>>(\d+)/g)].map((m) => Number(m[1])));
+    // Solo citas dentro de la misma publicación y como mucho 5 avisos por mensaje (antes un mensaje
+    // con cientos de >>N avisaba a medio sitio).
+    const citados = [...new Set([...p.body.matchAll(/>>(\d+)/g)].map((m) => Number(m[1])))].slice(0, 20);
+    let avisados = 0;
     for (const n of citados) {
       const c = q.post.get(n);
-      if (c && c.status === 'published' && c.user_id !== p.user_id) insertar.run(c.user_id, p.id, 'respuesta', now());
+      if (!c || c.thread_id !== p.thread_id || c.status !== 'published' || c.user_id === p.user_id) continue;
+      if (insertar.run(c.user_id, p.id, 'respuesta', now()).changes && ++avisados >= 5) break;
     }
     if (t.op_post_id !== p.id) {
       const autorOp = q.post.get(t.op_post_id)?.user_id;
@@ -297,6 +292,7 @@ export function createApp({
         "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'same-origin',
+      ...(production ? { 'Strict-Transport-Security': 'max-age=31536000' } : {}),
     });
     next();
   });
@@ -310,6 +306,7 @@ export function createApp({
   // misma dirección: `curl txt.421.news` muestra la portada. Se reescribe a la ruta .txt.
   const TERMINAL = /^(curl|wget|httpie)\//i;
   app.use((req, res, next) => {
+    res.vary('User-Agent');
     if (req.method !== 'GET' || !TERMINAL.test(req.get('user-agent') ?? '')) return next();
     const [camino, query] = req.url.split('?');
     if (/^\/(|b\/[a-z-]+|b\/[a-z-]+\/archivo|h\/\d+|normas)$/.test(camino)) {
@@ -329,6 +326,8 @@ export function createApp({
         req.csrf = hmac(`csrf:${u.id_hash}`);
       }
     }
+    // Las páginas con sesión llevan el token CSRF y datos propios: que ninguna caché intermedia las guarde.
+    if (req.user) res.set('Cache-Control', 'private, no-store');
     const novedades = req.user ? q.contarNovedades.get(req.user.id).n : 0;
     const tema = TEMAS.includes(leerCookies(req.headers.cookie).tema) ? leerCookies(req.headers.cookie).tema : null;
     res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, tema, ruta: req.originalUrl, codigoUrl };
@@ -357,7 +356,7 @@ export function createApp({
 
   function exigirMod(req, res) {
     if (!exigirUsuario(req, res)) return false;
-    if (!esMod(req.user)) {
+    if (!esMod(req.user) || suspendido(req.user)) {
       noEncontrado(res);
       return false;
     }
@@ -563,8 +562,11 @@ export function createApp({
     const t = String(req.query.t ?? '');
     if (TEMAS.includes(t)) res.cookie('tema', t, { sameSite: 'lax', secure: production, maxAge: 365 * DIA, path: '/' });
     else res.clearCookie('tema', { path: '/' });
+    // Solo rutas del propio sitio. "/\\evil.com" pasaba el chequeo viejo y el navegador lo lee
+    // como //evil.com (auditoría 2026-09-25).
     const volver = String(req.query.volver ?? '/');
-    res.redirect(303, volver.startsWith('/') && !volver.startsWith('//') ? volver : '/');
+    const seguro = /^\/(?![\/\\])[^\s\\]*$/.test(volver) && new URL(volver, baseUrl).origin === new URL(baseUrl).origin;
+    res.redirect(303, seguro ? volver : '/');
   });
 
   app.get('/robots.txt', (req, res) => {
@@ -641,11 +643,42 @@ export function createApp({
 
   app.get('/p/:id', (req, res) => {
     const post = q.post.get(Number(req.params.id));
-    if (!post) return noEncontrado(res);
+    if (!post || post.status !== 'published' || !hiloVisible(req, post.thread_id)) return noEncontrado(res);
     res.redirect(302, `/h/${post.thread_id}#p${post.id}`);
   });
 
   // --- Publicar ------------------------------------------------------------------------------
+
+  // Una moderación en vuelo por cuenta: sin esto, varios POST simultáneos pasaban todos los límites
+  // antes de que se guardara el primero (spam y gasto de API sin techo), y un borrado de cuenta en
+  // paralelo podía dejar el post publicado o esquivar una suspensión (auditoría 2026-09-25).
+  const enVuelo = new Set();
+  // Tope global de llamadas al filtro por minuto: si alguien encuentra otra forma de inundarlo, el
+  // sitio se frena en vez de gastar sin límite.
+  const llamadas = [];
+  const TOPE_POR_MINUTO = 150;
+  function hayCupo() {
+    const hace = now() - 60_000;
+    while (llamadas.length && llamadas[0] < hace) llamadas.shift();
+    if (llamadas.length >= TOPE_POR_MINUTO) return false;
+    llamadas.push(now());
+    return true;
+  }
+  async function moderarConCandado(userId, datos, fallar) {
+    if (enVuelo.has(userId)) return fallar('Esperá a que termine de revisarse tu mensaje anterior.', 429), null;
+    if (!hayCupo()) return fallar('Hay mucho movimiento en este momento. Probá de nuevo en un minuto.', 503), null;
+    enVuelo.add(userId);
+    try {
+      return await moderar(datos);
+    } finally {
+      enVuelo.delete(userId);
+    }
+  }
+  // Después de moderar, se vuelve a leer la cuenta: si se borró o la suspendieron mientras tanto, no se publica.
+  const cuentaVigente = (userId) => {
+    const u = db.prepare('SELECT identidad, banned_until FROM users WHERE id = ?').get(userId);
+    return !!u && !u.identidad.startsWith('borrada:') && !(u.banned_until && u.banned_until > now());
+  };
 
   // `render` redibuja la página de origen (portada o tablón) con el formulario y el error.
   async function publicarHilo(req, res, { board, render }) {
@@ -663,7 +696,9 @@ export function createApp({
     if (!cuerpo) return fallar('El mensaje está vacío.');
     if (cuerpo.length > LIMITS.cuerpo) return fallar(`El mensaje puede tener hasta ${LIMITS.cuerpo} caracteres.`);
 
-    const v = await moderar({ tablon: board.nombre, asunto, cuerpo, esHilo: true });
+    const v = await moderarConCandado(req.user.id, { tablon: board.nombre, asunto, cuerpo, esHilo: true }, fallar);
+    if (!v) return;
+    if (!cuentaVigente(req.user.id)) return res.redirect(303, '/');
     if (v.decision === 'reject') {
       registrarRechazo(req.user.id, board.slug, null, asunto, cuerpo, v);
       return fallar('No se publicó: el mensaje no cumple las normas.');
@@ -700,11 +735,16 @@ export function createApp({
     if (!cuerpo) return fallar('El mensaje está vacío.');
     if (cuerpo.length > LIMITS.cuerpo) return fallar(`El mensaje puede tener hasta ${LIMITS.cuerpo} caracteres.`);
 
-    const v = await moderar({ tablon: boardBySlug(thread.board).nombre, asunto: thread.subject, cuerpo, esHilo: false });
+    const v = await moderarConCandado(req.user.id, { tablon: boardBySlug(thread.board).nombre, asunto: thread.subject, cuerpo, esHilo: false }, fallar);
+    if (!v) return;
+    if (!cuentaVigente(req.user.id)) return res.redirect(303, '/');
     if (v.decision === 'reject') {
       registrarRechazo(req.user.id, thread.board, thread.id, null, cuerpo, v);
       return fallar('No se publicó: el mensaje no cumple las normas.');
     }
+    // El estado de la publicación se vuelve a leer: pudo cerrarse, archivarse u ocultarse mientras se moderaba.
+    const ahora = q.hilo.get(thread.id);
+    if (!ahora.visible || ahora.archived || ahora.locked) return fallar('Esta publicación ya no acepta respuestas.', 409);
     const postId = crearRespuesta(thread.id, req.user.id, cuerpo, sage, v);
     res.redirect(303, `/h/${thread.id}${v.decision === 'queue' ? '?aviso=cola' : ''}#p${postId}`);
   });
@@ -713,10 +753,17 @@ export function createApp({
     const post = q.post.get(Number(req.params.id));
     if (!post || post.status !== 'published') return noEncontrado(res);
     if (!exigirUsuario(req, res)) return;
+    if (post.user_id === req.user.id || suspendido(req.user)) return res.redirect(303, `/h/${post.thread_id}#p${post.id}`);
     const motivo = NORMAS.some((n) => n.id === req.body.motivo) ? req.body.motivo : 'otro';
     db.transaction(() => {
       q.insertarReporte.run(post.id, req.user.id, motivo, now());
-      if (q.contarReportes.get(post.id).n >= LIMITS.reportesParaOcultar) {
+      // Para ocultar solo cuentan reportes de cuentas con al menos un día (tres cuentas recién
+      // creadas no pueden ocultar lo que quieran). Los demás llegan igual a /mod.
+      const validos = db
+        .prepare(`SELECT COUNT(*) AS n FROM reports r JOIN users u ON u.id = r.user_id
+          WHERE r.post_id = ? AND r.resolved = 0 AND u.created_at <= ?`)
+        .get(post.id, now() - DIA).n;
+      if (validos >= LIMITS.reportesParaOcultar) {
         cambiarEstado(post.id, 'queued', { accion: 'ocultar-por-reportes', resolver: false });
       }
     })();
@@ -740,6 +787,7 @@ export function createApp({
   app.post('/mod/u/:id/levantar', (req, res) => {
     if (!exigirMod(req, res)) return;
     const userId = Number(req.params.id);
+    if (userId === req.user.id) return noEncontrado(res);
     q.banear.run(null, null, userId);
     q.log.run(req.user.id, 'levantar-suspension', null, userId, null, now());
     res.redirect(303, '/mod');
@@ -763,6 +811,7 @@ export function createApp({
         q.log.run(modId, 'descartar-reportes', post.id, post.user_id, null, now());
         break;
       case 'banear': {
+        if (db.prepare('SELECT role FROM users WHERE id = ?').get(post.user_id)?.role === 'admin') return noEncontrado(res);
         const dias = Math.min(3650, Math.max(1, parseInt(req.body.dias, 10) || 7));
         const motivo = limpiarTexto(req.body.motivo).slice(0, 300) || 'Sin motivo';
         db.transaction(() => {
@@ -891,6 +940,7 @@ export function createApp({
       enviar(res, { titulo: 'Cuenta', indexar: false, cuerpo: V.cuenta(res.locals.ctx, { suspendida: suspendido(req.user), error }) }, 422);
     if (suspendido(req.user)) return volver('Mientras dure la suspensión no se puede borrar la cuenta.');
     if (req.body.confirmar !== '1') return volver('Marcá la casilla para confirmar.');
+    if (enVuelo.has(req.user.id)) return volver('Tenés un mensaje revisándose. Esperá unos segundos y probá de nuevo.');
     borrarCuenta(req.user.id);
     res.clearCookie('sid', { path: '/' });
     res.redirect(303, '/?aviso=cuenta-borrada');
