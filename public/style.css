@@ -411,6 +411,9 @@ button.enlace::before, button.enlace::after { content: none; }
 .badge { background: var(--aviso); color: var(--fondo); padding: 0 0.3rem; margin-left: 0.2rem; font-size: 0.7rem; font-weight: 700; }
 
 @media (max-width: 40rem) {
+  :root {
+    --cabecera-height: 51px;
+  }
   /* Arriba queda solo la marca y el tema; lo demás baja a la barra inferior. */
   .cabecera .secciones, .cabecera .correo, .cabecera .menu-cab, .cab-der > a.icono:not(.a-claro):not(.a-oscuro):not(.lupa) { display: none; }
   body { padding-bottom: 4.2rem; }
