@@ -338,6 +338,33 @@ test('uno o dos reportes no alcanzan para ocultar un post', async (t) => {
   }
 });
 
+test('reportar: cada mensaje lleva un link y el formulario está en su propia página', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'una respuesta' } });
+
+  // En la publicación, un link por mensaje y ningún formulario de reporte.
+  const hilo = await s.texto('/h/1', ana);
+  assert.ok(hilo.includes('<a href="/p/2/reportar" rel="nofollow">Reportar</a>'));
+  assert.ok(!hilo.includes('name="motivo"') && !hilo.includes('<details class="reportar"'));
+
+  const pagina = await s.texto('/p/2/reportar', ana);
+  assert.ok(pagina.includes('action="/p/2/reportar"') && pagina.includes('<option value="respeto">'));
+  assert.ok(pagina.includes('una respuesta') && pagina.includes('href="/h/1#p2"') && pagina.includes('noindex'));
+
+  assert.equal((await s.pedir('/p/2/reportar')).headers.get('location'), '/entrar');
+  assert.equal((await s.pedir('/p/2/reportar', { sesion: bea })).headers.get('location'), '/h/1#p2', 'el propio mensaje no se reporta');
+  assert.equal((await s.pedir('/p/99/reportar', { sesion: ana })).status, 404);
+
+  // El envío sigue igual: vuelve al mensaje con el aviso.
+  const r = await s.pedir('/p/2/reportar', { sesion: ana, datos: { motivo: 'spam' } });
+  assert.equal(r.headers.get('location'), '/h/1?aviso=reportado#p2');
+});
+
 test('filtro: si no responde, el mensaje va a revisión; un caso de tolerancia cero se rechaza aunque el filtro diga aprobar', async (t) => {
   t.mock.method(console, 'error', () => {});
   const moderar = (parse) => crearModerador({ siteName: 'prueba', client: { messages: { parse } } });

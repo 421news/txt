@@ -184,10 +184,12 @@ code { color: var(--cita); }
 .spoiler { background: var(--fosforo); color: var(--fosforo); }
 .spoiler:hover, .spoiler:focus { background: transparent; color: inherit; }
 
-details.reportar { margin-top: 0.4rem; font-size: 0.75rem; color: var(--tenue); }
-details.reportar summary { cursor: pointer; }
-details.reportar form { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.4rem; }
-details.reportar select { width: auto; }
+.reportar { margin: 0.4rem 0 0; font-size: 0.75rem; }
+.reportar a { color: var(--tenue); text-decoration: none; }
+.reportar a:hover { background: transparent; color: var(--fosforo); }
+.form-reportar label { display: block; margin: 0.6rem 0; font-size: 0.8rem; color: var(--tenue); text-transform: uppercase; }
+.form-reportar .botones { align-items: center; }
+.form-reportar select { width: auto; margin-left: 0.4rem; }
 
 /* --- Listados -------------------------------------------------------------------------- */
 
@@ -270,6 +272,42 @@ input[type='text'], input[type='number'], textarea, select {
 input:not([type='checkbox']):focus, textarea:focus, select:focus { outline: none; border-color: var(--fosforo); }
 textarea { resize: vertical; }
 input[type='checkbox'] { accent-color: var(--fosforo); }
+
+/* Menús (<select>). Flecha propia: la del navegador quedaba pegada al borde. Son dos gradientes
+   (la CSP no deja imágenes data:) y toman el color de cada tema. */
+select {
+  padding-right: 2.4rem;
+  text-transform: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--fosforo) 50%), linear-gradient(135deg, var(--fosforo) 50%, transparent 50%);
+  background-position: right 1.1rem center, right 0.8rem center;
+  background-size: 0.3rem 0.3rem;
+  background-repeat: no-repeat;
+}
+/* Donde se puede (appearance: base-select; hoy Chrome y Edge), la lista que se abre también sigue
+   el estilo del sitio, como el menú de la barra de arriba. En los demás navegadores es la nativa. */
+@supports (appearance: base-select) {
+  select, select::picker(select) { appearance: base-select; }
+  select { background-image: none; padding-right: 0.8rem; }
+  select::picker-icon { content: '▾'; color: var(--fosforo); margin-left: 1rem; }
+  select::picker(select) {
+    margin-top: 0.25rem;
+    padding: 0;
+    color: var(--texto);
+    background: var(--caja);
+    border: 1px solid var(--fosforo);
+    border-radius: 0;
+    box-shadow: none;
+  }
+  option { padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--borde); font-size: 0.85rem; }
+  option:last-of-type { border-bottom: 0; }
+  option::checkmark { content: '>'; color: var(--fosforo); }
+  /* :checked antes que :hover: si no, la opción elegida quedaría en verde sobre verde al pasarle el mouse. */
+  option:checked { color: var(--fosforo); font-weight: 700; }
+  option:hover, option:focus-visible { background: var(--fosforo); color: var(--fondo); outline: none; }
+  option:hover::checkmark, option:focus-visible::checkmark { color: var(--fondo); }
+}
 
 button, a.boton {
   display: inline-block;

@@ -317,14 +317,21 @@ function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
     ? html`<p class="respuestas">Respuestas: ${p.respuestas.map((n) => html`<a href="#p${n}">&gt;&gt;${n}</a> `)}</p>`
     : ''}
   ${!resumen && ctx.user && p.status === 'published'
-    ? html`<details class="reportar"><summary>Reportar</summary>
-    <form method="post" action="/p/${p.id}/reportar">
-      <input type="hidden" name="_csrf" value="${ctx.csrf}">
-      <select name="motivo" aria-label="Motivo">${NORMAS.map((n) => html`<option value="${n.id}">${n.titulo}</option>`)}</select>
-      <button>Enviar reporte</button>
-    </form></details>`
+    ? html`<p class="reportar"><a href="/p/${p.id}/reportar" rel="nofollow">Reportar</a></p>`
     : ''}
 </article>`;
+}
+
+// Reportar un mensaje (/p/:id/reportar): el mensaje, como en los listados, y el motivo.
+export function reportar(ctx, { post, thread, volver }) {
+  return html`<h1>Reportar</h1>
+<p class="ayuda">En <a href="${volver}">${thread.subject}</a>. Los mensajes reportados por varias personas se ocultan hasta que los mire un moderador.</p>
+${vistaPost(ctx, post, { esOp: post.id === thread.op_post_id, resumen: true })}
+<form class="form-reportar" method="post" action="/p/${post.id}/reportar">
+  <input type="hidden" name="_csrf" value="${ctx.csrf}">
+  <label>Motivo <select name="motivo">${NORMAS.map((n) => html`<option value="${n.id}">${n.titulo}</option>`)}</select></label>
+  <p class="botones"><button>Enviar reporte</button> <a href="${volver}">Cancelar</a></p>
+</form>`;
 }
 
 export function hilo(ctx, { thread, board, posts, ids, form }) {
