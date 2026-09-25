@@ -248,7 +248,9 @@ test('en revisión solo lo ve el autor hasta que un mod lo aprueba', async (t) =
   assert.ok((await s.texto('/h/1', ana)).includes('En revisión'));
 
   const mod = await s.entrar('mod');
-  assert.ok((await s.texto('/mod', mod)).includes('Dudoso'));
+  const panel = await s.texto('/mod', mod);
+  assert.ok(panel.includes('Dudoso'));
+  assert.ok(panel.includes('href="/h/1#p1"'), 'el enlace de la cola abre el mensaje dentro de su publicación');
   assert.equal((await s.pedir('/mod', { sesion: ana })).status, 404, 'un usuario común no ve /mod');
 
   assert.equal((await s.pedir('/mod/p/1/aprobar', { sesion: mod, datos: {} })).status, 303);
