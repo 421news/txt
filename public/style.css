@@ -13,7 +13,7 @@
   --error: #ff5f56;
   --lineas: rgba(51, 255, 102, 0.02);   /* líneas de pantalla */
   --cabecera: rgba(2, 8, 3, 0.94);
-  --sobre-borde: var(--sobre-borde);               /* texto sobre las barras de las respuestas */
+  --sobre-borde: #d9ffe3;               /* texto sobre las barras de las respuestas */
   --mono: 'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace;
 }
 
@@ -54,7 +54,7 @@
 
 * { box-sizing: border-box; }
 
-html { background: var(--fondo); }
+html { background: var(--fondo); scroll-padding-top: 6.5rem; }
 
 body {
   margin: 0;
@@ -138,6 +138,9 @@ code { color: var(--cita); }
   padding: 0.5rem 0.9rem 0.65rem;
   margin: 0 0 0.9rem;
 }
+/* El mensaje al que se saltó (>>123, "Respuestas", la lupa): contorno plano, sin brillo. El salto
+   deja libre el alto de la barra fija gracias al scroll-padding-top de html (idea del PR #9). */
+.post:target { outline: 2px solid var(--fosforo); outline-offset: 3px; }
 .post-meta {
   display: flex;
   flex-wrap: wrap;
@@ -381,6 +384,7 @@ button.enlace::before, button.enlace::after { content: none; }
 .badge { background: var(--aviso); color: var(--fondo); padding: 0 0.3rem; margin-left: 0.2rem; font-size: 0.7rem; font-weight: 700; }
 
 @media (max-width: 40rem) {
+  html { scroll-padding-top: 4.5rem; }
   /* Arriba queda solo la marca y el tema; lo demás baja a la barra inferior. */
   .cabecera .secciones, .cabecera .correo, .cabecera .menu-cab, .cab-der > a.icono:not(.a-claro):not(.a-oscuro):not(.lupa) { display: none; }
   body { padding-bottom: 4.2rem; }
