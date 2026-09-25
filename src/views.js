@@ -76,7 +76,7 @@ const versionTexto = (ruta) => {
 };
 
 export const DESCRIPCION_SITIO =
-  'Foro de texto pseudoanónimo y moderado de 421: sin imágenes, sin likes y sin algoritmo. Cultura, tecnología, juegos y vida real.';
+  'Foro de texto de 421. Cultura, tecnología, juegos y vida real.';
 
 // SEO: cada página lleva descripción, canonical y Open Graph. `indexar: false` para lo que no
 // tiene que aparecer en buscadores (entrar, cuenta, moderación, vistas duplicadas, errores).
