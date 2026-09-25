@@ -171,6 +171,7 @@ code { color: var(--cita); }
 .post.respuesta { margin-left: 1.75rem; }
 .post.en-revision { border-style: dashed; border-color: var(--aviso); }
 .post.en-revision .post-meta { color: var(--aviso); }
+.post.op.en-revision .post-meta { color: var(--fondo); }
 .post.retirado { background: transparent; border: 1px dashed var(--borde); color: var(--tenue); padding: 0.1rem 0.9rem; }
 
 .texto { overflow-wrap: anywhere; }
