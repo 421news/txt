@@ -153,6 +153,22 @@ code { color: var(--cita); }
   padding: 0.5rem 0.9rem 0.65rem;
   margin: 0 0 0.9rem;
 }
+
+@keyframes resplandor-post {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  5%, 75% { box-shadow: 0 0 0.1rem 0.1rem color-mix(in srgb, var(--fosforo) 85%, transparent); }
+}
+.post:target {
+  animation: resplandor-post 5s ease-out;
+  scroll-margin-top: calc(var(--cabecera-height) + 1.2em);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .post:target {
+    animation: none;
+    box-shadow: 0 0 0.1rem 0.1rem color-mix(in srgb, var(--fosforo) 85%, transparent);
+  }
+}
 .post-meta {
   display: flex;
   flex-wrap: wrap;
