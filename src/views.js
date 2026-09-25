@@ -706,7 +706,7 @@ function itemMod(ctx, p) {
   const filtro = [p.mod_decision, p.mod_rule !== 'ninguna' ? p.mod_rule : null, p.mod_reason].filter(Boolean).join(' · ');
   return html`<article class="post">
   <header class="post-meta">
-    <a href="/p/${p.id}">No.${p.id}</a>
+    <a href="/h/${p.thread_id}#p${p.id}">No.${p.id}</a>
     <span>${p.board_nombre} · ${p.subject}</span>
     <span>cuenta #${p.user_id}, creada ${fecha(p.user_created)}</span>
     <span>${p.eliminados} eliminados antes</span>
