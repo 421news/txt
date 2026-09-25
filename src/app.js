@@ -132,6 +132,7 @@ export function createApp({
     marcarLeidas: db.prepare('UPDATE notificaciones SET leida = 1 WHERE user_id = ? AND leida = 0'),
     crearUsuario: db.prepare('INSERT INTO users (identidad, role, created_at) VALUES (?, ?, ?)'),
     hacerAdmin: db.prepare("UPDATE users SET role = 'admin' WHERE id = ?"),
+    quitarAdmin: db.prepare("UPDATE users SET role = 'user' WHERE id = ?"),
     crearSesion: db.prepare('INSERT INTO sessions (id_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'),
     borrarSesion: db.prepare('DELETE FROM sessions WHERE id_hash = ?'),
     colaMod: db.prepare(`SELECT p.*, t.board, t.subject, u.created_at AS user_created,
@@ -1019,6 +1020,7 @@ export function createApp({
     let u = q.usuarioPorIdentidad.get(identidad);
     if (!u) u = { id: Number(q.crearUsuario.run(identidad, esAdmin ? 'admin' : 'user', now()).lastInsertRowid) };
     else if (esAdmin && u.role !== 'admin') q.hacerAdmin.run(u.id);
+    else if (!esAdmin && u.role === 'admin') q.quitarAdmin.run(u.id);
     const sid = crypto.randomBytes(32).toString('base64url');
     q.crearSesion.run(sha256(sid), u.id, now(), now() + 30 * DIA);
     return sid;

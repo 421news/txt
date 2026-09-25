@@ -118,6 +118,16 @@ test('entrar con Google guarda solo el identificador, nunca el correo', async (t
   assert.ok(!columnas.includes('email'));
 });
 
+test('una cuenta que sale de la lista de admins deja de ser admin al volver a entrar', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  await s.entrar('ana');
+  s.db.prepare("UPDATE users SET role = 'admin' WHERE identidad = 'google:sub-ana'").run();
+  const ana = await s.entrar('ana');
+  assert.equal(s.db.prepare("SELECT role FROM users WHERE identidad = 'google:sub-ana'").get().role, 'user');
+  assert.notEqual((await s.pedir('/mod', { sesion: ana })).status, 200);
+});
+
 test('el login con Google rechaza un state que no coincide', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
