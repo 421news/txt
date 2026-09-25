@@ -636,3 +636,24 @@ test('vista previa: formatea sin publicar y sin pasar por el filtro', async (t) 
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM threads').get().n, 0);
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM rechazos').get().n, 0);
 });
+
+test('lupa: busca sin tildes, incluye el archivo, no muestra lo oculto y no rompe con sintaxis rara', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Canciones de otoño', cuerpo: 'Busco una canción de Spinetta <b>' } });
+  s.avanzar(601);
+  s.filtro.decision = 'queue';
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Oculto', cuerpo: 'spinetta en revisión' } });
+  s.db.prepare('UPDATE threads SET archived = 1 WHERE id = 1').run();
+
+  const r = await s.texto('/buscar?q=cancion+spinet');
+  assert.ok(r.includes('href="/h/1#p1"') && r.includes('<mark>') && r.includes('archivada'));
+  assert.ok(!r.includes('en revisión'));
+  // El <b> que escribió la persona sale escapado dentro del resultado.
+  assert.ok(!/class="res-fragmento">[^\n]*<b>/.test(r));
+  for (const raro of ['"', 'AND OR NOT', '*', 'a"b(c)', 'NEAR(x y)']) {
+    assert.equal((await s.pedir(`/buscar?q=${encodeURIComponent(raro)}`)).status, 200, raro);
+  }
+  assert.ok((await s.texto('/')).includes('href="/buscar"'));
+});

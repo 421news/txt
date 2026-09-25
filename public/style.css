@@ -380,7 +380,7 @@ button.enlace::before, button.enlace::after { content: none; }
 
 @media (max-width: 40rem) {
   /* Arriba queda solo la marca y el tema; lo demás baja a la barra inferior. */
-  .cabecera .secciones, .cabecera .correo, .cabecera .menu-cab, .cab-der > a.icono:not(.a-claro):not(.a-oscuro) { display: none; }
+  .cabecera .secciones, .cabecera .correo, .cabecera .menu-cab, .cab-der > a.icono:not(.a-claro):not(.a-oscuro):not(.lupa) { display: none; }
   body { padding-bottom: 4.2rem; }
 
   .abajo {
@@ -439,3 +439,12 @@ button.enlace::before, button.enlace::after { content: none; }
 button.secundario { border-style: dashed; opacity: 0.85; }
 .contador { margin: 0.15rem 0 0; font-size: 0.72rem; color: var(--tenue); text-align: right; }
 .contador.cerca { color: var(--aviso); }
+
+/* --- Búsqueda --------------------------------------------------------------------------- */
+.form-buscar { display: flex; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+.form-buscar input { flex: 1; }
+.resultados { list-style: none; padding: 0; }
+.resultados li { border-top: 1px dashed var(--borde); padding: 0.7rem 0; }
+.res-asunto { font-weight: 700; text-decoration: none; display: block; }
+.res-fragmento { margin: 0.25rem 0 0; font-size: 0.9rem; overflow-wrap: anywhere; }
+mark { background: var(--fosforo); color: var(--fondo); padding: 0 0.1rem; }

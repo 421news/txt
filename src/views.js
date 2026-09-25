@@ -1,4 +1,4 @@
-import { html, raw } from './html.js';
+import { html, raw, esc } from './html.js';
 import { estatico } from './estaticos.js';
 import { BOARDS, LIMITS, boardBySlug } from './config.js';
 import { NORMAS } from './normas.js';
@@ -32,6 +32,7 @@ const ICONOS = {
   luna: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
   correo: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 7l9 6 9-6"/>'),
   menu: svg('<path d="M4 6h16M4 12h16M4 18h16"/>'),
+  lupa: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
 };
 
 function botonTema(ruta) {
@@ -126,6 +127,7 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
   <div class="cab-fila">
     <a class="marca" href="/">${siteName}</a>
     <div class="cab-der">
+      <a class="icono lupa" href="/buscar" title="Buscar" aria-label="Buscar">${ICONOS.lupa}</a>
       ${botonTema(ruta)}
       ${user
         ? html`<a class="icono correo${ctx.novedades ? ' hay-novedades' : ''}" href="/respuestas" title="Respuestas" aria-label="Respuestas${ctx.novedades ? ` (${ctx.novedades} nuevas)` : ''}">${ICONOS.correo}${ctx.novedades ? html`<span class="badge">${ctx.novedades}</span>` : ''}</a>`
@@ -435,6 +437,34 @@ ${EJEMPLOS_FORMATO.map(
   <li><strong>Frecuencia</strong>: entre un mensaje y otro tienen que pasar ${LIMITS.segEntrePosts} segundos, y ${LIMITS.segEntreHilos / 60} minutos entre dos publicaciones nuevas.</li>
 </ul>
 <p>Lo que se puede publicar y lo que no está en las <a href="/normas">normas</a>.</p>`;
+}
+
+export function buscar(ctx, { texto, resultados, pagina, paginas }) {
+  // El fragmento viene de FTS con marcas \u0001/\u0002 alrededor de lo encontrado (el texto guardado
+  // no puede tenerlas: limpiarTexto saca los controles). Se escapa todo y recién después se marca.
+  const resaltar = (s) => raw(esc(s ?? '').replace(/\u0001/g, '<mark>').replace(/\u0002/g, '</mark>'));
+  const q = encodeURIComponent(texto);
+  return html`<h1>Buscar</h1>
+<form class="form-buscar" method="get" action="/buscar" role="search">
+  <input type="search" name="q" value="${texto}" maxlength="100" placeholder="Palabras a buscar" aria-label="Buscar" ${texto ? '' : raw('autofocus')}>
+  <button>Buscar</button>
+</form>
+${texto && !resultados.length ? html`<p class="ayuda">No encontré nada con eso.</p>` : ''}
+${resultados.length
+  ? html`<p class="ayuda">${resultados.total} ${resultados.total === 1 ? 'resultado' : 'resultados'}, incluido el archivo.</p>
+<ol class="resultados">${resultados.map(
+      (r) => html`<li>
+  <a class="res-asunto" href="/h/${r.thread_id}#p${r.id}">${r.subject}</a>
+  <span class="ayuda">${boardBySlug(r.board)?.nombre ?? r.board} · No.${r.id}${r.es_op ? ' · mensaje inicial' : ''} · ${fecha(r.created_at)}${r.archived ? ' · archivada' : ''}</span>
+  ${r.fragmento ? html`<p class="res-fragmento">${resaltar(r.fragmento)}</p>` : ''}
+</li>`,
+    )}</ol>
+${paginas > 1
+  ? html`<nav class="paginas">${Array.from({ length: paginas }, (_, i) => i + 1).map((n) =>
+      n === pagina ? html`<strong>${n}</strong>` : html`<a href="/buscar?q=${raw(q)}&amp;pagina=${n}">${n}</a>`,
+    )}</nav>`
+  : ''}`
+  : ''}`;
 }
 
 export function texto(ctx, { gemini } = {}) {

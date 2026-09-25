@@ -129,6 +129,14 @@ export function openDb(archivo) {
   agregar('rechazos', 'grave');
   db.exec('CREATE INDEX IF NOT EXISTS threads_portada ON threads (visible, archived, bumped_at)');
   db.exec('CREATE INDEX IF NOT EXISTS threads_op ON threads (op_post_id)');
+  // Búsqueda de texto completo (la lupa). rowid = id del post; el asunto va solo en el mensaje inicial.
+  // Sin tildes ni mayúsculas. Qué se muestra se decide al consultar (publicado y publicación visible),
+  // así que acá alcanza con que el texto esté al día.
+  db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS busqueda USING fts5(asunto, cuerpo, tokenize = 'unicode61 remove_diacritics 2')`);
+  db.exec(`INSERT INTO busqueda (rowid, asunto, cuerpo)
+    SELECT p.id, CASE WHEN t.op_post_id = p.id THEN t.subject ELSE '' END, p.body
+    FROM posts p JOIN threads t ON t.id = p.thread_id
+    WHERE p.id NOT IN (SELECT rowid FROM busqueda)`);
   return db;
 }
 

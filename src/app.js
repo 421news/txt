@@ -210,7 +210,7 @@ export function createApp({
   });
 
   function insertarPost(threadId, userId, cuerpo, sage, v) {
-    return Number(
+    const id = Number(
       q.insertarPost.run({
         thread_id: threadId,
         user_id: userId,
@@ -228,12 +228,15 @@ export function createApp({
         cache_write_tokens: v.cache_write_tokens ?? null,
       }).lastInsertRowid,
     );
+    db.prepare("INSERT INTO busqueda (rowid, asunto, cuerpo) VALUES (?, '', ?)").run(id, cuerpo);
+    return id;
   }
 
   const crearHilo = db.transaction((board, asunto, userId, cuerpo, v) => {
     const threadId = Number(q.insertarHilo.run(board, asunto, now(), now()).lastInsertRowid);
     const postId = insertarPost(threadId, userId, cuerpo, 0, v);
     q.fijarOp.run(postId, threadId);
+    db.prepare('UPDATE busqueda SET asunto = ? WHERE rowid = ?').run(asunto, postId);
     if (v.decision === 'approve') alPublicar(postId);
     return threadId;
   });
@@ -552,6 +555,34 @@ export function createApp({
     if (!bloques) return res.status(404).type('text/plain').send('No encontrado.\n');
     enviarTexto(res, bloques);
   });
+  // Lupa: búsqueda de texto completo (FTS5, tabla `busqueda`). Cada palabra se busca como prefijo y
+  // entre comillas, así nada de lo que escriba la persona se interpreta como sintaxis de FTS.
+  app.get('/buscar', (req, res) => {
+    const texto = limpiarTexto(String(req.query.q ?? '')).slice(0, 100).trim();
+    const palabras = (texto.match(/[\p{L}\p{N}]+/gu) ?? []).slice(0, 8);
+    let resultados = [];
+    let pagina = 1;
+    let paginas = 1;
+    if (palabras.length) {
+      const consulta = palabras.map((w) => `"${w}"*`).join(' ');
+      const donde = `FROM busqueda JOIN posts p ON p.id = busqueda.rowid JOIN threads t ON t.id = p.thread_id
+        WHERE busqueda MATCH ? AND p.status = 'published' AND t.visible = 1`;
+      const total = db.prepare(`SELECT COUNT(*) AS n ${donde}`).get(consulta).n;
+      ({ pagina, paginas } = paginar(req, total, 20));
+      resultados = db
+        .prepare(`SELECT p.id, p.thread_id, p.created_at, t.subject, t.board, t.archived, t.op_post_id = p.id AS es_op,
+            snippet(busqueda, 1, char(1), char(2), '…', 16) AS fragmento
+          ${donde} ORDER BY rank LIMIT 20 OFFSET ?`)
+        .all(consulta, (pagina - 1) * 20);
+      resultados.total = total;
+    }
+    enviar(res, {
+      titulo: texto ? `Buscar: ${texto}` : 'Buscar',
+      indexar: false,
+      cuerpo: V.buscar(res.locals.ctx, { texto, resultados, pagina, paginas }),
+    });
+  });
+
   app.get('/texto', (req, res) =>
     enviar(res, { titulo: 'Versión texto', canonical: '/texto', descripcion: 'Cómo leer txt en texto puro: desde el navegador con .txt o desde la terminal con curl.', cuerpo: V.texto(res.locals.ctx, { gemini: geminiUrl }) }),
   );
@@ -939,6 +970,7 @@ export function createApp({
         visible = CASE WHEN reply_count > 0 THEN visible ELSE 0 END
       WHERE op_post_id IN (SELECT id FROM posts WHERE user_id = ?)`).run(userId);
     db.prepare(`UPDATE posts SET body = '', status = 'removed', mod_reason = NULL WHERE user_id = ?`).run(userId);
+    db.prepare(`UPDATE busqueda SET asunto = '', cuerpo = '' WHERE rowid IN (SELECT id FROM posts WHERE user_id = ?)`).run(userId);
     db.prepare('DELETE FROM rechazos WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM reports WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM notificaciones WHERE user_id = ? OR post_id IN (SELECT id FROM posts WHERE user_id = ?)').run(userId, userId);
