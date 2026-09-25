@@ -517,6 +517,18 @@ test('tema claro/oscuro por cookie, sin JavaScript', async (t) => {
   assert.equal((await s.pedir('/tema?t=oscuro&volver=//evil.com')).headers.get('location'), '/');
 });
 
+test('tema: el script que lo cambia sin recargar va en todas las páginas y el botón sigue siendo un link', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const pagina = await s.texto('/normas');
+  const src = pagina.match(/<script src="(\/static\/tema\.js\?v=[0-9a-f]+)" defer><\/script>/)?.[1];
+  assert.ok(src, 'falta tema.js en la página');
+  assert.ok(pagina.includes('class="icono a-claro" href="/tema?t=claro&amp;volver='));
+  const js = await s.pedir(src);
+  assert.equal(js.status, 200);
+  assert.ok((await js.text()).includes("a[href^=\"/tema?\"]"));
+});
+
 test('tolerancia cero: un caso grave rechaza, suspende la cuenta y un mod la puede levantar', async (t) => {
   const s = await montar();
   t.after(s.cerrar);

@@ -120,6 +120,7 @@ ${tema
   ? html`<meta name="theme-color" content="${tema === 'claro' ? '#f5eddc' : '#020803'}">`
   : raw('<meta name="theme-color" content="#020803" media="(prefers-color-scheme: dark)">\n<meta name="theme-color" content="#f5eddc" media="(prefers-color-scheme: light)">')}
 <link rel="stylesheet" href="${estatico('style.css')}">
+<script src="${estatico('tema.js')}" defer></script>
 ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
 </head>
 <body>
