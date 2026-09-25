@@ -7,6 +7,7 @@ import { createApp } from './app.js';
 import { crearModerador } from './moderation.js';
 import { crearGoogle } from './google.js';
 import { crearCapsula } from './gemini.js';
+import { crearSombra } from './sombra.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
 const production = process.env.NODE_ENV === 'production';
@@ -47,6 +48,7 @@ const app = createApp({
   moderar: crearModerador({ siteName }),
   geminiUrl: process.env.GEMINI_URL || null,
   codigoUrl: process.env.CODIGO_URL || null,
+  sombra: process.env.TYPESAFE_API_KEY ? crearSombra({ apiKey: process.env.TYPESAFE_API_KEY }) : null,
   adminEmails: (process.env.ADMIN_EMAILS || '')
     .split(',')
     .map((s) => s.trim().toLowerCase())

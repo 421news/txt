@@ -11,7 +11,7 @@ const googleFalso = {
   canjearCodigo: async ({ code }) => ({ sub: `sub-${code}`, email: `${code}@gmail.com` }),
 };
 
-async function montar({ google = googleFalso } = {}) {
+async function montar({ google = googleFalso, sombra = null } = {}) {
   const db = openDb(':memory:');
   const reloj = { t: 1_800_000_000_000 };
   const filtro = { decision: 'approve' };
@@ -34,6 +34,7 @@ async function montar({ google = googleFalso } = {}) {
     siteName: 'prueba',
     adminEmails: ['mod@gmail.com'],
     now: () => reloj.t,
+    sombra,
   });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -656,4 +657,33 @@ test('lupa: busca sin tildes, incluye el archivo, no muestra lo oculto y no romp
     assert.equal((await s.pedir(`/buscar?q=${encodeURIComponent(raro)}`)).status, 200, raro);
   }
   assert.ok((await s.texto('/')).includes('href="/buscar"'));
+});
+
+test('prueba en sombra: guarda lo que diría Jev, no decide nada y un error no molesta', async (t) => {
+  let llamadas = 0;
+  const sombra = async () => {
+    llamadas++;
+    if (llamadas === 2) throw new Error('TypeSafe 503');
+    return { modelo: 'jev-1.13.0', tokens: 500, ms: 90, respuestas: {
+      grave: { type: 'choice', choice: 'ninguna', probabilities: { ninguna: 0.97 }, confidence: 0.9 },
+      respeto: { type: 'noul', noul: 0.8 }, spam: { type: 'noul', noul: 0.05 },
+    } };
+  };
+  const s = await montar({ sombra });
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Uno', cuerpo: 'hola' } });
+  s.avanzar(601);
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Dos', cuerpo: 'chau' } });
+  await new Promise((r) => setTimeout(r, 30));
+  // Claude aprobó los dos: se publicaron igual, aunque Jev habría rechazado uno y falló en el otro.
+  assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM threads WHERE visible = 1").get().n, 2);
+  const filas = s.db.prepare('SELECT jev_decision, jev_rule, error FROM sombra_jev ORDER BY id').all();
+  assert.deepEqual(filas[0], { jev_decision: 'reject', jev_rule: 'respeto', error: null });
+  assert.match(filas[1].error, /503/);
+  const mod = await s.entrar('mod');
+  const panel = await s.texto('/mod/sombra', mod);
+  assert.ok(panel.includes('Mensajes comparados: <strong>2</strong>') && panel.includes('1 con error'));
+  assert.equal((await s.pedir('/mod/sombra', { sesion: ana })).status, 404);
+  assert.ok((await s.texto('/privacidad')).includes('TypeSafe'));
 });

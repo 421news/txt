@@ -129,6 +129,15 @@ export function openDb(archivo) {
   agregar('rechazos', 'grave');
   db.exec('CREATE INDEX IF NOT EXISTS threads_portada ON threads (visible, archived, bumped_at)');
   db.exec('CREATE INDEX IF NOT EXISTS threads_op ON threads (op_post_id)');
+  // Prueba en sombra de Jev (sombra.js): lo que decidió Claude y lo que habría decidido Jev.
+  db.exec(`CREATE TABLE IF NOT EXISTS sombra_jev (
+    id INTEGER PRIMARY KEY,
+    created_at INTEGER NOT NULL,
+    tablon TEXT, es_hilo INTEGER, asunto TEXT, cuerpo TEXT,
+    claude_decision TEXT, claude_rule TEXT, claude_grave TEXT,
+    jev_decision TEXT, jev_rule TEXT, jev_grave TEXT,
+    respuestas TEXT, tokens INTEGER, ms INTEGER, error TEXT
+  )`);
   // Búsqueda de texto completo (la lupa). rowid = id del post; el asunto va solo en el mensaje inicial.
   // Sin tildes ni mayúsculas. Qué se muestra se decide al consultar (publicado y publicación visible),
   // así que acá alcanza con que el texto esté al día.

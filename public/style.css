@@ -448,3 +448,6 @@ button.secundario { border-style: dashed; opacity: 0.85; }
 .res-asunto { font-weight: 700; text-decoration: none; display: block; }
 .res-fragmento { margin: 0.25rem 0 0; font-size: 0.9rem; overflow-wrap: anywhere; }
 mark { background: var(--fosforo); color: var(--fondo); padding: 0 0.1rem; }
+.cruce { border-collapse: collapse; font-size: 0.85rem; }
+.cruce th, .cruce td { border: 1px solid var(--borde); padding: 0.2rem 0.7rem; text-align: left; }
+.cruce tr.distinto td { color: var(--aviso); }

@@ -6,6 +6,7 @@ import { NORMAS } from './normas.js';
 import * as V from './views.js';
 import { extracto, textoPlano } from './format.js';
 import * as D from './documentos.js';
+import { decisionJev, PRECIO_JEV_POR_MTOK } from './sombra.js';
 
 const DIA = 86_400_000;
 const TEMAS = ['claro', 'oscuro'];
@@ -58,6 +59,7 @@ export function createApp({
   now = Date.now,
   geminiUrl = null,
   codigoUrl = null,
+  sombra = null,
 }) {
   const app = express();
   app.disable('x-powered-by');
@@ -333,7 +335,7 @@ export function createApp({
     if (req.user) res.set('Cache-Control', 'private, no-store');
     const novedades = req.user ? q.contarNovedades.get(req.user.id).n : 0;
     const tema = TEMAS.includes(leerCookies(req.headers.cookie).tema) ? leerCookies(req.headers.cookie).tema : null;
-    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, tema, ruta: req.originalUrl, codigoUrl };
+    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, tema, ruta: req.originalUrl, codigoUrl, sombraActiva: !!sombra };
     if (req.method === 'POST') {
       const origen = req.get('origin');
       if (origen && origen !== `${req.protocol}://${req.get('host')}`) return res.status(403).send('Origen no permitido');
@@ -699,6 +701,27 @@ export function createApp({
     llamadas.push(now());
     return true;
   }
+  // Prueba en sombra (sombra.js): Jev revisa el mismo mensaje después de Claude, sin esperar ni decidir
+  // nada. Solo se guarda la comparación. Sin TYPESAFE_API_KEY no hace nada.
+  const guardarSombra = db.prepare(`INSERT INTO sombra_jev (created_at, tablon, es_hilo, asunto, cuerpo, claude_decision,
+    claude_rule, claude_grave, jev_decision, jev_rule, jev_grave, respuestas, tokens, ms, error)
+    VALUES (@t, @tablon, @es_hilo, @asunto, @cuerpo, @cd, @cr, @cg, @jd, @jr, @jg, @respuestas, @tokens, @ms, @error)`);
+  function compararEnSombra(datos, v) {
+    if (!sombra) return;
+    const base = { t: now(), tablon: datos.tablon, es_hilo: datos.esHilo ? 1 : 0, asunto: datos.asunto, cuerpo: datos.cuerpo,
+      cd: v.decision, cr: v.rule ?? null, cg: v.grave ?? 'ninguna' };
+    sombra(datos)
+      .then((r) => {
+        const j = decisionJev(r.respuestas);
+        guardarSombra.run({ ...base, jd: j.decision, jr: j.rule, jg: j.grave, respuestas: JSON.stringify(r.respuestas), tokens: r.tokens, ms: r.ms, error: null });
+      })
+      .catch((err) => {
+        try {
+          guardarSombra.run({ ...base, jd: null, jr: null, jg: null, respuestas: null, tokens: null, ms: null, error: String(err?.message ?? err).slice(0, 300) });
+        } catch {}
+      });
+  }
+
   // Corre `tarea` (moderar y guardar) una sola vez por cuenta. Devuelve { destino } o { error, status }.
   async function unaVez(userId, firma, tarea) {
     const actual = enVuelo.get(userId);
@@ -748,7 +771,9 @@ export function createApp({
 
     const userId = req.user.id;
     const r = await unaVez(userId, firma, async () => {
-      const v = await moderar({ tablon: board.nombre, asunto, cuerpo, esHilo: true });
+      const datos = { tablon: board.nombre, asunto, cuerpo, esHilo: true };
+      const v = await moderar(datos);
+      compararEnSombra(datos, v);
       if (!cuentaVigente(userId)) return { destino: '/' };
       if (v.decision === 'reject') {
         registrarRechazo(userId, board.slug, null, asunto, cuerpo, v);
@@ -797,7 +822,9 @@ export function createApp({
 
     const userId = req.user.id;
     const r = await unaVez(userId, firma, async () => {
-      const v = await moderar({ tablon: boardBySlug(thread.board).nombre, asunto: thread.subject, cuerpo, esHilo: false });
+      const datos = { tablon: boardBySlug(thread.board).nombre, asunto: thread.subject, cuerpo, esHilo: false };
+      const v = await moderar(datos);
+      compararEnSombra(datos, v);
       if (!cuentaVigente(userId)) return { destino: '/' };
       if (v.decision === 'reject') {
         registrarRechazo(userId, thread.board, thread.id, null, cuerpo, v);
@@ -844,6 +871,27 @@ export function createApp({
       .all();
     const cuerpo = V.mod(res.locals.ctx, { cola: q.colaMod.all().map(nombrar), reportados: q.reportadosMod.all().map(nombrar), graves });
     enviar(res, { titulo: 'Moderación', indexar: false, cuerpo });
+  });
+
+  // Panel de la prueba en sombra: cuánto coincide Jev con Claude, qué graves se le escaparon, costo.
+  app.get('/mod/sombra', (req, res) => {
+    if (!esMod(req.user)) return noEncontrado(res);
+    const total = db.prepare('SELECT COUNT(*) AS n, SUM(error IS NOT NULL) AS errores, SUM(tokens) AS tokens, AVG(ms) AS ms FROM sombra_jev').get();
+    const cruce = db
+      .prepare(`SELECT claude_decision AS c, jev_decision AS j, COUNT(*) AS n FROM sombra_jev WHERE error IS NULL GROUP BY 1, 2 ORDER BY 3 DESC`)
+      .all();
+    const gravesEscapados = db
+      .prepare(`SELECT * FROM sombra_jev WHERE error IS NULL AND claude_grave != 'ninguna' AND jev_grave = 'ninguna' ORDER BY id DESC LIMIT 20`)
+      .all();
+    const desacuerdos = db
+      .prepare(`SELECT * FROM sombra_jev WHERE error IS NULL AND claude_decision != jev_decision ORDER BY id DESC LIMIT 40`)
+      .all();
+    const costo = ((total.tokens ?? 0) * PRECIO_JEV_POR_MTOK) / 1e6;
+    enviar(res, {
+      titulo: 'Prueba Jev',
+      indexar: false,
+      cuerpo: V.sombra(res.locals.ctx, { activa: !!sombra, total, cruce, gravesEscapados, desacuerdos, costo }),
+    });
   });
 
   // Levantar una suspensión (por ejemplo, una automática que fue un error del filtro).

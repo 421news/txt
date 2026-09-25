@@ -376,6 +376,7 @@ export function privacidad(ctx) {
 <h2>Con quién se comparte</h2>
 <ul>
   <li><strong>Anthropic</strong> (Estados Unidos): el texto de cada mensaje pasa por su modelo Claude para revisarlo antes de publicarse. Se envía solo el texto, sin datos de tu cuenta.</li>
+  ${ctx.sombraActiva ? html`<li><strong>TypeSafe</strong> (Estados Unidos), durante una prueba: el texto de cada mensaje también pasa por su modelo Jev, para comparar filtros. No decide nada ni recibe datos de tu cuenta.</li>` : ''}
   <li><strong>Google</strong>: gestiona el ingreso con tu cuenta.</li>
   <li><strong>Railway</strong> (Estados Unidos): aloja el sitio y la base de datos. Como cualquier servidor, registra datos técnicos de las conexiones, como la dirección IP.</li>
 </ul>
@@ -465,6 +466,37 @@ ${paginas > 1
     )}</nav>`
   : ''}`
   : ''}`;
+}
+
+export function sombra(ctx, { activa, total, cruce, gravesEscapados, desacuerdos, costo }) {
+  const pct = (n) => (total.n ? `${Math.round((n / (total.n - (total.errores ?? 0) || 1)) * 100)}%` : '—');
+  const coinciden = cruce.filter((c) => c.c === c.j).reduce((s, c) => s + c.n, 0);
+  const fila = (r) => {
+    const resp = r.respuestas ? JSON.parse(r.respuestas) : {};
+    const top = Object.entries(resp)
+      .filter(([, a]) => a.type === 'noul')
+      .sort((a, b) => b[1].noul - a[1].noul)
+      .slice(0, 3)
+      .map(([k, a]) => `${k} ${a.noul.toFixed(2)}`)
+      .join(' · ');
+    return html`<li><span class="ayuda">${fecha(r.created_at)} · Claude: ${r.claude_decision}${r.claude_rule && r.claude_rule !== 'ninguna' ? ` (${r.claude_rule})` : ''} · Jev: ${r.jev_decision}${r.jev_rule && r.jev_rule !== 'ninguna' ? ` (${r.jev_rule})` : ''}${r.jev_grave && r.jev_grave !== 'ninguna' ? ` · grave ${r.jev_grave}` : ''}</span>
+  <p class="res-fragmento">${extracto(r.cuerpo ?? '', 280)}</p>
+  <p class="ayuda">${top}</p></li>`;
+  };
+  return html`<h1>Prueba Jev (en sombra)</h1>
+<p class="ayuda">${activa ? 'Activa: cada mensaje que revisa Claude también lo revisa Jev, sin decidir nada.' : 'Apagada: falta TYPESAFE_API_KEY.'}</p>
+<ul>
+  <li>Mensajes comparados: <strong>${total.n}</strong>${total.errores ? ` (${total.errores} con error de Jev)` : ''}</li>
+  <li>Coinciden en la decisión: <strong>${pct(coinciden)}</strong></li>
+  <li>Graves que detectó Claude y a Jev se le escaparon: <strong>${gravesEscapados.length}</strong></li>
+  <li>Costo de Jev hasta ahora: <strong>US$${costo.toFixed(4)}</strong> · demora promedio: ${total.ms ? Math.round(total.ms) : '—'} ms</li>
+</ul>
+<h2>Cruce de decisiones</h2>
+<table class="cruce"><tr><th>Claude</th><th>Jev</th><th>Mensajes</th></tr>
+${cruce.map((c) => html`<tr${c.c === c.j ? '' : raw(' class="distinto"')}><td>${c.c}</td><td>${c.j}</td><td>${c.n}</td></tr>`)}</table>
+${gravesEscapados.length ? html`<h2>Graves que se le escaparon a Jev</h2><ul class="resultados">${gravesEscapados.map(fila)}</ul>` : ''}
+<h2>Últimos desacuerdos</h2>
+${desacuerdos.length ? html`<ul class="resultados">${desacuerdos.map(fila)}</ul>` : html`<p class="ayuda">Ninguno todavía.</p>`}`;
 }
 
 export function texto(ctx, { gemini } = {}) {
