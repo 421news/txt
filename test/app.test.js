@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { openDb } from '../src/db.js';
 import { createApp, limpiarTexto } from '../src/app.js';
 import { formatear } from '../src/format.js';
+import { crearModerador } from '../src/moderation.js';
 
 // Google falso: el "code" con el que vuelve el login es el nombre de la persona.
 const googleFalso = {
@@ -163,7 +164,9 @@ test('publicar un hilo aprobado y verlo sin HTML inyectado', async (t) => {
   assert.equal(r.status, 303);
   assert.equal(r.headers.get('location'), '/h/1');
 
-  const hilo = await s.texto('/h/1');
+  const respuesta = await s.pedir('/h/1');
+  assert.match(respuesta.headers.get('content-security-policy'), /default-src 'self'; script-src 'self';/);
+  const hilo = await respuesta.text();
   assert.ok(hilo.includes('Libros &lt;b&gt;raros&lt;/b&gt;'));
   assert.ok(!hilo.includes('<script>alert'));
   assert.ok(hilo.includes('Pseudoanónimo'));
@@ -260,6 +263,7 @@ test('en revisión solo lo ve el autor hasta que un mod lo aprueba', async (t) =
   const mod = await s.entrar('mod');
   assert.ok((await s.texto('/mod', mod)).includes('Dudoso'));
   assert.equal((await s.pedir('/mod', { sesion: ana })).status, 404, 'un usuario común no ve /mod');
+  assert.equal((await s.pedir('/mod/p/1/aprobar', { sesion: ana, datos: {} })).status, 404, 'ni puede moderar');
 
   assert.equal((await s.pedir('/mod/p/1/aprobar', { sesion: mod, datos: {} })).status, 303);
   const publico = await s.pedir('/h/1');
@@ -317,6 +321,29 @@ test('tres reportes ocultan el post hasta que lo revise un mod', async (t) => {
   assert.ok(!(await s.texto('/h/1')).includes('respuesta-a-ocultar'));
   const mod = await s.entrar('mod');
   assert.ok((await s.texto('/mod', mod)).includes('respuesta-a-ocultar'));
+});
+
+test('uno o dos reportes no alcanzan para ocultar un post', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'sigue-visible' } });
+  const reportantes = [await s.entrar('c1'), await s.entrar('c2')];
+  s.avanzar(86_401);
+  for (const u of reportantes) {
+    await s.pedir('/p/1/reportar', { sesion: u, datos: { motivo: 'respeto' } });
+    assert.ok((await s.texto('/h/1')).includes('sigue-visible'));
+  }
+});
+
+test('filtro: si no responde, el mensaje va a revisión; un caso de tolerancia cero se rechaza aunque el filtro diga aprobar', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const moderar = (parse) => crearModerador({ siteName: 'prueba', client: { messages: { parse } } });
+  const datos = { tablon: 'Cultura', asunto: 'a', cuerpo: 'b', esHilo: true };
+  const caido = moderar(async () => { throw new Error('API caída'); });
+  assert.equal((await caido(datos)).decision, 'queue', 'sin respuesta del filtro no se publica');
+  const contradictorio = moderar(async () => ({ usage: {}, parsed_output: { decision: 'approve', grave: 'menores' } }));
+  assert.equal((await contradictorio(datos)).decision, 'reject', 'tolerancia cero gana sobre aprobar');
 });
 
 test('la página de privacidad existe y no promete guardar el correo', async (t) => {
@@ -661,6 +688,7 @@ test('lupa: busca sin tildes, incluye el archivo, no muestra lo oculto y no romp
   const r = await s.texto('/buscar?q=cancion+spinet');
   assert.ok(r.includes('href="/h/1#p1"') && r.includes('<mark>') && r.includes('archivada'));
   assert.ok(!r.includes('en revisión'));
+  assert.ok(!(await s.texto('/buscar?q=spinetta')).includes('en revisión'));
   // El <b> que escribió la persona sale escapado dentro del resultado.
   assert.ok(!/class="res-fragmento">[^\n]*<b>/.test(r));
   for (const raro of ['"', 'AND OR NOT', '*', 'a"b(c)', 'NEAR(x y)']) {
