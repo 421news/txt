@@ -5,6 +5,8 @@
 // - Borrador en sessionStorage: cambiar el tema, recargar o volver atrás es una navegación nueva,
 //   y lo escrito en un formulario sin control vive solo en el DOM (se perdía al cambiar el tema).
 //   Si el navegador vuelve atrás a esta página desde su caché, el botón se reactiva.
+// - "Responder" en un mensaje agrega >>N a lo que ya está escrito, sin recargar la página. Sin
+//   JavaScript es un link a ?cita=N; si se llega así, el >>N se suma al borrador en vez de pisarlo.
 (() => {
   const PREFIJO = 'borrador:';
   const VALIDEZ = 86_400_000; // un borrador vencido no se vuelve a ofrecer.
@@ -122,6 +124,12 @@
       else if (!campo.value) {
         campo.value = valor;
         if (valor) restauro = true;
+      } else if (campo.dataset.cita && valor) {
+        // El servidor escribió >>N por ?cita=N: se agrega a lo que ya estaba escrito, salvo que el
+        // borrador ya lo tenga (por ejemplo, al recargar la misma dirección).
+        const cita = `>>${campo.dataset.cita}`;
+        campo.value = new RegExp(`${cita}(?!\\d)`).test(valor) ? valor : `${valor.replace(/\s+$/, '')}\n${cita}\n`;
+        restauro = true;
       }
     }
     if (!restauro) return;
@@ -148,6 +156,27 @@
   };
   document.addEventListener('input', alTocar);
   document.addEventListener('change', alTocar);
+
+  // "Responder" en un mensaje: sin recargar, >>N va donde está el cursor (si está al principio, como
+  // cuando nunca se tocó el campo, al final) en una línea propia. Recargar con ?cita=N perdía el lugar en la página y pisaba lo
+  // que se venía escribiendo. Abrir en otra pestaña (cmd/ctrl/medio) sigue siendo un link común.
+  document.addEventListener('click', (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const link = e.target.closest('a.citar');
+    const n = link && new URL(link.href).searchParams.get('cita');
+    const campo = document.querySelector('form#responder textarea[name="cuerpo"]');
+    if (!n || !campo) return;
+    e.preventDefault();
+    const i = campo.selectionEnd || campo.value.length;
+    const salto = i > 0 && campo.value[i - 1] !== '\n' ? '\n' : '';
+    campo.setRangeText(`${salto}>>${n}\n`, i, i, 'end');
+    // Al centro: abajo, en el celular, la barra fija taparía el campo.
+    campo.scrollIntoView({ block: 'center' });
+    campo.focus({ preventScroll: true });
+    // Con texto largo, el campo mostraría el principio y la cita nueva quedaría escondida abajo.
+    if (campo.selectionEnd === campo.value.length) campo.scrollTop = campo.scrollHeight;
+    campo.dispatchEvent(new Event('input', { bubbles: true })); // contador y borrador
+  });
 
   sincronizar(); // el guion va con defer: el DOM ya está
   window.addEventListener('pageshow', sincronizar);
