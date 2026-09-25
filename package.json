@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test test/",
+    "test": "node --test",
     "probar-moderacion": "node scripts/probar-moderacion.js"
   },
   "dependencies": {
