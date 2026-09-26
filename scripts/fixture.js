@@ -10,8 +10,13 @@ import { openDb } from '../src/db.js';
 import { boardBySlug } from '../src/config.js';
 import { HILOS } from './fixture-datos.js';
 
-if (process.env.NODE_ENV === 'production') {
-  console.error('El fixture es solo para desarrollo.');
+// Señales de producción: NODE_ENV, el login de Google configurado o la base en el volumen /data.
+if (
+  process.env.NODE_ENV === 'production' ||
+  process.env.GOOGLE_CLIENT_ID ||
+  (process.env.DB_PATH || '').startsWith('/data')
+) {
+  console.error('El fixture es solo para desarrollo: no corre con NODE_ENV=production, GOOGLE_CLIENT_ID cargado ni DB_PATH en /data.');
   process.exit(1);
 }
 

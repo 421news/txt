@@ -93,7 +93,7 @@ export const HILOS = [
     asunto: 'Dark Souls y la tragedia griega',
     horas: 33,
     mensajes: [
-      'no conocia a lesky y ahora tengo ganas de volver a jugarlo. muy buena la de nehuen',
+      'no conocia a lesky y ahora tengo ganas de volver a jugarlo. muy buena la nota',
       'volve, siempre hay que volver',
       'yo lo deje en blighttown no me da la paciencia',
       { de: 2, t: 'y el framerate tampoco ayuda' },
@@ -125,7 +125,7 @@ export const HILOS = [
     asunto: 'Android sin google en un moto g7',
     horas: 27,
     mensajes: [
-      'segui la nota de soldan para sacarle google al celu. tenia un g7 tirado en un cajon, anduvo pero tarde una tarde entera',
+      'segui la nota para sacarle google al celu. tenia un g7 tirado en un cajon, anduvo pero tarde una tarde entera',
       'que rom usaste',
       { op: 'lineageos sin gapps' },
       'y el home banking?',
@@ -155,7 +155,7 @@ export const HILOS = [
   },
   {
     tablon: 'tecnologia',
-    asunto: 'modelos locales con la guia de santelli',
+    asunto: 'modelos locales con la guia de 421',
     horas: 20,
     mensajes: [
       'lo probe en una notebook con 16 de ram y anda, lento pero anda. segui la guia paso a paso',
@@ -173,7 +173,7 @@ export const HILOS = [
     asunto: 'fanzines',
     horas: 18,
     mensajes: [
-      'armamos uno con mi hermana siguiendo la guia de juanma. 8 paginas fotocopia blanco y negro, sacamos 30',
+      'armamos uno con mi hermana siguiendo la guia. 8 paginas fotocopia blanco y negro, sacamos 30',
       'de que es',
       { op: 'recetas de la abuela con dibujos' },
       'que lindo eso',
@@ -203,7 +203,7 @@ export const HILOS = [
     asunto: 'star wars y derecho constitucional',
     horas: 13,
     mensajes: [
-      'nunca pense q iba a leer una nota sobre las precuelas y el estado de excepcion y que me iba a gustar. la de rocco fregoti',
+      'nunca pense q iba a leer una nota sobre las precuelas y el estado de excepcion y que me iba a gustar',
       'las precuelas eran cine politico y de chicos no nos dimos cuenta',
       { op: '>>#1 jajaja yo de chico solo queria ver a darth maul' },
       'toda la parte del senado q era aburridisima era lo importante',
@@ -230,7 +230,7 @@ export const HILOS = [
     asunto: 'drones fpv vale la pena arrancar?',
     horas: 9,
     mensajes: [
-      'tengo ganas de arrancar pero me da miedo romper todo el primer dia. lei la intro de wasserman y quede manija',
+      'tengo ganas de arrancar pero me da miedo romper todo el primer dia. lei la intro y quede manija',
       'arranca con simulador si o si',
       { op: 'cual?' },
       { de: 1, t: 'cualquiera con un control barato, unas 20 horas y despues el dron' },
@@ -295,10 +295,10 @@ export const HILOS = [
   },
   {
     tablon: 'vida-real',
-    asunto: 'escribir: la entrevista a lamberti',
+    asunto: 'escribir: la entrevista del otro dia',
     horas: 2,
     mensajes: [
-      'en la entrevista a luciano lamberti dice que para escribir vas a necesitar mucho tiempo a solas. tengo dos hijos chicos, escribo en el bondi',
+      'en la entrevista el escritor dice que para escribir vas a necesitar mucho tiempo a solas. tengo dos hijos chicos, escribo en el bondi',
       'el bondi cuenta como tiempo a solas',
       'yo escribo a las 6 de la mañana es el unico rato',
       { op: '>>#1 jaja si no hay nadie hablando x telefono' },
@@ -327,7 +327,7 @@ HILOS.push(
     asunto: 'Protect and Survive',
     horas: 78,
     mensajes: [
-      'despues de la reseña de rocco me baje el manual entero. dice q pongas puertas contra la pared y te metas abajo. mi depto tiene una sola puerta',
+      'despues de la reseña me baje el manual entero. dice q pongas puertas contra la pared y te metas abajo. mi depto tiene una sola puerta',
       'usa la de la heladera',
       { op: '>>#1 jajaja' },
       'lo mejor son los dibujitos, super tranquilos para lo q estan explicando',
