@@ -456,6 +456,17 @@ test('SEO: metas, canonical, noindex donde corresponde, sitemap y datos de foro'
   assert.ok((await s.texto('/robots.txt')).includes('Sitemap:'));
 });
 
+test('fechas: corta a la vista, completa al pasar el mouse y en datetime', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  // El reloj de prueba arranca en 1.800.000.000.000 ms: 15/1/2027 08:00 UTC, 5:00 en Buenos Aires.
+  const hilo = await s.texto('/h/1');
+  assert.ok(hilo.includes('<time datetime="2027-01-15T08:00:00.000Z" title="viernes, 15 de enero de 2027, 5:00 a. m.">15/1/27, 5:00 a. m.</time>'));
+  assert.ok(!hilo.includes('<time>'), 'ninguna fecha sin datetime');
+});
+
 test('responder a un post: cita precargada, respuestas entrantes y marca propia', async (t) => {
   const s = await montar();
   t.after(s.cerrar);

@@ -10,6 +10,15 @@ const formatoFecha = new Intl.DateTimeFormat('es-AR', {
   timeZone: process.env.TZ_SITIO || 'America/Argentina/Buenos_Aires',
 });
 export const fecha = (ms) => formatoFecha.format(new Date(ms));
+const formatoFechaLarga = new Intl.DateTimeFormat('es-AR', {
+  dateStyle: 'full',
+  timeStyle: 'short',
+  timeZone: process.env.TZ_SITIO || 'America/Argentina/Buenos_Aires',
+});
+// La fecha de un mensaje: corta a la vista, completa al pasar el mouse ("viernes, 25 de septiembre
+// de 2026, 3:17 p. m."; la corta no dice el año entero y se confunde día y mes) y en datetime para
+// lectores de pantalla y buscadores.
+const hora = (ms) => html`<time datetime="${new Date(ms).toISOString()}" title="${formatoFechaLarga.format(new Date(ms))}">${fecha(ms)}</time>`;
 
 const esMod = (u) => !!u && (u.role === 'mod' || u.role === 'admin');
 
@@ -365,7 +374,7 @@ function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
     ${p.esAutorOp ? html`<span class="marca-op">OP</span>` : ''}
     ${p.esMio ? html`<span class="marca-vos" title="Solo lo ves vos">(vos)</span>` : ''}
     ${p.esNuevo && !resumen ? html`<span class="marca-nuevo" title="Desde tu visita anterior">nuevo</span>` : ''}
-    <time>${fecha(p.created_at)}</time>
+    ${hora(p.created_at)}
     <a class="num" href="#p${p.id}">No.${p.id}</a>
     ${!resumen && ctx.user && p.status === 'published' && abiertoPara(p)
       ? html`<a class="citar" href="?cita=${p.id}#responder">Responder</a>`
@@ -822,7 +831,7 @@ function itemMod(ctx, p) {
     <span>${p.board_nombre} · ${p.subject}</span>
     <span>cuenta #${p.user_id}, creada ${fecha(p.user_created)}</span>
     <span>${p.eliminados} eliminados antes</span>
-    <time>${fecha(p.created_at)}</time>
+    ${hora(p.created_at)}
   </header>
   <div class="texto">${raw(formatear(p.body))}</div>
   <p class="ayuda">Filtro: ${filtro || '—'}</p>
@@ -848,7 +857,7 @@ export function mod(ctx, { cola, reportados, graves = [] }) {
 <p class="ayuda">Tolerancia cero: el filtro rechazó el mensaje y suspendió la cuenta. Si fue un error, levantá la suspensión.</p>
 ${graves.length
   ? graves.map((g) => html`<article class="post en-revision">
-  <header class="post-meta"><span>${graveTexto[g.grave] ?? g.grave}</span><time>${fecha(g.created_at)}</time></header>
+  <header class="post-meta"><span>${graveTexto[g.grave] ?? g.grave}</span>${hora(g.created_at)}</header>
   <p class="nota">${g.reason ?? ''}</p>
   <div class="texto">${g.subject ? html`<strong>${g.subject}</strong><br>` : ''}${g.body}</div>
   ${g.banned_until && g.banned_until > ctx.ahora
