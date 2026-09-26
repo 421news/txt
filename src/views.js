@@ -424,7 +424,8 @@ ${postsSueltos(ctx, { thread, posts, ids })}
 </div>
 <p id="vivo-aviso" class="ayuda" hidden></p>
 ${abierto ? formRespuesta(ctx, thread, { ...form, ids }) : ''}
-${abierto ? html`<script src="${estatico('vivo.js')}" defer></script>` : ''}`;
+${abierto ? html`<script src="${estatico('vivo.js')}" defer></script>` : ''}
+<script src="${estatico('citas.js')}" defer></script>`;
 }
 
 export function postsSueltos(ctx, { thread, posts, ids }) {
