@@ -119,6 +119,20 @@ h1 { font-size: 1.35rem; line-height: 1.3; margin: 1rem 0 0.6rem; }
 h1::before { content: '> '; color: var(--tenue); }
 h2 { font-size: 1.05rem; line-height: 1.35; }
 
+/* Visible solo para lectores de pantalla. */
+.solo-lector {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.solo-lector::before { content: none; }
+
 .ayuda { font-size: 0.78rem; color: var(--tenue); }
 code { color: var(--cita); }
 
@@ -236,7 +250,7 @@ details.reportar select { width: auto; }
   font-size: 0.72rem;
   text-transform: uppercase;
 }
-.ficha-asunto { color: var(--fosforo); font-size: 0.92rem; line-height: 1.35; overflow-wrap: anywhere; }
+.ficha-asunto { margin: 0; color: var(--fosforo); font-size: 0.92rem; line-height: 1.35; overflow-wrap: anywhere; }
 .ficha-texto { flex: 1; font-size: 0.8rem; line-height: 1.5; overflow-wrap: anywhere; }
 .ficha-pie { font-size: 0.7rem; color: var(--tenue); }
 .ficha:hover { background: var(--caja); color: var(--texto); border-color: var(--fosforo); }

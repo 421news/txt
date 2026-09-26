@@ -184,7 +184,7 @@ function catalogo(hilos, { conTablon = false } = {}) {
   return html`<div class="catalogo">${hilos.map(
     (t) => html`<a class="ficha" href="/h/${t.id}">
     <span class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span>R: ${t.reply_count}</span></span>
-    <strong class="ficha-asunto">${t.subject}</strong>
+    <h2 class="ficha-asunto">${t.subject}</h2>
     <span class="ficha-texto">${extracto(textoPlano(t.op_body), 180)}</span>
     <span class="ficha-pie">${fecha(t.bumped_at)}${t.locked ? ' · cerrada' : ''}</span>
   </a>`,
@@ -209,7 +209,8 @@ function paginacion(actual, paginas, vista) {
 
 // La portada son los hilos de todos los tablones, ordenados por última respuesta.
 export function portada(ctx, { hilos, vista, pagina: actual, paginas, form }) {
-  return html`${formHilo(ctx, null, form)}
+  return html`<h1 class="solo-lector">Últimas publicaciones</h1>
+${formHilo(ctx, null, form)}
 <p class="ayuda">Pseudoanónimo y moderado: cada mensaje se revisa antes de publicarse. <a href="/normas">Normas</a></p>
 ${selectorVista(vista)}
 ${listado(ctx, hilos, vista, { conTablon: true })}
