@@ -440,6 +440,10 @@ test('responder a un post: cita precargada, respuestas entrantes y marca propia'
   const conCita = await s.texto('/h/1?cita=2', bea);
   assert.ok(conCita.includes('>&gt;&gt;2\n</textarea>') || conCita.includes('&gt;&gt;2\n</textarea>'));
   assert.ok(conCita.includes('href="?cita=2#responder"'));
+  // El campo queda marcado: formularios.js suma el >>N al borrador que había en vez de pisarlo.
+  assert.ok(conCita.includes(' data-cita="2">&gt;&gt;2\n</textarea>'));
+  assert.ok(!(await s.texto('/h/1', bea)).includes('data-cita'));
+  assert.ok(!(await s.texto('/h/1?cita=99', bea)).includes('data-cita'), 'un número que no es de la publicación no se cita');
 
   const hilo = await s.texto('/h/1', bea);
   assert.ok(hilo.includes('Respuestas: <a href="#p3">&gt;&gt;3</a>'));

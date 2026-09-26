@@ -512,9 +512,10 @@ export function createApp({
     res.locals.ctx.ruta = rutaDeLaPagina(req, `/h/${thread.id}`, ['cita']);
     const board = boardBySlug(thread.board);
     const { posts, ids } = postsVisibles(req, thread);
-    // ?cita=N abre el formulario con >>N ya escrito (no hay JavaScript).
+    // ?cita=N abre el formulario con >>N ya escrito (no hay JavaScript). `cita` marca el campo para
+    // que formularios.js sume el >>N al borrador que ya había, en vez de pisarlo.
     const cita = Number(req.query.cita);
-    if (!form.cuerpo && ids.has(cita)) form = { ...form, cuerpo: `>>${cita}\n` };
+    if (!form.cuerpo && ids.has(cita)) form = { ...form, cuerpo: `>>${cita}\n`, cita };
     const cuerpo = V.hilo(res.locals.ctx, { thread, board, posts, ids, form });
     const op = posts.find((p) => p.id === thread.op_post_id);
     const publica = thread.visible && op?.status === 'published';

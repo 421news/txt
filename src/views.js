@@ -263,7 +263,7 @@ function formHilo(ctx, board, { asunto = '', cuerpo = '', tablon = '', error, ab
 </details>`;
 }
 
-function formRespuesta(ctx, thread, { cuerpo = '', sage = false, error, previa, ids } = {}) {
+function formRespuesta(ctx, thread, { cuerpo = '', sage = false, error, previa, ids, cita } = {}) {
   const bloqueo = bloqueoPublicar(ctx, 'responder');
   if (bloqueo) return bloqueo;
   return html`<form class="form-post" method="post" action="/h/${thread.id}/responder" id="responder">
@@ -271,7 +271,7 @@ function formRespuesta(ctx, thread, { cuerpo = '', sage = false, error, previa, 
   ${previa ? vistaPrevia('', cuerpo, ids) : ''}
   ${error ? html`<p class="error">${error}</p>` : ''}
   <input type="hidden" name="_csrf" value="${ctx.csrf}">
-  <textarea name="cuerpo" rows="6" maxlength="${LIMITS.cuerpo}" required aria-label="Mensaje"${previa ? raw(' autofocus') : ''}>${cuerpo}</textarea>
+  <textarea name="cuerpo" rows="6" maxlength="${LIMITS.cuerpo}" required aria-label="Mensaje"${previa ? raw(' autofocus') : ''}${cita ? html` data-cita="${cita}"` : ''}>${cuerpo}</textarea>
   <p class="ayuda">${AYUDA}</p>
   <label class="ayuda"><input type="checkbox" name="sage" value="1"${sage ? raw(' checked') : ''}> sage: responder sin subir la publicación</label>
   <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button></p>
