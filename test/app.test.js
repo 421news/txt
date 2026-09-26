@@ -874,3 +874,13 @@ test('guardados: guardar, verlos desde la portada, sacarlos y borrarlos con la c
   await s.pedir('/cuenta/borrar', { sesion: bea, datos: { confirmar: '1' } });
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM guardados').get().n, 0);
 });
+
+test('la sección Música existe, se puede publicar y está en la barra', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  assert.equal((await s.pedir('/b/musica')).status, 200);
+  const r = await s.pedir('/b/musica/hilo', { sesion: ana, datos: { asunto: 'Discos del año', cuerpo: 'qué están escuchando' } });
+  assert.equal(r.status, 303);
+  assert.ok((await s.texto('/')).includes('href="/b/musica"'));
+});
