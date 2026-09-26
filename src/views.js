@@ -17,6 +17,10 @@ const AVISOS = {
   cola: 'Tu mensaje quedó en revisión. Mientras tanto solo lo ves vos.',
   reportado: 'Gracias por el reporte. Lo va a revisar un moderador.',
   'cuenta-borrada': 'Tu cuenta y tus mensajes quedaron borrados.',
+  'gemini-ok': 'Listo: ya podés escribir desde Gemini con ese certificado.',
+  'gemini-invalido': 'El código no existe o venció (dura 15 minutos). Pedí uno nuevo desde Gemini.',
+  'gemini-suspendida': 'Mientras dure la suspensión no se pueden vincular certificados.',
+  'gemini-tope': 'Llegaste al máximo de 5 certificados. Desvinculá alguno antes de sumar otro.',
 };
 
 const AYUDA = raw(
@@ -441,6 +445,7 @@ export function privacidad(ctx) {
   <li><strong>Los mensajes que el filtro rechazó</strong>, con el motivo, para detectar abusos.</li>
   <li><strong>Los reportes que hacés</strong> y las decisiones de moderación sobre tus mensajes o tu cuenta.</li>
   <li><strong>Las publicaciones que guardás</strong>, para que las encuentres en Guardados. Solo las ves vos.</li>
+  <li><strong>Si escribís desde Gemini</strong>, la huella del certificado de tu programa de Gemini, vinculada a tu cuenta, y la fecha en que lo usaste por última vez. Podés desvincularlo en Mi cuenta.</li>
   <li><strong>Estadísticas de uso, sin rastreo.</strong> Contamos cuántas páginas se ven por día y cuántas personas distintas, sin cookies ni IP guardadas: para no contar dos veces a la misma persona usamos un código anónimo que se descarta al día siguiente. Si tenés cuenta, registramos qué días entraste, solo para saber cuántos usuarios activos hay.</li>
   <li><strong>Una cookie de sesión</strong> (dura 30 días o hasta que salgas) y otra de un solo uso durante el ingreso con Google. No usamos cookies de publicidad ni de analítica.</li>
 </ul>
@@ -675,7 +680,8 @@ ${gemini
   ? html`<h2>En Gemini</h2>
 <p>txt también es una cápsula de <a href="https://geminiprotocol.net/">Gemini</a>, la "internet chica": solo texto y links, sin publicidad ni rastreo. Se abre con un programa como <a href="https://gmi.skyjake.fi/lagrange/">Lagrange</a> (computadora y celular) o Amfora (terminal):</p>
 <pre>${gemini}</pre>
-<p class="ayuda">La primera vez, el programa te va a preguntar si confiás en el certificado de la cápsula: es el nuestro, aceptalo.</p>`
+<p class="ayuda">La primera vez, el programa te va a preguntar si confiás en el certificado de la cápsula: es el nuestro, aceptalo.</p>
+<p>Desde Gemini también se puede publicar y responder. Tu programa tiene que usar un certificado de cliente (en Lagrange: Identidades → Nueva identidad). La primera vez que escribas, la cápsula te da un código para pegar en <a href="/cuenta#gemini">Mi cuenta</a>; desde ahí, lo que publiques cuenta como de tu cuenta, con las mismas normas y límites. Cada mensaje puede tener hasta unos 800 caracteres.</p>`
   : ''}
 <p class="ayuda">La versión texto es para leer. Para publicar o responder se usa la web. Los spoilers no se pueden tapar en texto, así que ahí aparecen como [spoiler: leelo en la web].</p>`;
 }
@@ -737,7 +743,7 @@ ${lista.length
   : html`<p>Todavía no guardaste nada.</p>`}`;
 }
 
-export function cuenta(ctx, { suspendida, error, mias = [] } = {}) {
+export function cuenta(ctx, { suspendida, error, mias = [], llaves = [], geminiUrl = null } = {}) {
   return html`<h1>Cuenta</h1>
 <p>Para el resto del foro sos pseudoanónimo. De tu cuenta de Google solo guardamos un identificador (ver <a href="/privacidad">Privacidad</a>).</p>
 <h2>Donde participaste</h2>
@@ -746,6 +752,7 @@ ${mias.length
   : html`<p class="ayuda">Todavía no publicaste nada.</p>`}
 <p class="ayuda">Solo lo ves vos. En cada publicación, tus mensajes aparecen marcados con "(vos)".</p>
 ${preferencias(ctx.tema)}
+${geminiUrl ? gemini(ctx, llaves, geminiUrl) : ''}
 <h2>Borrar la cuenta</h2>
 <p>Se borra el texto de todos tus mensajes, los que el filtro te rechazó y los reportes que hiciste. Donde había un mensaje tuyo va a decir "Eliminado por su autor". Si abriste una publicación que tiene respuestas de otras personas, esas respuestas siguen ahí. No se puede deshacer.</p>
 ${error ? html`<p class="error">${error}</p>` : ''}
@@ -756,6 +763,22 @@ ${suspendida
   <label class="ayuda"><input type="checkbox" name="confirmar" value="1" required> Entiendo que se borra todo y no se puede deshacer.</label>
   <p><button>Borrar mi cuenta</button></p>
 </form>`}`;
+}
+
+// Certificados de cliente de Gemini vinculados a la cuenta (se identifican por su huella).
+function gemini(ctx, llaves, geminiUrl) {
+  const corta = (h) => `${h.slice(0, 11)}…${h.slice(-5)}`;
+  return html`<h2 id="gemini">Gemini</h2>
+<p>Podés publicar y responder desde la <a href="/texto">cápsula Gemini</a> (${geminiUrl}). Tu programa de Gemini se identifica con un certificado: la primera vez que escribas te va a dar un código para pegar acá. El certificado solo no alcanza: lo que publiques cuenta como de esta cuenta, con las mismas normas y límites.</p>
+<form class="form-post" method="post" action="/cuenta/gemini">
+  <input type="hidden" name="_csrf" value="${ctx.csrf}">
+  <label>Código <input type="text" name="codigo" required maxlength="20" autocomplete="off" placeholder="TXT-XXXXXX"></label>
+  <p><button>Vincular</button></p>
+</form>
+${llaves.length
+  ? html`<ul class="mias">${llaves.map((l) => html`<li><code>${corta(l.huella)}</code> <span class="ayuda">· vinculado ${fecha(l.created_at)}${l.ultimo_uso ? html` · último uso ${fecha(l.ultimo_uso)}` : ''}</span>
+  <form method="post" action="/cuenta/gemini/desvincular" class="en-linea"><input type="hidden" name="_csrf" value="${ctx.csrf}"><input type="hidden" name="huella" value="${l.huella}"><button>Desvincular</button></form></li>`)}</ul>`
+  : html`<p class="ayuda">No tenés certificados vinculados.</p>`}`;
 }
 
 function preferencias(tema) {

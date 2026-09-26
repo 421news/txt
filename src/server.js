@@ -58,13 +58,14 @@ const app = createApp({
 setInterval(() => limpiarVencidos(db), 3_600_000).unref();
 const server = app.listen(port, () => console.log(`${siteName} escuchando en ${baseUrl}`));
 
-// Cápsula Gemini (solo lectura): arranca si hay certificado. En Railway sale por un proxy TCP
+// Cápsula Gemini: arranca si hay certificado. En Railway sale por un proxy TCP
 // hacia GEMINI_PORT; el certificado y la clave viven en variables (nunca en el repo).
 let capsula = null;
 if (process.env.GEMINI_CERT && process.env.GEMINI_KEY) {
   const puertoGemini = Number(process.env.GEMINI_PORT) || 1965;
   capsula = crearCapsula({
     documento: app.locals.documento,
+    escritura: app.locals.gemini,
     baseUrl,
     cert: process.env.GEMINI_CERT.replace(/\\n/g, '\n'),
     key: process.env.GEMINI_KEY.replace(/\\n/g, '\n'),

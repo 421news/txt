@@ -161,6 +161,16 @@ export function openDb(archivo) {
     jev_decision TEXT, jev_rule TEXT, jev_grave TEXT,
     respuestas TEXT, tokens INTEGER, ms INTEGER, error TEXT
   )`);
+  // Escribir desde Gemini: cada "llave" (certificado de cliente, por su huella SHA-256) se vincula
+  // una vez con una cuenta de txt pegando en la web un código que da la cápsula. Sin cuenta de Google
+  // detrás no se escribe: si alcanzara con el certificado, un suspendido volvería al minuto con otro.
+  db.exec(`CREATE TABLE IF NOT EXISTS gemini_llaves (
+    huella TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    ultimo_uso INTEGER
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS gemini_codigos (codigo TEXT PRIMARY KEY, huella TEXT NOT NULL, created_at INTEGER NOT NULL)`);
   // Búsqueda de texto completo (la lupa). rowid = id del post; el asunto va solo en el mensaje inicial.
   // Sin tildes ni mayúsculas. Qué se muestra se decide al consultar (publicado y publicación visible),
   // así que acá alcanza con que el texto esté al día.

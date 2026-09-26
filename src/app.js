@@ -607,6 +607,108 @@ export function createApp({
   }
   app.locals.documento = (ruta, query = {}) => documento({ user: null, query }, ruta);
 
+  // --- Escribir desde Gemini (src/gemini.js lo usa por app.locals.gemini) -------------------
+  const VIGENCIA_CODIGO = 15 * 60_000;
+  const MAX_LLAVES = 5;
+  const q_g = {
+    usuario: db.prepare(`SELECT u.id, u.role, u.created_at, u.banned_until, u.ban_reason, u.identidad
+      FROM gemini_llaves g JOIN users u ON u.id = g.user_id WHERE g.huella = ?`),
+    uso: db.prepare('UPDATE gemini_llaves SET ultimo_uso = ? WHERE huella = ?'),
+    codigoDe: db.prepare('SELECT codigo FROM gemini_codigos WHERE huella = ? AND created_at > ?'),
+    nuevoCodigo: db.prepare('INSERT INTO gemini_codigos (codigo, huella, created_at) VALUES (?, ?, ?)'),
+    limpiarCodigos: db.prepare('DELETE FROM gemini_codigos WHERE created_at <= ?'),
+  };
+  // Sin letras ni números que se confundan al copiarlos a mano (0/O, 1/I/L).
+  const ALFABETO = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const generarCodigo = () => 'TXT-' + Array.from(crypto.randomBytes(6), (b) => ALFABETO[b % ALFABETO.length]).join('');
+
+  async function escribirDesdeGemini(user, { thread, board, asunto = '', cuerpo }) {
+    const esHilo = !thread;
+    cuerpo = limpiarTexto(cuerpo);
+    asunto = limpiarTexto(asunto).replace(/\n+/g, ' ');
+    if (!cuentaVigente(user.id)) return { error: 'Tu cuenta no puede publicar.' };
+    if (!cuerpo) return { error: 'El mensaje está vacío.' };
+    if (cuerpo.length > LIMITS.cuerpo) return { error: `El mensaje puede tener hasta ${LIMITS.cuerpo} caracteres.` };
+    if (esHilo && !asunto) return { error: 'Falta el asunto.' };
+    if (asunto.length > LIMITS.asunto) return { error: `El asunto puede tener hasta ${LIMITS.asunto} caracteres.` };
+    if (thread && (!thread.visible || thread.archived || thread.locked)) return { error: 'Esta publicación ya no acepta respuestas.' };
+    const firma = firmaDe(esHilo ? 'hilo' : 'respuesta', esHilo ? board.slug : thread.id, asunto, cuerpo);
+    if (enVuelo.get(user.id)?.firma === firma) return enVuelo.get(user.id).promesa;
+    const repetido = reciente(user.id, cuerpo, thread?.id);
+    if (repetido && !esHilo) return { destino: `/h/${thread.id}#p${repetido.id}` };
+    if (repetido && q.hilo.get(repetido.thread_id)?.op_post_id === repetido.id) return { destino: `/h/${repetido.thread_id}` };
+    const bloqueo = motivoBloqueo(user, esHilo ? 'hilo' : 'respuesta');
+    if (bloqueo) return { error: bloqueo };
+    return unaVez(user.id, firma, async () => {
+      const tablon = esHilo ? board : boardBySlug(thread.board);
+      const datos = { tablon: tablon.nombre, asunto: esHilo ? asunto : thread.subject, cuerpo, esHilo };
+      const v = await moderar(datos);
+      compararEnSombra(datos, v);
+      if (!cuentaVigente(user.id)) return { error: 'Tu cuenta no puede publicar.' };
+      if (v.decision === 'reject') {
+        registrarRechazo(user.id, tablon.slug, thread?.id ?? null, esHilo ? asunto : null, cuerpo, v);
+        return { error: 'No se publicó: el mensaje no cumple las normas.' };
+      }
+      if (esHilo) {
+        const threadId = crearHilo(board.slug, asunto, user.id, cuerpo, v);
+        return { destino: `/h/${threadId}`, enRevision: v.decision === 'queue' };
+      }
+      const ahora = q.hilo.get(thread.id);
+      if (!ahora.visible || ahora.archived || ahora.locked) return { error: 'Esta publicación ya no acepta respuestas.' };
+      const postId = crearRespuesta(thread.id, user.id, cuerpo, false, v);
+      return { destino: `/h/${thread.id}#p${postId}`, enRevision: v.decision === 'queue' };
+    });
+  }
+
+  app.locals.gemini = {
+    // La cuenta vinculada a esta llave, o null.
+    usuario(huella) {
+      const u = q_g.usuario.get(huella);
+      if (!u || u.identidad.startsWith('borrada:')) return null;
+      q_g.uso.run(now(), huella);
+      return u;
+    },
+    // Código para vincular esta llave desde la web (el mismo mientras esté vigente).
+    codigo(huella) {
+      q_g.limpiarCodigos.run(now() - VIGENCIA_CODIGO);
+      const vigente = q_g.codigoDe.get(huella, now() - VIGENCIA_CODIGO);
+      if (vigente) return vigente.codigo;
+      const codigo = generarCodigo();
+      q_g.nuevoCodigo.run(codigo, huella, now());
+      return codigo;
+    },
+    secciones: BOARDS,
+    hilo: (id) => q.hilo.get(id) ?? null,
+    tablon: (slug) => boardBySlug(slug) ?? null,
+    responder: (user, thread, cuerpo) => escribirDesdeGemini(user, { thread, cuerpo }),
+    publicar: (user, board, asunto, cuerpo) => escribirDesdeGemini(user, { board, asunto, cuerpo }),
+  };
+
+  // Web: vincular una llave pegando el código que dio la cápsula, y desvincularlas.
+  app.post('/cuenta/gemini', (req, res) => {
+    if (!exigirUsuario(req, res)) return;
+    const codigo = String(req.body.codigo ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^TXT/, 'TXT-');
+    const fila = db.prepare('SELECT huella FROM gemini_codigos WHERE codigo = ? AND created_at > ?').get(codigo, now() - VIGENCIA_CODIGO);
+    const cuantas = db.prepare('SELECT COUNT(*) AS n FROM gemini_llaves WHERE user_id = ?').get(req.user.id).n;
+    let aviso = 'gemini-invalido';
+    if (fila && suspendido(req.user)) aviso = 'gemini-suspendida';
+    else if (fila && cuantas >= MAX_LLAVES) aviso = 'gemini-tope';
+    else if (fila) {
+      db.transaction(() => {
+        db.prepare(`INSERT INTO gemini_llaves (huella, user_id, created_at) VALUES (?, ?, ?)
+          ON CONFLICT (huella) DO UPDATE SET user_id = excluded.user_id, created_at = excluded.created_at`).run(fila.huella, req.user.id, now());
+        db.prepare('DELETE FROM gemini_codigos WHERE huella = ?').run(fila.huella);
+      })();
+      aviso = 'gemini-ok';
+    }
+    res.redirect(303, `/cuenta?aviso=${aviso}#gemini`);
+  });
+  app.post('/cuenta/gemini/desvincular', (req, res) => {
+    if (!exigirUsuario(req, res)) return;
+    db.prepare('DELETE FROM gemini_llaves WHERE huella = ? AND user_id = ?').run(String(req.body.huella ?? ''), req.user.id);
+    res.redirect(303, '/cuenta#gemini');
+  });
+
   app.get(['/index.txt', '/b/:board.txt', '/b/:board/archivo.txt', '/h/:id.txt', '/normas.txt'], (req, res) => {
     const ruta = req.path === '/index.txt' ? '/' : req.path.replace(/\.txt$/, '');
     const bloques = documento(req, ruta);
@@ -1142,6 +1244,7 @@ export function createApp({
     db.prepare('DELETE FROM rechazos WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM reports WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM notificaciones WHERE user_id = ? OR post_id IN (SELECT id FROM posts WHERE user_id = ?)').run(userId, userId);
+    db.prepare('DELETE FROM gemini_llaves WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM guardados WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
     db.prepare("UPDATE users SET identidad = 'borrada:' || id, role = 'user', ban_reason = NULL WHERE id = ?").run(userId);
@@ -1169,7 +1272,8 @@ export function createApp({
         WHERE p.user_id = ? AND p.status != 'removed' AND (t.visible = 1 OR t.op_post_id = p.id)
         GROUP BY t.id ORDER BY ultima DESC LIMIT 100`)
       .all(req.user.id);
-    enviar(res, { titulo: 'Cuenta', indexar: false, cuerpo: V.cuenta(res.locals.ctx, { suspendida: suspendido(req.user), mias }) });
+    const llaves = db.prepare('SELECT huella, created_at, ultimo_uso FROM gemini_llaves WHERE user_id = ? ORDER BY created_at').all(req.user.id);
+    enviar(res, { titulo: 'Cuenta', indexar: false, aviso: req.query.aviso, cuerpo: V.cuenta(res.locals.ctx, { suspendida: suspendido(req.user), mias, llaves, geminiUrl }) });
   });
 
   app.post('/cuenta/borrar', (req, res) => {

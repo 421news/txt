@@ -36,6 +36,7 @@ async function montar({ google = googleFalso, sombra = null } = {}) {
     adminEmails: ['mod@gmail.com'],
     now: () => reloj.t,
     sombra,
+    geminiUrl: 'gemini://prueba',
   });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -86,6 +87,7 @@ async function montar({ google = googleFalso, sombra = null } = {}) {
     avanzar: (seg) => (reloj.t += seg * 1000),
     base,
     documento: app.locals.documento,
+    gemini: app.locals.gemini,
     cerrar: () => server.close(),
   };
 }
@@ -675,6 +677,90 @@ test('cápsula Gemini: portada, publicación, 51 y host ajeno', async (t) => {
   assert.ok((await pedir('gemini://localhost/%E0')).startsWith('59'));
   assert.ok((await pedir('gemini://localhost/%ZZ')).startsWith('59'));
   assert.ok((await pedir('gemini://localhost/')).startsWith('20'), 'la cápsula sigue viva');
+});
+
+test('Gemini: vincular un certificado con un código, responder y publicar en pasos', async (t) => {
+  const { execFileSync } = await import('node:child_process');
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const tls = await import('node:tls');
+  const { crearCapsula } = await import('../src/gemini.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-'));
+  const certificado = (nombre) => {
+    execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-days', '1',
+      '-subj', `/CN=${nombre}`, '-keyout', path.join(dir, `${nombre}-k.pem`), '-out', path.join(dir, `${nombre}-c.pem`)], { stdio: 'ignore' });
+    return { cert: fs.readFileSync(path.join(dir, `${nombre}-c.pem`)), key: fs.readFileSync(path.join(dir, `${nombre}-k.pem`)) };
+  };
+  const servidor = certificado('localhost');
+  const cliente = certificado('bob');
+
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Libros', cuerpo: 'hola' } });
+
+  const capsula = crearCapsula({ documento: s.documento, escritura: s.gemini, baseUrl: 'https://prueba', ...servidor, hosts: ['localhost'] });
+  await new Promise((r) => capsula.listen(0, '127.0.0.1', r));
+  t.after(() => capsula.close());
+  const port = capsula.address().port;
+  const pedir = (url, conCert = true) => new Promise((resolve, reject) => {
+    const c = tls.connect({ host: '127.0.0.1', port, servername: 'localhost', rejectUnauthorized: false, ...(conCert ? cliente : {}) }, () => c.write(`${url}\r\n`));
+    let d = '';
+    c.on('data', (x) => (d += x)).on('end', () => resolve(d)).on('error', reject);
+  });
+
+  // La lectura sigue igual y ofrece escribir; la versión texto no.
+  assert.ok((await pedir('gemini://localhost/h/1')).includes('=> /h/1/responder Responder'));
+  assert.ok(!(await s.texto('/h/1.txt')).includes('/responder'));
+  // Sin certificado: 60. Con uno sin vincular: un código, nunca se publica.
+  assert.ok((await pedir('gemini://localhost/h/1/responder', false)).startsWith('60'));
+  const sinVincular = await pedir('gemini://localhost/h/1/responder?hola');
+  const codigo = sinVincular.match(/TXT-[A-Z0-9]{6}/)[0];
+  assert.ok(sinVincular.startsWith('20') && sinVincular.includes('https://prueba/cuenta#gemini'));
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM posts').get().n, 1);
+  assert.equal((await pedir('gemini://localhost/h/1/responder')).match(/TXT-[A-Z0-9]{6}/)[0], codigo, 'mismo código mientras está vigente');
+
+  // Vincular desde la web: un código inventado no sirve; el bueno sí, una sola vez.
+  const bob = await s.entrar('bob');
+  assert.match((await s.pedir('/cuenta/gemini', { sesion: bob, datos: { codigo: 'TXT-AAAAAA' } })).headers.get('location'), /gemini-invalido/);
+  assert.match((await s.pedir('/cuenta/gemini', { sesion: bob, datos: { codigo: codigo.toLowerCase() } })).headers.get('location'), /gemini-ok/);
+  assert.match((await s.pedir('/cuenta/gemini', { sesion: ana, datos: { codigo } })).headers.get('location'), /gemini-invalido/);
+  assert.ok((await s.texto('/cuenta', bob)).includes('Desvincular'));
+
+  // Responder: 10 pide el texto; con el texto, publica como bob y redirige con 30.
+  assert.ok((await pedir('gemini://localhost/h/1/responder')).startsWith('10 '));
+  const r = await pedir(`gemini://localhost/h/1/responder?${encodeURIComponent('desde gemini, ¿se ve?')}`);
+  assert.equal(r.trim(), 'gemini://localhost/h/1'.replace(/^/, '30 '));
+  const post = s.db.prepare('SELECT * FROM posts ORDER BY id DESC LIMIT 1').get();
+  assert.equal(post.body, 'desde gemini, ¿se ve?');
+  assert.equal(post.user_id, s.db.prepare("SELECT user_id FROM gemini_llaves").get().user_id);
+  // Mismos límites que la web: otra respuesta enseguida no pasa.
+  assert.ok((await pedir(`gemini://localhost/h/1/responder?otra`)).includes('Esperá'));
+
+  // Publicar en pasos: sección → asunto → mensaje.
+  s.avanzar(60);
+  assert.ok((await pedir('gemini://localhost/publicar')).includes('=> /publicar/musica Música'));
+  assert.ok((await pedir('gemini://localhost/publicar/musica')).startsWith('10 '));
+  assert.equal((await pedir('gemini://localhost/publicar/musica?Discos%20nuevos')).trim(), '30 gemini://localhost/publicar/musica/mensaje');
+  assert.ok((await pedir('gemini://localhost/publicar/musica/mensaje')).startsWith('10 Discos nuevos'));
+  s.filtro.decision = 'reject';
+  const rechazo = await pedir('gemini://localhost/publicar/musica/mensaje?malo');
+  assert.ok(rechazo.includes('no cumple las normas') && !rechazo.includes('ataca'));
+  s.filtro.decision = 'approve';
+  const hecho = await pedir('gemini://localhost/publicar/musica/mensaje?Recomienden%20algo');
+  assert.match(hecho.trim(), /^30 gemini:\/\/localhost\/h\/\d+$/);
+  const hilo = s.db.prepare("SELECT * FROM threads WHERE board = 'musica'").get();
+  assert.equal(hilo.subject, 'Discos nuevos');
+
+  // Suspendido: no escribe. Borrar la cuenta borra la llave.
+  s.db.prepare("UPDATE users SET banned_until = ? WHERE id = ?").run(9e15, post.user_id);
+  s.avanzar(60);
+  assert.ok((await pedir('gemini://localhost/h/1/responder?sigo')).includes('No se publicó'));
+  s.db.prepare("UPDATE users SET banned_until = NULL WHERE id = ?").run(post.user_id);
+  await s.pedir('/cuenta/borrar', { sesion: bob, datos: { confirmar: '1' } });
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM gemini_llaves').get().n, 0);
+  assert.ok((await pedir('gemini://localhost/h/1/responder')).includes('TXT-'), 'vuelve a pedir vincular');
 });
 
 test('auditoría: texto y Gemini no dejan pasar controles ni sintaxis del usuario; /tema no redirige afuera', async (t) => {

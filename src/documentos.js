@@ -6,7 +6,8 @@
 //
 // Los links llevan una `ruta` lógica del sitio (/h/12, /b/cultura?pagina=2). Cada traductor la
 // convierte en su dirección: https://…/h/12.txt en texto plano, /h/12 dentro de la cápsula Gemini.
-// Los que solo tienen sentido en la web (publicar, entrar) van con `web: true`.
+// Los que solo tienen sentido en la web (publicar, entrar) van con `web: true`. Un bloque con
+// `solo: 'gemini'` o `solo: 'texto'` sale únicamente en ese formato (en Gemini se puede escribir).
 
 import { BOARDS, boardBySlug } from './config.js';
 import { NORMAS } from './normas.js';
@@ -24,8 +25,10 @@ const sinSpoilers = (texto) => texto.replace(/\[spoiler\][\s\S]*?\[\/spoiler\]/g
 function encabezado(siteName) {
   return [
     t(1, `${siteName} · foro de texto de 421`),
-    p('Solo texto, pseudoanónimo y moderado. Para publicar o responder, entrá desde la web.'),
+    { ...p('Solo texto, pseudoanónimo y moderado. Para publicar o responder, entrá desde la web.'), solo: 'texto' },
+    { ...p('Solo texto, pseudoanónimo y moderado. Para escribir desde acá, tu programa de Gemini tiene que usar un certificado vinculado a una cuenta de txt (la primera vez te da un código para pegar en la web).'), solo: 'gemini' },
     { tipo: 'menu', items: [link('/', 'Portada'), ...BOARDS.map((b) => link(`/b/${b.slug}`, b.nombre)), link('/normas', 'Normas')] },
+    { ...link('/publicar', 'Publicar'), solo: 'gemini' },
     sep(),
   ];
 }
@@ -71,6 +74,7 @@ export function docHilo({ siteName, thread, board, posts }) {
   ];
   if (thread.archived) bloques.push(p('Publicación archivada: se puede leer pero ya no acepta respuestas.'));
   else if (thread.locked) bloques.push(p('Publicación cerrada: llegó al límite de respuestas.'));
+  if (!thread.archived && !thread.locked) bloques.push({ ...link(`/h/${thread.id}/responder`, 'Responder'), solo: 'gemini' });
   bloques.push(link(`/h/${thread.id}`, 'Responder en la web', true));
   for (const post of posts) {
     bloques.push(sep());
@@ -131,7 +135,7 @@ const limpiarBloque = (b) => ({ ...b, texto: limpio(b.texto), items: b.items?.ma
 
 export function aTexto(bloques, { baseUrl, ancho = 78 }) {
   const salida = [];
-  for (const b of bloques.map(limpiarBloque)) {
+  for (const b of bloques.filter((b) => b.solo !== 'gemini').map(limpiarBloque)) {
     if (b.tipo === 'titulo') {
       const texto = b.nivel === 1 ? b.texto.toUpperCase() : b.texto;
       salida.push('', texto, (b.nivel === 3 ? '-' : '=').repeat(Math.min(ancho, texto.length)));
@@ -154,7 +158,7 @@ export function aTexto(bloques, { baseUrl, ancho = 78 }) {
 export function aGemtext(bloques, { baseUrl }) {
   const salida = [];
   const destino = (l) => (l.web ? `${baseUrl}${l.ruta}` : l.ruta);
-  for (const b of bloques.map(limpiarBloque)) {
+  for (const b of bloques.filter((b) => b.solo !== 'texto').map(limpiarBloque)) {
     if (b.tipo === 'titulo') salida.push('', `${'#'.repeat(b.nivel)} ${b.texto}`);
     else if (b.tipo === 'parrafo' || b.tipo === 'detalle') salida.push(b.texto);
     else if (b.tipo === 'cita') salida.push(`> ${b.texto}`);

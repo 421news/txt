@@ -11,7 +11,7 @@ Sin imágenes, sin likes, sin seguidores, sin algoritmo. Las publicaciones se or
 - **Moderado antes de publicar.** Cada mensaje pasa por un filtro con [Claude](https://www.anthropic.com/claude) antes de aparecer. Si tiene dudas, lo mira una persona. Además, cualquiera puede reportar y hay moderadores.
 - **Tolerancia cero** con el abuso infantil, el abuso sexual y la violencia explícita: la cuenta se suspende en el acto.
 - **Casi sin JavaScript.** Tres scripts propios y chicos: uno actualiza las publicaciones en vivo, otro evita el doble envío al publicar y guarda un borrador de lo que estás escribiendo, para que recargar no lo borre, y otro cambia entre tema claro y oscuro sin recargar la página. Sin ellos, el sitio funciona igual.
-- **También en texto plano y en Gemini.** Cualquier página se puede leer como `.txt` (y con `curl`), y hay una cápsula Gemini de solo lectura.
+- **También en texto plano y en Gemini.** Cualquier página se puede leer como `.txt` (y con `curl`), y hay una cápsula Gemini desde la que también se puede publicar y responder, con un certificado de cliente vinculado a una cuenta (la primera vez da un código para pegar en la web).
 
 Las normas completas están en [txt.421.news/normas](https://txt.421.news/normas).
 
@@ -27,7 +27,7 @@ Node 20 · Express 5 · SQLite (`better-sqlite3`) · HTML armado en el servidor 
 | `src/views.js` · `src/html.js` | Plantillas HTML con escape automático. |
 | `src/format.js` | Texto de un mensaje a HTML: `>cita`, `>>123` y `[spoiler]`. Escapa todo primero. |
 | `src/documentos.js` | Las páginas de lectura como documentos neutros, que se escriben en texto plano o en gemtext. |
-| `src/gemini.js` | La cápsula Gemini de solo lectura. |
+| `src/gemini.js` | La cápsula Gemini. Para escribir pide un certificado de cliente vinculado a una cuenta; lo que se publica pasa por el mismo filtro y los mismos límites que la web. |
 | `src/google.js` | Login con Google (OAuth con PKCE), sin librerías. |
 | `public/` | CSS, los tres scripts (`vivo.js`, `formularios.js`, `tema.js`) e íconos. |
 
