@@ -47,10 +47,6 @@
       // El CSS esconde el botón tocado y muestra el otro: el foco del teclado pasa al que quedó. Sin
       // preventScroll, focus() lleva la página hasta la posición original de la barra fija (arriba).
       if (document.activeElement === link) [...link.parentElement.children].find((a) => a !== link)?.focus({ preventScroll: true });
-    } else if (!tema) {
-      // "Usar el tema del sistema" (en el pie) ya no hace falta.
-      if (link.previousElementSibling?.tagName === 'BR') link.previousElementSibling.remove();
-      link.remove();
     }
   });
 })();

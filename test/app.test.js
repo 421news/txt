@@ -546,7 +546,7 @@ test('tema claro/oscuro por cookie, sin JavaScript', async (t) => {
   assert.equal(r.headers.get('location'), '/normas');
   const cookie = r.headers.getSetCookie()[0].split(';')[0];
   const claro = await (await s.pedir('/normas', { cookie })).text();
-  assert.ok(claro.includes('data-tema="claro"') && claro.includes('Usar el tema del sistema'));
+  assert.ok(claro.includes('data-tema="claro"'));
 
   assert.equal((await s.pedir('/tema?t=oscuro&volver=//evil.com')).headers.get('location'), '/');
 });

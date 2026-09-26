@@ -160,8 +160,7 @@ ${aviso && Object.hasOwn(AVISOS, aviso) ? html`<p class="aviso">${AVISOS[aviso]}
 ${cuerpo}
 </main>
 ${barraAbajo(ctx)}
-<footer class="pie"><a href="/normas">Normas</a> · <a href="/formato">Formato</a> · <a href="/texto">Versión texto</a> · <a href="/terminos">Términos</a> · <a href="/privacidad">Privacidad</a> · <a href="mailto:admin@421.news">admin@421.news</a>${ctx.codigoUrl ? html` · <a href="${ctx.codigoUrl}">Código fuente</a> (AGPLv3)` : ''}
-${tema ? html`<br><a href="/tema?t=auto&amp;volver=${encodeURIComponent(ruta)}" rel="nofollow">Usar el tema del sistema</a>` : ''}</footer>
+<footer class="pie"><a href="/normas">Normas</a> · <a href="/formato">Formato</a> · <a href="/texto">Versión texto</a> · <a href="/terminos">Términos</a> · <a href="/privacidad">Privacidad</a>${ctx.codigoUrl ? html` · <a href="${ctx.codigoUrl}">Código fuente</a> (AGPLv3)` : ''}</footer>
 </body>
 </html>`}`;
 }
