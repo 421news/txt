@@ -12,7 +12,8 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
-    "probar-moderacion": "node scripts/probar-moderacion.js"
+    "probar-moderacion": "node scripts/probar-moderacion.js",
+    "fixture": "node scripts/fixture.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",
