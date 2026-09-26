@@ -1081,13 +1081,31 @@ export function createApp({
 
   // --- Moderación ----------------------------------------------------------------------------
 
+  // Dónde se escribió un mensaje, para moderarlo con contexto: la publicación, los mensajes que cita
+  // (>>N) y los últimos 3 anteriores. Incluye texto de mensajes ya retirados: es solo para mods.
+  function contextoMod(threadId, cuerpo, creado, propio = null) {
+    if (!threadId) return null;
+    const hilo = q.hilo.get(threadId);
+    if (!hilo) return null;
+    const ids = [...new Set([...String(cuerpo).matchAll(/>>(\d+)/g)].map((m) => Number(m[1])))].slice(0, 5);
+    const citados = ids.map((id) => q.post.get(id)).filter((p) => p && p.thread_id === threadId);
+    const previos = db
+      .prepare(`SELECT id, body, status FROM posts WHERE thread_id = ? AND created_at < ? AND id != ? AND status = 'published'
+        ORDER BY id DESC LIMIT 3`)
+      .all(threadId, creado, propio ?? -1)
+      .filter((p) => !ids.includes(p.id))
+      .reverse();
+    return { hilo: { id: hilo.id, subject: hilo.subject }, citados, previos };
+  }
+
   app.get('/mod', (req, res) => {
     if (!esMod(req.user)) return noEncontrado(res);
-    const nombrar = (p) => ({ ...p, board_nombre: boardBySlug(p.board)?.nombre ?? p.board });
+    const nombrar = (p) => ({ ...p, board_nombre: boardBySlug(p.board)?.nombre ?? p.board, contexto: contextoMod(p.thread_id, p.body, p.created_at, p.id) });
     const graves = db
-      .prepare(`SELECT r.id, r.user_id, r.body, r.subject, r.rule, r.reason, r.grave, r.created_at, u.banned_until
+      .prepare(`SELECT r.id, r.user_id, r.board, r.thread_id, r.body, r.subject, r.rule, r.reason, r.grave, r.created_at, u.banned_until
         FROM rechazos r JOIN users u ON u.id = r.user_id WHERE r.grave IS NOT NULL ORDER BY r.id DESC LIMIT 50`)
-      .all();
+      .all()
+      .map((g) => ({ ...g, board_nombre: boardBySlug(g.board)?.nombre ?? g.board, contexto: contextoMod(g.thread_id, g.body, g.created_at) }));
     const cuerpo = V.mod(res.locals.ctx, { cola: q.colaMod.all().map(nombrar), reportados: q.reportadosMod.all().map(nombrar), graves });
     enviar(res, { titulo: 'Moderación', indexar: false, cuerpo });
   });

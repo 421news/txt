@@ -719,6 +719,31 @@ test('nuevo desde la última visita: se mantiene al recargar y se renueva tras u
   assert.ok(!(await s.texto('/h/1', ana)).includes('Desde tu visita anterior'));
 });
 
+test('mod: los mensajes a revisar y las suspensiones automáticas muestran de dónde salieron', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bob = await s.entrar('bob');
+  const mod = await s.entrar('mod');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Series', cuerpo: 'qué están viendo' } });
+  s.avanzar(40);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'mensaje de antes' } });
+  s.filtro.decision = 'reject';
+  s.filtro.grave = 'abuso';
+  s.avanzar(40);
+  await s.pedir('/h/1/responder', { sesion: bob, datos: { cuerpo: '>>1\nalgo grave' } });
+  s.filtro.grave = undefined;
+  s.filtro.decision = 'queue';
+  s.avanzar(40);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: '>>2\ndudoso' } });
+  const panel = await s.texto('/mod', mod);
+  const ctx = panel.match(/<details class="contexto-mod"[\s\S]*?<\/details>/g);
+  assert.equal(ctx.length, 2);
+  assert.ok(ctx.every((c) => c.includes('«Series»') && c.includes('href="/h/1"')));
+  assert.ok(ctx[0].includes('No.1</a> <strong>(citado)') && ctx[0].includes('mensaje de antes'));
+  assert.ok(ctx[1].includes('No.2</a> <strong>(citado)') && ctx[1].includes('qué están viendo'));
+});
+
 test('Gemini: vincular un certificado con un código, responder y publicar en pasos', async (t) => {
   const { execFileSync } = await import('node:child_process');
   const fs = await import('node:fs');

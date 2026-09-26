@@ -810,6 +810,18 @@ ${prueba
   : ''}`;
 }
 
+// Contexto de un mensaje en /mod: la publicación, lo que cita y los mensajes de justo antes.
+function contextoMod(c, seccion) {
+  if (!c) return '';
+  const linea = (p, etiqueta) => html`<li><a href="/h/${c.hilo.id}#p${p.id}">No.${p.id}</a>${etiqueta}: <span class="ctx-texto">${extracto(p.body, 400)}</span></li>`;
+  return html`<details class="contexto-mod" open><summary>Contexto: «${c.hilo.subject}»${seccion ? ` en ${seccion}` : ''} · <a href="/h/${c.hilo.id}">abrir</a></summary>
+  <ul>
+    ${c.previos.map((p) => linea(p, ''))}
+    ${c.citados.map((p) => linea(p, html` <strong>(citado${p.status === 'removed' ? ', retirado' : ''})</strong>`))}
+  </ul>
+</details>`;
+}
+
 function botonMod(ctx, id, accion, texto) {
   return html`<form method="post" action="/mod/p/${id}/${accion}" class="en-linea"><input type="hidden" name="_csrf" value="${ctx.csrf}"><button>${texto}</button></form>`;
 }
@@ -824,6 +836,7 @@ function itemMod(ctx, p) {
     <span>${p.eliminados} eliminados antes</span>
     <time>${fecha(p.created_at)}</time>
   </header>
+  ${contextoMod(p.contexto)}
   <div class="texto">${raw(formatear(p.body))}</div>
   <p class="ayuda">Filtro: ${filtro || '—'}</p>
   ${p.reportes ? html`<p class="ayuda">Reportes: ${p.reportes}</p>` : ''}
@@ -850,6 +863,8 @@ ${graves.length
   ? graves.map((g) => html`<article class="post en-revision">
   <header class="post-meta"><span>${graveTexto[g.grave] ?? g.grave}</span><time>${fecha(g.created_at)}</time></header>
   <p class="nota">${g.reason ?? ''}</p>
+  ${g.contexto ? '' : html`<p class="ayuda">Publicación nueva en ${g.board_nombre}.</p>`}
+  ${contextoMod(g.contexto, g.board_nombre)}
   <div class="texto">${g.subject ? html`<strong>${g.subject}</strong><br>` : ''}${g.body}</div>
   ${g.banned_until && g.banned_until > ctx.ahora
     ? html`<form method="post" action="/mod/u/${g.user_id}/levantar" class="en-linea"><input type="hidden" name="_csrf" value="${ctx.csrf}"><button>Levantar suspensión</button></form>`
