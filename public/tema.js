@@ -3,8 +3,14 @@
 // cambio se hace en el lugar: se escribe la misma cookie que pone el servidor y se cambia data-tema
 // en <html>, que es lo que el CSS ya mira. Si no carga, el link sigue funcionando como siempre.
 (() => {
-  // Los mismos colores que views.js pone en <meta name="theme-color"> (la barra del navegador).
-  const COLORES = { claro: '#f5eddc', oscuro: '#020803' };
+  // Los colores de cada tema (los de <meta name="theme-color">) vienen del servidor en data-colores
+  // (COLOR_TEMA de views.js): así el script conoce todos los temas, también los que se sumen después.
+  let COLORES = { claro: '#f5eddc', oscuro: '#020803' };
+  try {
+    COLORES = JSON.parse(document.currentScript?.dataset.colores || 'null') || COLORES;
+  } catch {
+    // si no se puede leer, quedan claro y oscuro
+  }
   const UN_ANIO = 365 * 86_400;
 
   function barraDelNavegador(tema) {
@@ -31,6 +37,11 @@
     if (tema) document.documentElement.dataset.tema = tema;
     else delete document.documentElement.dataset.tema;
     barraDelNavegador(tema);
+    // En Preferencias (Mi cuenta), la opción marcada pasa a ser la elegida.
+    for (const a of document.querySelectorAll('.temas a')) {
+      if (a === link) a.setAttribute('aria-current', 'true');
+      else a.removeAttribute('aria-current');
+    }
 
     if (link.closest('.boton-tema')) {
       // El CSS esconde el botón tocado y muestra el otro: el foco del teclado pasa al que quedó. Sin

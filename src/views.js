@@ -124,7 +124,7 @@ ${tema
   ? html`<meta name="theme-color" content="${COLOR_TEMA[tema]}">`
   : raw('<meta name="theme-color" content="#020803" media="(prefers-color-scheme: dark)">\n<meta name="theme-color" content="#f5eddc" media="(prefers-color-scheme: light)">')}
 <link rel="stylesheet" href="${estatico('style.css')}">
-<script src="${estatico('tema.js')}" defer></script>
+<script src="${estatico('tema.js')}" data-colores="${JSON.stringify(COLOR_TEMA)}" defer></script>
 ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
 </head>
 <body>
@@ -260,7 +260,7 @@ ${paginaActual < totalPaginas ? html`<a href="${url(paginaActual + 1)}" rel="nex
 export function portada(ctx, { hilos, vista, pagina: actual, paginas, form }) {
   return html`<h1 class="solo-lector">Últimas publicaciones</h1>
 ${formHilo(ctx, null, form)}
-<p class="ayuda">Pseudoanónimo y moderado: cada mensaje se revisa antes de publicarse. <a href="/normas">Normas</a>${ctx.user ? html` · <a href="/guardados">Guardados</a>` : ''}</p>
+<p class="ayuda">Pseudoanónimo y moderado: cada mensaje se revisa antes de publicarse. <a href="/normas">Normas</a></p>
 ${selectorVista(vista)}
 ${listado(ctx, hilos, vista, { conTablon: true })}
 ${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}`;
@@ -759,8 +759,10 @@ ${suspendida
 }
 
 function preferencias(tema) {
+  // "sistema" = sin cookie: sigue a prefers-color-scheme (claro u oscuro). Marcado = lo elegido de verdad.
+  const opciones = [['auto', 'sistema', !tema], ...Object.keys(COLOR_TEMA).map((v) => [v, v, tema === v])];
   return html`<h2>Preferencias</h2>
-<p class="temas">${Object.keys(COLOR_TEMA).map((valor) => html`<a href="/tema?t=${valor}&amp;volver=%2Fcuenta" rel="nofollow"${(tema ?? 'oscuro') === valor ? raw(' aria-current="true"') : ''}><span class="muestra muestra-${valor}" aria-hidden="true">Aa</span> ${valor}</a>`)}</p>`;
+<p class="temas">${opciones.map(([valor, nombre, actual]) => html`<a href="/tema?t=${valor}&amp;volver=%2Fcuenta" rel="nofollow"${actual ? raw(' aria-current="true"') : ''}><span class="muestra muestra-${valor}" aria-hidden="true">Aa</span> ${nombre}</a>`)}</p>`;
 }
 
 export function entrar(ctx, { google, prueba, error } = {}) {
