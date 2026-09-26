@@ -373,9 +373,17 @@ export function createApp({
     });
     next();
   });
+  // Lo que se pide con ?v=<hash> (estaticos.js) no cambia nunca: si cambia el archivo, cambia la
+  // dirección. Se guarda un año y el navegador no vuelve a preguntar. Lo que va sin hash (favicon,
+  // apple-touch-icon) sigue con un día, para que un cambio llegue.
+  // setHeaders corre solo si el archivo existe: un 404 no queda guardado un año.
   app.use(
     '/static',
-    express.static(fileURLToPath(new URL('../public', import.meta.url)), { maxAge: production ? '1d' : 0 }),
+    express.static(fileURLToPath(new URL('../public', import.meta.url)), {
+      cacheControl: false,
+      setHeaders: (res) =>
+        res.set('Cache-Control', !production ? 'public, max-age=0' : res.req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=86400'),
+    }),
   );
   app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 

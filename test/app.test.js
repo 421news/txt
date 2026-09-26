@@ -12,7 +12,7 @@ const googleFalso = {
   canjearCodigo: async ({ code }) => ({ sub: `sub-${code}`, email: `${code}@gmail.com` }),
 };
 
-async function montar({ google = googleFalso, sombra = null } = {}) {
+async function montar({ google = googleFalso, sombra = null, production = false } = {}) {
   const db = openDb(':memory:');
   const reloj = { t: 1_800_000_000_000 };
   const filtro = { decision: 'approve' };
@@ -37,6 +37,7 @@ async function montar({ google = googleFalso, sombra = null } = {}) {
     now: () => reloj.t,
     sombra,
     geminiUrl: 'gemini://prueba',
+    production,
   });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -532,6 +533,21 @@ test('actualización en vivo: /h/:id/nuevos trae solo lo posterior y respeta la 
   assert.ok(r.html.includes('algo nuevo') && !r.html.includes('arranque'));
   assert.equal(JSON.parse(await s.texto('/h/1/nuevos?desde=2')).html.trim(), '');
   assert.equal((await s.pedir('/h/99/nuevos?desde=0')).status, 404);
+});
+
+test('estáticos: con hash se guardan un año sin volver a preguntar; sin hash, un día', async (t) => {
+  const s = await montar({ production: true });
+  t.after(s.cerrar);
+  const css = (await s.texto('/normas')).match(/\/static\/style\.css\?v=[0-9a-f]+/)[0];
+  const cache = async (ruta) => (await s.pedir(ruta)).headers.get('cache-control');
+  assert.equal(await cache(css), 'public, max-age=31536000, immutable');
+  assert.equal(await cache('/static/favicon.svg'), 'public, max-age=86400');
+  const noExiste = await s.pedir('/static/no-existe.css?v=abc');
+  assert.equal(noExiste.status, 404);
+  assert.ok(!(noExiste.headers.get('cache-control') ?? '').includes('immutable'), 'un 404 no se guarda un año');
+  const dev = await montar();
+  t.after(dev.cerrar);
+  assert.equal((await dev.pedir(css)).headers.get('cache-control'), 'public, max-age=0');
 });
 
 test('tema claro/oscuro por cookie, sin JavaScript', async (t) => {
