@@ -75,6 +75,9 @@ const versionTexto = (ruta) => {
   return `${camino === '/' ? '/index' : camino}.txt${query ? `?${query}` : ''}`;
 };
 
+// Fondo de cada tema, para la barra del navegador en el celular. Tiene que coincidir con --fondo.
+const COLOR_TEMA = { oscuro: '#020803', claro: '#f5eddc', descanso: '#191a1d', monocromo: '#161616' };
+
 export const DESCRIPCION_SITIO =
   'Foro de texto de 421. Cultura, tecnología, juegos y vida real.';
 
@@ -117,7 +120,7 @@ ${ld}
 <link rel="icon" href="/static/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 ${tema
-  ? html`<meta name="theme-color" content="${tema === 'claro' ? '#f5eddc' : '#020803'}">`
+  ? html`<meta name="theme-color" content="${COLOR_TEMA[tema]}">`
   : raw('<meta name="theme-color" content="#020803" media="(prefers-color-scheme: dark)">\n<meta name="theme-color" content="#f5eddc" media="(prefers-color-scheme: light)">')}
 <link rel="stylesheet" href="${estatico('style.css')}">
 ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
@@ -672,6 +675,7 @@ ${mias.length
   ? html`<ul class="mias">${mias.map((t) => html`<li><a href="/h/${t.id}">${t.subject}</a> <span class="ayuda">· ${boardBySlug(t.board)?.nombre ?? t.board} · ${t.reply_count} respuestas · tu último mensaje: ${fecha(t.ultima)}</span></li>`)}</ul>`
   : html`<p class="ayuda">Todavía no publicaste nada.</p>`}
 <p class="ayuda">Solo lo ves vos. En cada publicación, tus mensajes aparecen marcados con "(vos)".</p>
+${preferencias(ctx.tema)}
 <h2>Borrar la cuenta</h2>
 <p>Se borra el texto de todos tus mensajes, los que el filtro te rechazó y los reportes que hiciste. Donde había un mensaje tuyo va a decir "Eliminado por su autor". Si abriste una publicación que tiene respuestas de otras personas, esas respuestas siguen ahí. No se puede deshacer.</p>
 ${error ? html`<p class="error">${error}</p>` : ''}
@@ -682,6 +686,11 @@ ${suspendida
   <label class="ayuda"><input type="checkbox" name="confirmar" value="1" required> Entiendo que se borra todo y no se puede deshacer.</label>
   <p><button>Borrar mi cuenta</button></p>
 </form>`}`;
+}
+
+function preferencias(tema) {
+  return html`<h2>Preferencias</h2>
+<p class="temas">${Object.keys(COLOR_TEMA).map((valor) => html`<a href="/tema?t=${valor}&amp;volver=%2Fcuenta" rel="nofollow"${(tema ?? 'oscuro') === valor ? raw(' aria-current="true"') : ''}><span class="muestra muestra-${valor}" aria-hidden="true">Aa</span> ${valor}</a>`)}</p>`;
 }
 
 export function entrar(ctx, { google, prueba, error } = {}) {

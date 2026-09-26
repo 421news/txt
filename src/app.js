@@ -9,7 +9,7 @@ import * as D from './documentos.js';
 import { decisionJev, PRECIO_JEV_POR_MTOK } from './sombra.js';
 
 const DIA = 86_400_000;
-const TEMAS = ['claro', 'oscuro'];
+const TEMAS = ['claro', 'oscuro', 'descanso', 'monocromo'];
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 function leerCookies(header = '') {
