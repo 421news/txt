@@ -888,6 +888,21 @@ export function createApp({
     responder(r);
   });
 
+  // Página para reportar un mensaje. Antes el formulario iba escondido en cada mensaje de la
+  // publicación: con sesión, un <select> con todas las normas por mensaje para algo que casi nadie abre.
+  app.get('/p/:id/reportar', (req, res) => {
+    const post = q.post.get(Number(req.params.id));
+    const thread = post?.status === 'published' ? hiloVisible(req, post.thread_id) : null;
+    if (!thread) return noEncontrado(res);
+    if (!req.user) return res.redirect(303, '/entrar');
+    const volver = `/h/${thread.id}#p${post.id}`;
+    // Las mismas reglas que el POST: el propio mensaje o una cuenta suspendida vuelven a la publicación.
+    if (post.user_id === req.user.id || suspendido(req.user)) return res.redirect(303, volver);
+    const autorOp = q.post.get(thread.op_post_id)?.user_id;
+    const p = { ...post, anon: anonId(post.user_id, thread.id), esAutorOp: post.user_id === autorOp };
+    enviar(res, { titulo: 'Reportar', indexar: false, cuerpo: V.reportar(res.locals.ctx, { post: p, thread, volver }) });
+  });
+
   app.post('/p/:id/reportar', (req, res) => {
     const post = q.post.get(Number(req.params.id));
     if (!post || post.status !== 'published') return noEncontrado(res);
