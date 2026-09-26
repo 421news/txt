@@ -308,15 +308,16 @@ export function createApp({
   // Solo páginas HTML vistas por personas: nada de /static, versión texto, la consulta en vivo ni bots.
   // "Nuevo" desde tu última visita (2026-09-25). Una cookie guarda `desde.ultima`: `ultima` es tu
   // último pedido y `desde`, dónde terminó la visita anterior. Una visita termina tras una hora sin
-  // entrar: así recargar o volver a los 10 minutos no borra las marcas. La primera vez no se marca
-  // nada (para quien llega, todo es nuevo). No se guarda nada en la base.
+  // entrar: así recargar o volver a los 10 minutos no borra las marcas. La primera vez, `desde` es ese
+  // momento: lo que se publique mientras navegás ya se marca. No se guarda nada en la base.
   const PAUSA_VISITA = 3_600_000;
   function visitaAnterior(req, res) {
     const [d, u] = String(leerCookies(req.headers.cookie).visita ?? '').split('.').map(Number);
     let desde = Number.isSafeInteger(d) && d > 0 ? d : null;
     const ultima = Number.isSafeInteger(u) && u > 0 && u <= now() ? u : null;
     if (req.method !== 'GET' || /^\/(static|auth)\/|\.(txt|xml)$|\/nuevos$|^\/(robots\.txt|favicon|tema)/.test(req.path)) return desde;
-    if (ultima && now() - ultima > PAUSA_VISITA) desde = ultima;
+    if (!ultima || !desde) desde = now(); // primera vez (o cookie de antes de este cambio, con desde = 0)
+    else if (now() - ultima > PAUSA_VISITA) desde = ultima;
     res.cookie('visita', `${desde ?? 0}.${now()}`, { httpOnly: true, sameSite: 'lax', secure: production, maxAge: 365 * DIA, path: '/' });
     res.set('Cache-Control', 'private, no-cache');
     return desde;

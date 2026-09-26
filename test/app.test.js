@@ -692,6 +692,11 @@ test('nuevo desde la última visita: se mantiene al recargar y se renueva tras u
   };
   let v = await galleta();
   assert.ok(!v.html.includes('marca-nuevo'));
+  // Lo que se publica durante esa primera visita ya se marca.
+  s.avanzar(40);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'mientras navegás' } });
+  v = await galleta(v.cookie);
+  assert.ok(v.html.includes('1 nueva'));
   s.avanzar(2 * 3600);
   await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Recién abierta', cuerpo: 'nueva' } });
   s.avanzar(40);
