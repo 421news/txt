@@ -306,6 +306,39 @@ export function createApp({
   const q_sumarVisitante = db.prepare('UPDATE visitas_dia SET visitantes = visitantes + 1 WHERE dia = ?');
   const q_activo = db.prepare('INSERT OR IGNORE INTO actividad_dia (dia, user_id) VALUES (?, ?)');
   // Solo páginas HTML vistas por personas: nada de /static, versión texto, la consulta en vivo ni bots.
+  // "Nuevo" desde tu última visita (2026-09-25). Una cookie guarda `desde.ultima`: `ultima` es tu
+  // último pedido y `desde`, dónde terminó la visita anterior. Una visita termina tras una hora sin
+  // entrar: así recargar o volver a los 10 minutos no borra las marcas. La primera vez no se marca
+  // nada (para quien llega, todo es nuevo). No se guarda nada en la base.
+  const PAUSA_VISITA = 3_600_000;
+  function visitaAnterior(req, res) {
+    const [d, u] = String(leerCookies(req.headers.cookie).visita ?? '').split('.').map(Number);
+    let desde = Number.isSafeInteger(d) && d > 0 ? d : null;
+    const ultima = Number.isSafeInteger(u) && u > 0 && u <= now() ? u : null;
+    if (req.method !== 'GET' || /^\/(static|auth)\/|\.(txt|xml)$|\/nuevos$|^\/(robots\.txt|favicon|tema)/.test(req.path)) return desde;
+    if (ultima && now() - ultima > PAUSA_VISITA) desde = ultima;
+    res.cookie('visita', `${desde ?? 0}.${now()}`, { httpOnly: true, sameSite: 'lax', secure: production, maxAge: 365 * DIA, path: '/' });
+    res.set('Cache-Control', 'private, no-cache');
+    return desde;
+  }
+
+  // Marca en un listado las publicaciones abiertas y las respuestas llegadas desde la visita anterior
+  // (sin contar las tuyas).
+  function marcarNovedades(req, hilos) {
+    if (!req.desde || !hilos.length) return hilos;
+    const yo = req.user?.id ?? -1;
+    const nuevas = new Map(
+      db.prepare(`SELECT thread_id, COUNT(*) AS n FROM posts WHERE thread_id IN (SELECT value FROM json_each(?))
+        AND created_at > ? AND status = 'published' AND user_id != ? GROUP BY thread_id`)
+        .all(JSON.stringify(hilos.map((t) => t.id)), req.desde, yo)
+        .map((f) => [f.thread_id, f.n]),
+    );
+    return hilos.map((t) => {
+      const esNuevo = t.op_created_at > req.desde && t.op_user_id !== yo;
+      return { ...t, esNuevo, nuevas: esNuevo ? 0 : (nuevas.get(t.id) ?? 0) };
+    });
+  }
+
   function contarVisita(req) {
     if (req.method !== 'GET') return;
     const ua = req.get('user-agent') ?? '';
@@ -370,6 +403,7 @@ export function createApp({
       }
     }
     contarVisita(req);
+    req.desde = visitaAnterior(req, res);
     // Las páginas con sesión llevan el token CSRF y datos propios: que ninguna caché intermedia las guarde.
     if (req.user) res.set('Cache-Control', 'private, no-store');
     const novedades = req.user ? q.contarNovedades.get(req.user.id).n : 0;
@@ -455,7 +489,7 @@ export function createApp({
     res.locals.ctx.ruta = rutaDeLaPagina(req, '/');
     const vista = vistaDe(req);
     const { pagina, paginas, porPagina, offset } = paginar(req, q.contarPortada.get().n, porPaginaDe(vista));
-    const filas = q.hilosPortada.all(porPagina, offset);
+    const filas = marcarNovedades(req, q.hilosPortada.all(porPagina, offset));
     const hilos = vista === 'lista' ? armarResumenes(filas) : filas;
     const cuerpo = V.portada(res.locals.ctx, { hilos, vista, pagina, paginas, form });
     enviar(res, { cuerpo, aviso: req.query.aviso, ...seoListado('/', vista, pagina) }, status);
@@ -466,7 +500,7 @@ export function createApp({
     const vista = vistaDe(req);
     const total = q.contarTablon.get(board.slug, archivo ? 1 : 0).n;
     const { pagina, paginas, porPagina, offset } = paginar(req, total, porPaginaDe(vista));
-    const filas = q.hilosTablon.all(board.slug, archivo ? 1 : 0, porPagina, offset);
+    const filas = marcarNovedades(req, q.hilosTablon.all(board.slug, archivo ? 1 : 0, porPagina, offset));
     const hilos = vista === 'lista' ? armarResumenes(filas) : filas;
     const cuerpo = V.tablon(res.locals.ctx, { board, hilos, vista, pagina, paginas, archivo, form });
     const ruta = archivo ? `/b/${board.slug}/archivo` : `/b/${board.slug}`;
@@ -496,6 +530,7 @@ export function createApp({
       p.anon = anonId(p.user_id, thread.id);
       p.esAutorOp = p.user_id === autorOp;
       p.esMio = !!req.user && p.user_id === req.user.id;
+      p.esNuevo = !!req.desde && p.created_at > req.desde && !p.esMio;
       if (p.status !== 'published') continue;
       for (const n of new Set([...p.body.matchAll(/>>(\d+)/g)].map((m) => Number(m[1])))) {
         if (n !== p.id && ids.has(n)) respuestas.set(n, [...(respuestas.get(n) ?? []), p.id]);

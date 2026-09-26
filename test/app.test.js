@@ -679,6 +679,41 @@ test('cápsula Gemini: portada, publicación, 51 y host ajeno', async (t) => {
   assert.ok((await pedir('gemini://localhost/')).startsWith('20'), 'la cápsula sigue viva');
 });
 
+test('nuevo desde la última visita: se mantiene al recargar y se renueva tras una hora sin entrar', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Viejo', cuerpo: 'hola' } });
+  // Primera visita de un lector sin cuenta: no se marca nada.
+  const galleta = async (cookie) => {
+    const r = await s.pedir('/', { cookie });
+    const nueva = r.headers.getSetCookie().find((c) => c.startsWith('visita='))?.split(';')[0];
+    return { html: await r.text(), cookie: nueva ?? cookie };
+  };
+  let v = await galleta();
+  assert.ok(!v.html.includes('marca-nuevo'));
+  s.avanzar(2 * 3600);
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Recién abierta', cuerpo: 'nueva' } });
+  s.avanzar(40);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'respuesta nueva' } });
+  s.avanzar(60);
+  // Vuelve después de más de una hora: la publicación nueva y la respuesta nueva se marcan.
+  v = await galleta(v.cookie);
+  assert.match(v.html, /Recién abierta<\/a><\/strong><\/a>|marca-nuevo">nuevo/);
+  assert.ok(v.html.includes('1 nueva'));
+  // Recargar enseguida no las borra.
+  s.avanzar(600);
+  v = await galleta(v.cookie);
+  assert.ok(v.html.includes('marca-nuevo">nuevo') && v.html.includes('1 nueva'));
+  assert.ok((await (await s.pedir('/h/1', { cookie: v.cookie })).text()).includes('title="Desde tu visita anterior"'));
+  // Tras otra hora sin entrar, lo que ya viste deja de ser nuevo.
+  s.avanzar(2 * 3600);
+  v = await galleta(v.cookie);
+  assert.ok(!v.html.includes('marca-nuevo'));
+  // Lo propio nunca se marca.
+  assert.ok(!(await s.texto('/h/1', ana)).includes('Desde tu visita anterior'));
+});
+
 test('Gemini: vincular un certificado con un código, responder y publicar en pasos', async (t) => {
   const { execFileSync } = await import('node:child_process');
   const fs = await import('node:fs');

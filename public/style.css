@@ -409,6 +409,7 @@ button.enlace::before, button.enlace::after { content: none; }
 .normas li::marker { color: var(--fosforo); }
 .normas strong { color: var(--fosforo); }
 .marca-vos { opacity: 0.8; }
+.marca-nuevo { color: var(--fosforo); font-weight: bold; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.05em; }
 .post-meta .citar { text-decoration: none; }
 .respuestas { font-size: 0.85em; opacity: 0.85; margin: 0.4rem 0 0; }
 .respuestas a { margin-right: 0.3em; }

@@ -173,7 +173,7 @@ function listaHilos(ctx, hilos, { conTablon = false } = {}) {
   if (!hilos.length) return html`<p class="ayuda">No hay publicaciones todavía.</p>`;
   return hilos.map(
     (t) => html`<section class="hilo-resumen">
-  <h2><a href="/h/${t.id}">${t.subject}</a>${conTablon
+  <h2><a href="/h/${t.id}">${t.subject}</a>${marcaNovedad(t)}${conTablon
     ? html` <a class="etiqueta" href="/b/${t.board}">${boardBySlug(t.board)?.nombre}</a>`
     : ''}</h2>
   ${vistaPost(ctx, t.op, { esOp: true, resumen: true })}
@@ -186,12 +186,19 @@ function listaHilos(ctx, hilos, { conTablon = false } = {}) {
   );
 }
 
+// "nuevo" si se abrió desde tu visita anterior, o "N nuevas" si tiene respuestas desde entonces.
+function marcaNovedad(t) {
+  if (t.esNuevo) return html` <span class="marca-nuevo">nuevo</span>`;
+  if (t.nuevas) return html` <span class="marca-nuevo">${t.nuevas === 1 ? '1 nueva' : `${t.nuevas} nuevas`}</span>`;
+  return '';
+}
+
 // Catálogo: una ficha por hilo (asunto, comienzo del mensaje, respuestas).
 function catalogo(hilos, { conTablon = false } = {}) {
   if (!hilos.length) return html`<p class="ayuda">No hay publicaciones todavía.</p>`;
   return html`<div class="catalogo">${hilos.map(
     (t) => html`<article class="ficha">
-    <div class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span class="solo-eww"> · </span><span>R: ${t.reply_count}</span></div>
+    <div class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span class="solo-eww"> · </span><span>${marcaNovedad(t)} R: ${t.reply_count}</span></div>
     <h2 class="ficha-titulo"><a class="ficha-asunto" href="/h/${t.id}"><strong>${t.subject}</strong></a></h2>
     <div class="ficha-texto">${extracto(textoPlano(t.op_body), 180)}</div>
     <div class="ficha-pie">${fecha(t.bumped_at)}${t.locked ? ' · cerrada' : ''}</div>
@@ -358,6 +365,7 @@ function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
     <span class="id" title="Identifica a la misma persona dentro de esta publicación">ID ${p.anon}</span>
     ${p.esAutorOp ? html`<span class="marca-op">OP</span>` : ''}
     ${p.esMio ? html`<span class="marca-vos" title="Solo lo ves vos">(vos)</span>` : ''}
+    ${p.esNuevo && !resumen ? html`<span class="marca-nuevo" title="Desde tu visita anterior">nuevo</span>` : ''}
     <time>${fecha(p.created_at)}</time>
     <a class="num" href="#p${p.id}">No.${p.id}</a>
     ${!resumen && ctx.user && p.status === 'published' && abiertoPara(p)
@@ -447,7 +455,7 @@ export function privacidad(ctx) {
   <li><strong>Las publicaciones que guardás</strong>, para que las encuentres en Guardados. Solo las ves vos.</li>
   <li><strong>Si escribís desde Gemini</strong>, la huella del certificado de tu programa de Gemini, vinculada a tu cuenta, y la fecha en que lo usaste por última vez. Podés desvincularlo en Mi cuenta.</li>
   <li><strong>Estadísticas de uso, sin rastreo.</strong> Contamos cuántas páginas se ven por día y cuántas personas distintas, sin cookies ni IP guardadas: para no contar dos veces a la misma persona usamos un código anónimo que se descarta al día siguiente. Si tenés cuenta, registramos qué días entraste, solo para saber cuántos usuarios activos hay.</li>
-  <li><strong>Una cookie de sesión</strong> (dura 30 días o hasta que salgas) y otra de un solo uso durante el ingreso con Google. No usamos cookies de publicidad ni de analítica.</li>
+  <li><strong>Una cookie de sesión</strong> (dura 30 días o hasta que salgas) otra de un solo uso durante el ingreso con Google y otra con la hora de tu última visita, que queda en tu navegador y sirve solo para marcar lo nuevo. No usamos cookies de publicidad ni de analítica.</li>
 </ul>
 
 <h2>Con quién se comparte</h2>
