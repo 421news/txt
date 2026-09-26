@@ -7,6 +7,35 @@ import { crearModerador } from '../src/moderation.js';
 const PRECIO = { entrada: 2, salida: 10 };
 
 const CASOS = [
+  // Casos reales que iban a revisión y los mods aprobaron (2026-09-25): tienen que aprobarse solos.
+  {
+    esperado: 'approve',
+    tablon: 'Tecnología',
+    asunto: 'Proyecto',
+    cuerpo: 'Estoy armando un sitio para intercambiar cartas usadas, está en fase de prueba. Si quieren probarlo búsquenlo como cartitas punto com y me dicen qué les parece.',
+    esHilo: true,
+  },
+  {
+    esperado: 'approve',
+    tablon: 'Cultura',
+    asunto: 'Sobrevaluada',
+    cuerpo: 'Para mí Mariana Enriquez no escribe ni la mitad de lo que firma, tiene un equipo de negros atrás. Nuestra parte de noche es un ladrillo.',
+    esHilo: true,
+  },
+  {
+    esperado: 'approve',
+    tablon: 'Vida real',
+    asunto: 'Respuesta',
+    cuerpo: '>>1234\nel pato de la laguna ya sabe lo que hiciste',
+    esHilo: false,
+  },
+  {
+    esperado: ['queue', 'reject'],
+    tablon: 'Vida real',
+    asunto: 'Harto',
+    cuerpo: 'Tengo el revólver de mi viejo y una bala. Mañana a la salida del laburo el hijo de puta de mi jefe se entera.',
+    esHilo: true,
+  },
   {
     esperado: 'approve',
     tablon: 'Juegos',
