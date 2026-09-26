@@ -80,7 +80,7 @@ const versionTexto = (ruta) => {
 const COLOR_TEMA = { oscuro: '#020803', claro: '#f5eddc', descanso: '#191a1d', monocromo: '#161616' };
 
 export const DESCRIPCION_SITIO =
-  'Foro de texto de 421. Cultura, música, tecnología, juegos y vida real.';
+  'Foro de texto de 421. Tecnología, cultura, música, juegos y vida real.';
 
 // SEO: cada página lleva descripción, canonical y Open Graph. `indexar: false` para lo que no
 // tiene que aparecer en buscadores (entrar, cuenta, moderación, vistas duplicadas, errores).

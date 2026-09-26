@@ -1,7 +1,7 @@
 export const BOARDS = [
+  { slug: 'tecnologia', nombre: 'Tecnología', descripcion: 'Software, hardware, internet y ciencia.' },
   { slug: 'cultura', nombre: 'Cultura', descripcion: 'Libros, cine, arte, historia e ideas.' },
   { slug: 'musica', nombre: 'Música', descripcion: 'Discos, bandas, recitales, escenas y lo que estás escuchando.' },
-  { slug: 'tecnologia', nombre: 'Tecnología', descripcion: 'Software, hardware, internet y ciencia.' },
   { slug: 'juegos', nombre: 'Juegos', descripcion: 'Videojuegos, juegos de mesa, rol y cartas.' },
   { slug: 'vida-real', nombre: 'Vida real', descripcion: 'Todo lo que NO sucede a través de una pantalla.' },
 ];
