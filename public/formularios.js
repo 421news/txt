@@ -104,7 +104,10 @@
       contador.textContent = `${formato.format(n)} / ${formato.format(maximo)}`;
       contador.classList.toggle('cerca', n > maximo * 0.9);
     };
-    campo.after(contador);
+    // En la fila de los botones, a la derecha (los botones van pegados al cuadro de texto).
+    const fila = campo.form?.querySelector('.botones');
+    if (fila) fila.append(contador);
+    else campo.after(contador);
     campo.addEventListener('input', actualizar);
     actualizar();
     contadores.set(campo, actualizar);

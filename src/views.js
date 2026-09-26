@@ -303,8 +303,8 @@ function formHilo(ctx, board, { asunto = '', cuerpo = '', tablon = '', error, ab
     </select></label>`}
     <label>Asunto <input type="text" name="asunto" maxlength="${LIMITS.asunto}" required value="${asunto}"></label>
     <label>Mensaje <textarea name="cuerpo" rows="8" maxlength="${LIMITS.cuerpo}" required>${cuerpo}</textarea></label>
-    <p class="ayuda">${AYUDA}</p>
     <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button></p>
+    <p class="ayuda">${AYUDA}</p>
   </form>
 </details>`;
 }
@@ -318,9 +318,9 @@ function formRespuesta(ctx, thread, { cuerpo = '', sage = false, error, previa, 
   ${error ? html`<p class="error">${error}</p>` : ''}
   <input type="hidden" name="_csrf" value="${ctx.csrf}">
   <textarea name="cuerpo" rows="6" maxlength="${LIMITS.cuerpo}" required aria-label="Mensaje"${previa ? raw(' autofocus') : ''}${cita ? html` data-cita="${cita}"` : ''}>${cuerpo}</textarea>
-  <p class="ayuda">${AYUDA}</p>
-  <label class="ayuda"><input type="checkbox" name="sage" value="1"${sage ? raw(' checked') : ''}> sage: responder sin subir la publicación</label>
   <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button></p>
+  <label class="ayuda"><input type="checkbox" name="sage" value="1"${sage ? raw(' checked') : ''}> sage: responder sin subir la publicación</label>
+  <p class="ayuda">${AYUDA}</p>
 </form>`;
 }
 

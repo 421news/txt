@@ -583,3 +583,7 @@ mark { background: var(--fosforo); color: var(--fondo); padding: 0 0.1rem; }
 .grafico text { fill: var(--tenue); font-size: 15px; font-family: var(--mono); }
 .tabla-datos { margin-top: 1.4rem; font-size: 0.85rem; }
 .tabla-datos table { width: 100%; overflow-x: auto; display: block; }
+
+/* Botones pegados al cuadro de texto; el contador, en la misma fila, a la derecha. */
+.form-post .botones { align-items: center; margin: 0.4rem 0 0.6rem; }
+.botones .contador { margin: 0 0 0 auto; }
