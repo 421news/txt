@@ -10,7 +10,7 @@ Sin imágenes, sin likes, sin seguidores, sin algoritmo. Las publicaciones se or
 - **Pseudoanónimo.** Se entra con una cuenta de Google, pero nadie la ve: en cada publicación aparecés con un ID distinto. La cuenta existe para poder suspender a quien no respete las normas. No se guarda el correo.
 - **Moderado antes de publicar.** Cada mensaje pasa por un filtro con [Claude](https://www.anthropic.com/claude) antes de aparecer. Si tiene dudas, lo mira una persona. Además, cualquiera puede reportar y hay moderadores.
 - **Tolerancia cero** con el abuso infantil, el abuso sexual y la violencia explícita: la cuenta se suspende en el acto.
-- **Casi sin JavaScript.** Dos scripts propios y chicos: uno actualiza las publicaciones en vivo y otro evita el doble envío al publicar y guarda un borrador de lo que estás escribiendo, para que cambiar el tema o recargar no lo borre. Sin ellos, el sitio funciona igual.
+- **Casi sin JavaScript.** Tres scripts propios y chicos: uno actualiza las publicaciones en vivo, otro evita el doble envío al publicar y guarda un borrador de lo que estás escribiendo, para que recargar no lo borre, y otro cambia entre tema claro y oscuro sin recargar la página. Sin ellos, el sitio funciona igual.
 - **También en texto plano y en Gemini.** Cualquier página se puede leer como `.txt` (y con `curl`), y hay una cápsula Gemini de solo lectura.
 
 Las normas completas están en [txt.421.news/normas](https://txt.421.news/normas).
@@ -29,7 +29,7 @@ Node 20 · Express 5 · SQLite (`better-sqlite3`) · HTML armado en el servidor 
 | `src/documentos.js` | Las páginas de lectura como documentos neutros, que se escriben en texto plano o en gemtext. |
 | `src/gemini.js` | La cápsula Gemini de solo lectura. |
 | `src/google.js` | Login con Google (OAuth con PKCE), sin librerías. |
-| `public/` | CSS, los dos scripts (`vivo.js`, `formularios.js`) e íconos. |
+| `public/` | CSS, los tres scripts (`vivo.js`, `formularios.js`, `tema.js`) e íconos. |
 
 ## Correrlo en tu máquina
 
