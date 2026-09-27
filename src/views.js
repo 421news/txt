@@ -26,6 +26,7 @@ const AVISOS = {
   cola: 'Tu mensaje quedó en revisión. Mientras tanto solo lo ves vos.',
   reportado: 'Gracias por el reporte. Lo va a revisar un moderador.',
   'cuenta-borrada': 'Tu cuenta y tus mensajes quedaron borrados.',
+  'mensaje-borrado': 'Tu mensaje quedó borrado.',
   'gemini-ok': 'Listo: ya podés escribir desde Gemini con ese certificado.',
   'gemini-invalido': 'El código no existe o venció (dura 15 minutos). Pedí uno nuevo desde Gemini.',
   'gemini-suspendida': 'Mientras dure la suspensión no se pueden vincular certificados.',
@@ -362,7 +363,7 @@ const abiertoPara = (p) => p.abierto !== false;
 
 function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
   if (p.status === 'removed') {
-    // Cuerpo vacío = lo borró su autor al borrar la cuenta (ver borrarCuenta en app.js).
+    // Cuerpo vacío = lo borró su autor, solo o al borrar la cuenta (ver borrarMensaje y borrarCuenta en app.js).
     const quien = p.body === '' ? 'su autor' : 'moderación';
     return html`<article class="post respuesta retirado" id="p${p.id}"><p>No.${p.id} · Eliminado por ${quien}.</p></article>`;
   }
@@ -378,7 +379,9 @@ function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
     <a class="num" href="#p${p.id}">No.${p.id}</a>
     ${p.sage ? html`<span class="sage">sage</span>` : ''}
     ${!resumen && ctx.user && p.status === 'published'
-      ? html`<a class="reportar" href="/p/${p.id}/reportar" rel="nofollow">Reportar</a>`
+      ? p.esMio
+        ? html`<a class="reportar" href="/p/${p.id}/borrar" rel="nofollow">Borrar</a>`
+        : html`<a class="reportar" href="/p/${p.id}/reportar" rel="nofollow">Reportar</a>`
       : ''}
   </header>
   ${p.status === 'queued' ? html`<p class="nota">En revisión: por ahora solo lo ves vos.</p>` : ''}
@@ -402,6 +405,20 @@ ${vistaPost(ctx, post, { esOp: post.id === thread.op_post_id, resumen: true })}
   <label>Motivo <select name="motivo">${NORMAS.map((n) => html`<option value="${n.id}">${n.titulo}</option>`)}</select></label>
   <p class="botones"><button>Enviar reporte</button> <a href="${volver}">Cancelar</a></p>
 </form>`;
+}
+
+// Borrar un mensaje propio (/p/:id/borrar): el mensaje y la confirmación, o por qué todavía no se puede.
+export function borrar(ctx, { post, thread, volver, motivo }) {
+  return html`<h1>Borrar</h1>
+<p class="ayuda">En <a href="${volver}">${thread.subject}</a>. En su lugar queda "Eliminado por su autor"${post.id === thread.op_post_id ? ' y la publicación pasa a llamarse "(eliminada)"' : ''}.</p>
+${vistaPost(ctx, post, { esOp: post.id === thread.op_post_id, resumen: true })}
+${motivo
+  ? html`<p class="nota">${motivo}</p><p class="botones"><a href="${volver}">Volver</a></p>`
+  : html`<form class="form-reportar" method="post" action="/p/${post.id}/borrar">
+  <input type="hidden" name="_csrf" value="${ctx.csrf}">
+  <p class="ayuda">No se puede deshacer.</p>
+  <p class="botones"><button>Sí, borrar</button> <a href="${volver}">Cancelar</a></p>
+</form>`}`;
 }
 
 // Guardar para leer después: un formulario (sin JavaScript) que guarda o saca de guardados.
