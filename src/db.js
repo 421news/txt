@@ -142,6 +142,8 @@ export function openDb(archivo) {
   // a la misma persona en el día; se vacía al cambiar de día. `actividad_dia`: qué cuentas usaron el
   // sitio cada día (para "usuarios activos").
   db.exec(`CREATE TABLE IF NOT EXISTS visitas_dia (dia TEXT PRIMARY KEY, vistas INTEGER NOT NULL DEFAULT 0, visitantes INTEGER NOT NULL DEFAULT 0)`);
+  // estimado = 1: día anterior al conteo propio, estimado a partir de los requests que registra Railway.
+  agregar('visitas_dia', 'estimado');
   db.exec(`CREATE TABLE IF NOT EXISTS visitantes_dia (dia TEXT NOT NULL, h TEXT NOT NULL, PRIMARY KEY (dia, h))`);
   db.exec(`CREATE TABLE IF NOT EXISTS actividad_dia (dia TEXT NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY (dia, user_id))`);
   // Historial de usuarios activos anterior a que se contaran las visitas (2026-09-25): se reconstruye con

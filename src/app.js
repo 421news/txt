@@ -1155,7 +1155,8 @@ export function createApp({
     const costo = Object.fromEntries(dias.map((d) => [d, Math.round(((claude[d] ?? 0) + (jev[d] ?? 0)) * 100) / 100]));
     const serie = (m) => dias.map((dia) => ({ dia, n: m[dia] ?? 0 }));
     const total = db.prepare("SELECT COUNT(*) AS n FROM users WHERE identidad NOT LIKE 'borrada:%'").get().n;
-    const desdeVisitas = db.prepare('SELECT MIN(dia) AS d FROM visitas_dia').get().d;
+    const desdeVisitas = db.prepare('SELECT MIN(dia) AS d FROM visitas_dia WHERE estimado IS NOT 1').get().d;
+    const estimados = db.prepare('SELECT dia FROM visitas_dia WHERE estimado = 1').all().map((r) => r.dia);
     enviar(res, {
       titulo: 'Estadísticas',
       indexar: false,
@@ -1163,6 +1164,7 @@ export function createApp({
         hoy,
         total,
         desdeVisitas,
+        estimados,
         series: {
           vistas: serie(vistas),
           visitantes: serie(visitantes),

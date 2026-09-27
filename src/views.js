@@ -628,7 +628,7 @@ function lineas(titulo, datos, formato = (n) => String(n)) {
   const puntos = datos
     .map((d, i) => {
       const [x, y] = pts[i];
-      return `<g class="punto"><rect x="${f(x - paso / 2)}" y="0" width="${f(paso)}" height="${base}" class="hit"/><circle cx="${f(x)}" cy="${f(y)}" r="3.5"/><title>${etiqueta(d.dia)}: ${formato(d.n)}</title></g>`;
+      return `<g class="punto"><rect x="${f(x - paso / 2)}" y="0" width="${f(paso)}" height="${base}" class="hit"/><circle cx="${f(x)}" cy="${f(y)}" r="3.5"/><title>${etiqueta(d.dia)}: ${formato(d.n, d.dia)}</title></g>`;
     })
     .join('');
   const grilla = [0.5, 1]
@@ -651,7 +651,7 @@ function lineas(titulo, datos, formato = (n) => String(n)) {
 
 const usd = (n) => `US$${n.toFixed(2)}`;
 
-export function estadisticas(ctx, { hoy, total, desdeVisitas, series }) {
+export function estadisticas(ctx, { hoy, total, desdeVisitas, estimados = [], series }) {
   const ultimo = (k) => series[k][series[k].length - 1]?.n ?? 0;
   const tiles = [
     ['Usuarios registrados', total],
@@ -665,15 +665,16 @@ export function estadisticas(ctx, { hoy, total, desdeVisitas, series }) {
   ];
   const nombres = { vistas: 'Visitas', visitantes: 'Visitantes únicos', activos: 'Usuarios activos', publicaciones: 'Publicaciones', respuestas: 'Respuestas', nuevas: 'Cuentas nuevas', costo: 'Costo de moderación (US$)' };
   const orden = ['vistas', 'visitantes', 'activos', 'publicaciones', 'respuestas', 'nuevas', 'costo'];
-  const formatos = { costo: usd };
+  const estimado = (n, dia) => (estimados.includes(dia) ? `~${n} (estimado)` : String(n));
+  const formatos = { costo: usd, vistas: estimado, visitantes: estimado };
   return html`<h1>Estadísticas</h1>
-<p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas. "Usuarios activos" = cuentas que entraron al sitio ese día; los días anteriores se reconstruyeron con inicios de sesión, mensajes y reportes. "Costo de moderación" = Claude + Jev, estimado a precio de lista con los tokens de cada mensaje (no incluye pruebas del filtro).</p>
+<p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas${estimados.length ? `, salvo ${estimados.join(', ')}, estimado con los requests que registró Railway (marcado con ~)` : ''}. "Usuarios activos" = cuentas que entraron al sitio ese día; los días anteriores se reconstruyeron con inicios de sesión, mensajes y reportes. "Costo de moderación" = Claude + Jev, estimado a precio de lista con los tokens de cada mensaje (no incluye pruebas del filtro).</p>
 <div class="tiles">${tiles.map(([k, v]) => html`<div class="tile"><span class="tile-n">${v.toLocaleString('es-AR')}</span><span class="tile-k">${k}</span></div>`)}</div>
 <div class="graficos">${orden.map((k) => lineas(nombres[k], series[k], formatos[k]))}</div>
 <details class="tabla-datos"><summary>Ver los números</summary>
 <table class="cruce"><tr><th>Día</th>${orden.map((k) => html`<th>${nombres[k]}</th>`)}</tr>
 ${series.vistas
-  .map((_, i) => html`<tr><td>${series.vistas[i].dia}</td>${orden.map((k) => html`<td>${(formatos[k] ?? String)(series[k][i].n)}</td>`)}</tr>`)
+  .map((_, i) => html`<tr><td>${series.vistas[i].dia}</td>${orden.map((k) => html`<td>${(formatos[k] ?? String)(series[k][i].n, series[k][i].dia)}</td>`)}</tr>`)
   .reverse()}</table>
 </details>`;
 }
