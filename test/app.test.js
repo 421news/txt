@@ -788,7 +788,7 @@ test('mod: los mensajes a revisar y las suspensiones automáticas muestran de d�
   assert.ok(ctx[1].includes('No.2</a> <strong>(citado)') && ctx[1].includes('qué están viendo'));
 });
 
-test('búsqueda sin spoilers, avisos de lo guardado, marca por ID y links en publicaciones largas', async (t) => {
+test('búsqueda sin spoilers, avisos de lo guardado y links en publicaciones largas', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
   const ana = await s.entrar('ana');
@@ -804,15 +804,9 @@ test('búsqueda sin spoilers, avisos de lo guardado, marca por ID y links en pub
   await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'qué carrera' } });
   const avisos = await s.texto('/respuestas', cami);
   assert.ok(avisos.includes('comentó en una publicación que guardaste'));
-  // Cada ID lleva siempre el mismo símbolo y color dentro de la publicación.
   s.avanzar(40);
   await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'otra más' } });
   const hilo = await s.texto('/h/1');
-  const marcas = [...hilo.matchAll(/<span class="id (c\d)"[^>]*><span class="id-marca" aria-hidden="true">(.)<\/span>ID ([^<]+)<\/span>/g)];
-  assert.equal(marcas.length, 3);
-  const deBea = marcas.filter((m) => m[3] === marcas[1][3]);
-  assert.equal(deBea.length, 2);
-  assert.equal(deBea[0][1] + deBea[0][2], deBea[1][1] + deBea[1][2]);
   // Con pocas respuestas no hay "Ir al final"; con muchas, sí.
   assert.ok(!hilo.includes('Ir al final'));
   for (let i = 0; i < 8; i++) {

@@ -357,14 +357,6 @@ ${listado(ctx, hilos, vista, {})}
 ${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}`;
 }
 
-// Símbolo y color que salen del ID (siempre los mismos para el mismo ID). 6 símbolos × 8 colores.
-const SIMBOLOS_ID = ['■', '▲', '●', '◆', '▼', '✦'];
-function marcaId(anon) {
-  let h = 0;
-  for (const c of String(anon)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return html`<span class="id c${h % 8}" title="Identifica a la misma persona dentro de esta publicación"><span class="id-marca" aria-hidden="true">${SIMBOLOS_ID[Math.floor(h / 8) % SIMBOLOS_ID.length]}</span>ID ${anon}</span>`;
-}
-
 // resumen: versión para listados (texto recortado, sin reportar, sin ancla propia).
 const abiertoPara = (p) => p.abierto !== false;
 
@@ -378,7 +370,7 @@ function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
   return html`<article class="${clases}" id="p${p.id}">
   <header class="post-meta">
     <span class="anon">Pseudoanónimo</span>
-    ${marcaId(p.anon)}
+    <span class="id" title="Identifica a la misma persona dentro de esta publicación">ID ${p.anon}</span>
     ${p.esAutorOp ? html`<span class="marca-op">OP</span>` : ''}
     ${p.esMio ? html`<span class="marca-vos" title="Solo lo ves vos">(vos)</span>` : ''}
     ${p.esNuevo && !resumen ? html`<span class="marca-nuevo" title="Desde tu visita anterior">nuevo</span>` : ''}

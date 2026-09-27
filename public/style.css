@@ -614,32 +614,3 @@ mark { background: var(--fosforo); color: var(--fondo); padding: 0 0.1rem; }
 .contexto-mod ul { margin: 0.4rem 0 0; padding-left: 1rem; }
 .contexto-mod li { margin: 0.2rem 0; }
 .ctx-texto { white-space: pre-wrap; }
-
-/* Marca de cada ID dentro de una publicación (2026-09-26): un símbolo y un color que salen del ID,
-   para seguir quién habla sin comparar letras. El símbolo sirve aunque no se distinga el color
-   (daltonismo, tema monocromo); el color nunca es verde, para no confundirse con el acento. */
-:root {
-  --id0: #ff7a7a; --id1: #ffb45c; --id2: #f2e05a; --id3: #5cd6ff;
-  --id4: #b48cff; --id5: #ff8fd8; --id6: #8fb4ff; --id7: #e8e8e8;
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-tema]) {
-    --id0: #b3261e; --id1: #a65400; --id2: #7a6a00; --id3: #006b8f;
-    --id4: #6a3fb5; --id5: #a3246e; --id6: #2a52a8; --id7: #333333;
-  }
-}
-:root[data-tema="claro"] {
-  --id0: #b3261e; --id1: #a65400; --id2: #7a6a00; --id3: #006b8f;
-  --id4: #6a3fb5; --id5: #a3246e; --id6: #2a52a8; --id7: #333333;
-}
-:root[data-tema="monocromo"] {
-  --id0: var(--tenue); --id1: var(--tenue); --id2: var(--tenue); --id3: var(--tenue);
-  --id4: var(--tenue); --id5: var(--tenue); --id6: var(--tenue); --id7: var(--tenue);
-}
-.post-meta .id-marca { font-weight: 700; font-size: 1.2em; line-height: 1; margin-right: 0.3em; }
-.post-meta .id.c0 { color: var(--id0); } .post-meta .id.c1 { color: var(--id1); }
-.post-meta .id.c2 { color: var(--id2); } .post-meta .id.c3 { color: var(--id3); }
-.post-meta .id.c4 { color: var(--id4); } .post-meta .id.c5 { color: var(--id5); }
-.post-meta .id.c6 { color: var(--id6); } .post-meta .id.c7 { color: var(--id7); }
-/* En la barra llena del mensaje inicial el color no se leería: queda el símbolo. */
-.post.op .post-meta .id { color: inherit; }
