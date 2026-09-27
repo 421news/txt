@@ -352,7 +352,7 @@ test('reportar: cada mensaje lleva un link y el formulario está en su propia p�
 
   // En la publicación, un link por mensaje y ningún formulario de reporte.
   const hilo = await s.texto('/h/1', ana);
-  assert.ok(hilo.includes('<a href="/p/2/reportar" rel="nofollow">Reportar</a>'));
+  assert.ok(hilo.includes('<a class="reportar" href="/p/2/reportar" rel="nofollow">Reportar</a>'));
   assert.ok(!hilo.includes('name="motivo"') && !hilo.includes('<details class="reportar"'));
 
   const pagina = await s.texto('/p/2/reportar', ana);

@@ -313,7 +313,7 @@ function formHilo(ctx, board, { asunto = '', cuerpo = '', tablon = '', error, ab
     </select></label>`}
     <label>Asunto <input type="text" name="asunto" maxlength="${LIMITS.asunto}" required value="${asunto}"></label>
     <label>Mensaje <textarea name="cuerpo" rows="8" maxlength="${LIMITS.cuerpo}" required>${cuerpo}</textarea></label>
-    <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button></p>
+    <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button> <a class="cancelar" href="${board ? `/b/${board.slug}` : '/'}">Cancelar</a></p>
     <p class="ayuda">${AYUDA}</p>
   </form>
 </details>`;
@@ -328,7 +328,7 @@ function formRespuesta(ctx, thread, { cuerpo = '', sage = false, error, previa, 
   ${error ? html`<p class="error">${error}</p>` : ''}
   <input type="hidden" name="_csrf" value="${ctx.csrf}">
   <textarea name="cuerpo" rows="6" maxlength="${LIMITS.cuerpo}" required aria-label="Mensaje"${previa ? raw(' autofocus') : ''}${cita ? html` data-cita="${cita}"` : ''}>${cuerpo}</textarea>
-  <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button></p>
+  <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button> <a class="cancelar" href="/h/${thread.id}">Cancelar</a></p>
   <label class="ayuda"><input type="checkbox" name="sage" value="1"${sage ? raw(' checked') : ''}> sage: responder sin subir la publicación</label>
   <p class="ayuda">${AYUDA}</p>
 </form>`;
@@ -367,18 +367,18 @@ function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
     ${p.esNuevo && !resumen ? html`<span class="marca-nuevo" title="Desde tu visita anterior">nuevo</span>` : ''}
     <time>${fecha(p.created_at)}</time>
     <a class="num" href="#p${p.id}">No.${p.id}</a>
-    ${!resumen && ctx.user && p.status === 'published' && abiertoPara(p)
-      ? html`<a class="citar" href="?cita=${p.id}#responder">Responder</a>`
-      : ''}
     ${p.sage ? html`<span class="sage">sage</span>` : ''}
+    ${!resumen && ctx.user && p.status === 'published'
+      ? html`<a class="reportar" href="/p/${p.id}/reportar" rel="nofollow">Reportar</a>`
+      : ''}
   </header>
   ${p.status === 'queued' ? html`<p class="nota">En revisión: por ahora solo lo ves vos.</p>` : ''}
   <div class="texto">${raw(formatear(resumen ? extracto(p.body, 800) : p.body, { idsLocales: ids }))}</div>
   ${!resumen && p.respuestas?.length
     ? html`<p class="respuestas">Respuestas: ${p.respuestas.map((n) => html`<a href="#p${n}">&gt;&gt;${n}</a> `)}</p>`
     : ''}
-  ${!resumen && ctx.user && p.status === 'published'
-    ? html`<p class="reportar"><a href="/p/${p.id}/reportar" rel="nofollow">Reportar</a></p>`
+  ${!resumen && ctx.user && p.status === 'published' && abiertoPara(p)
+    ? html`<p class="acciones-post"><a class="citar" href="?cita=${p.id}#responder">Responder</a></p>`
     : ''}
 </article>`;
 }

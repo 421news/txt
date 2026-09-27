@@ -237,9 +237,12 @@ code { color: var(--cita); }
 .spoiler { background: var(--fosforo); color: var(--fosforo); }
 .spoiler:hover, .spoiler:focus { background: transparent; color: inherit; }
 
-.reportar { margin: 0.4rem 0 0; font-size: 0.75rem; }
-.reportar a { color: var(--tenue); text-decoration: none; }
-.reportar a:hover { background: transparent; color: var(--fosforo); }
+.post-meta .reportar { color: var(--tenue); text-decoration: none; font-size: 0.85em; }
+.post-meta .reportar:hover { background: transparent; color: var(--fosforo); }
+.acciones-post { margin: 0.5rem 0 0; }
+.acciones-post .citar { color: var(--fosforo); text-decoration: none; font-weight: 700; }
+.acciones-post .citar:hover { text-decoration: underline; background: transparent; }
+.botones .cancelar { color: var(--tenue); margin-left: 0.25rem; }
 .form-reportar label { display: block; margin: 0.6rem 0; font-size: 0.8rem; color: var(--tenue); text-transform: uppercase; }
 .form-reportar .botones { align-items: center; }
 .form-reportar select { width: auto; margin-left: 0.4rem; }
