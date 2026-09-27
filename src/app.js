@@ -60,6 +60,7 @@ export function createApp({
   geminiUrl = null,
   codigoUrl = null,
   sombra = null,
+  jevActivo = false,
 }) {
   const app = express();
   app.disable('x-powered-by');
@@ -409,7 +410,7 @@ export function createApp({
     if (req.user) res.set('Cache-Control', 'private, no-store');
     const novedades = req.user ? q.contarNovedades.get(req.user.id).n : 0;
     const tema = TEMAS.includes(leerCookies(req.headers.cookie).tema) ? leerCookies(req.headers.cookie).tema : null;
-    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, tema, ruta: req.originalUrl, codigoUrl, sombraActiva: !!sombra };
+    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, tema, ruta: req.originalUrl, codigoUrl, sombraActiva: !!sombra, jevActivo };
     if (req.method === 'POST') {
       const origen = req.get('origin');
       if (origen && origen !== `${req.protocol}://${req.get('host')}`) return res.status(403).send('Origen no permitido');
@@ -901,9 +902,23 @@ export function createApp({
     claude_rule, claude_grave, jev_decision, jev_rule, jev_grave, respuestas, tokens, ms, error)
     VALUES (@t, @tablon, @es_hilo, @asunto, @cuerpo, @cd, @cr, @cg, @jd, @jr, @jg, @respuestas, @tokens, @ms, @error)`);
   function compararEnSombra(datos, v) {
-    if (!sombra) return;
     const base = { t: now(), tablon: datos.tablon, es_hilo: datos.esHilo ? 1 : 0, asunto: datos.asunto, cuerpo: datos.cuerpo,
       cd: v.decision, cr: v.rule ?? null, cg: v.grave ?? 'ninguna' };
+    // Filtro mixto: lo que dijo Jev ya viene en el veredicto. Si Jev lo aprobó solo, Claude no se
+    // consultó ('no-consultado'); se guarda igual para seguir su desempeño en /mod/sombra.
+    if (v.jev) {
+      const noConsultado = v.filtro === 'jev';
+      const fila = noConsultado ? { ...base, cd: 'no-consultado', cr: null, cg: null } : base;
+      try {
+        if (v.jev.error) guardarSombra.run({ ...fila, jd: null, jr: null, jg: null, respuestas: null, tokens: null, ms: null, error: v.jev.error });
+        else {
+          const j = decisionJev(v.jev.respuestas);
+          guardarSombra.run({ ...fila, jd: j.decision, jr: j.rule, jg: j.grave, respuestas: JSON.stringify(v.jev.respuestas), tokens: v.jev.tokens, ms: v.jev.ms, error: null });
+        }
+      } catch {}
+      return;
+    }
+    if (!sombra) return;
     sombra(datos)
       .then((r) => {
         const j = decisionJev(r.respuestas);
@@ -1159,13 +1174,13 @@ export function createApp({
       .prepare(`SELECT * FROM sombra_jev WHERE error IS NULL AND claude_grave != 'ninguna' AND jev_grave = 'ninguna' ORDER BY id DESC LIMIT 20`)
       .all();
     const desacuerdos = db
-      .prepare(`SELECT * FROM sombra_jev WHERE error IS NULL AND claude_decision != jev_decision ORDER BY id DESC LIMIT 40`)
+      .prepare(`SELECT * FROM sombra_jev WHERE error IS NULL AND claude_decision != 'no-consultado' AND claude_decision != jev_decision ORDER BY id DESC LIMIT 40`)
       .all();
     const costo = ((total.tokens ?? 0) * PRECIO_JEV_POR_MTOK) / 1e6;
     enviar(res, {
       titulo: 'Prueba Jev',
       indexar: false,
-      cuerpo: V.sombra(res.locals.ctx, { activa: !!sombra, total, cruce, gravesEscapados, desacuerdos, costo }),
+      cuerpo: V.sombra(res.locals.ctx, { activa: !!sombra || jevActivo, mixto: jevActivo, total, cruce, gravesEscapados, desacuerdos, costo }),
     });
   });
 

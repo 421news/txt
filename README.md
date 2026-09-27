@@ -8,7 +8,7 @@ Sin imágenes, sin likes, sin seguidores, sin algoritmo. Las publicaciones se or
 
 - **Solo texto.** Sin imágenes, videos ni links clickeables. Saca de raíz el material de abuso y hace que lo importante sea lo que se escribe.
 - **Pseudoanónimo.** Se entra con una cuenta de Google, pero nadie la ve: en cada publicación aparecés con un ID distinto. La cuenta existe para poder suspender a quien no respete las normas. No se guarda el correo.
-- **Moderado antes de publicar.** Cada mensaje pasa por un filtro con [Claude](https://www.anthropic.com/claude) antes de aparecer. Si tiene dudas, lo mira una persona. Además, cualquiera puede reportar y hay moderadores.
+- **Moderado antes de publicar.** Cada mensaje pasa primero por [Jev](https://typesafe.ai) (TypeSafe), que aprueba solo lo claramente limpio; todo lo demás lo decide [Claude](https://www.anthropic.com/claude). Jev nunca rechaza ni suspende por su cuenta. Si Claude tiene dudas, lo mira una persona. Además, cualquiera puede reportar y hay moderadores.
 - **Tolerancia cero** con el abuso infantil, el abuso sexual y la violencia explícita: la cuenta se suspende en el acto.
 - **Casi sin JavaScript.** Tres scripts propios y chicos: uno actualiza las publicaciones en vivo, otro evita el doble envío al publicar y guarda un borrador de lo que estás escribiendo, para que recargar no lo borre, y otro cambia entre tema claro y oscuro sin recargar la página. Sin ellos, el sitio funciona igual.
 - **También en texto plano y en Gemini.** Cualquier página se puede leer como `.txt` (y con `curl`), y hay una cápsula Gemini desde la que también se puede publicar y responder, con un certificado de cliente vinculado a una cuenta (la primera vez da un código para pegar en la web).
@@ -22,6 +22,7 @@ Node 20 · Express 5 · SQLite (`better-sqlite3`) · HTML armado en el servidor 
 | Archivo | Qué hace |
 |---|---|
 | `src/app.js` | Rutas, sesiones, CSRF, límites, publicación y moderación. Recibe la base, el moderador y el reloj inyectados, así se testea sin red. |
+| `src/sombra.js` | Jev: el primer paso del filtro mixto (`crearFiltroMixto`) y la comparación con Claude. |
 | `src/moderation.js` | El filtro con Claude: prompt, criterios y veredicto (`approve` / `queue` / `reject`, más los casos graves). |
 | `src/normas.js` | Las normas. Las usan la página `/normas`, el filtro y el menú de reportes. |
 | `src/views.js` · `src/html.js` | Plantillas HTML con escape automático. |

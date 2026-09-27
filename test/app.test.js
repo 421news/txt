@@ -964,7 +964,7 @@ test('prueba en sombra: guarda lo que diría Jev, no decide nada y un error no m
   assert.match(filas[1].error, /503/);
   const mod = await s.entrar('mod');
   const panel = await s.texto('/mod/sombra', mod);
-  assert.ok(panel.includes('Mensajes comparados: <strong>2</strong>') && panel.includes('1 con error'));
+  assert.ok(panel.includes('Mensajes que vio Jev: <strong>2</strong>') && panel.includes('1 con error'));
   assert.equal((await s.pedir('/mod/sombra', { sesion: ana })).status, 404);
   assert.ok((await s.texto('/privacidad')).includes('TypeSafe'));
 });

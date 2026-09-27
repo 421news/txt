@@ -459,8 +459,10 @@ export function privacidad(ctx) {
 
 <h2>Con quién se comparte</h2>
 <ul>
-  <li><strong>Anthropic</strong> (Estados Unidos): el texto de cada mensaje pasa por su modelo Claude para revisarlo antes de publicarse. Se envía solo el texto, sin datos de tu cuenta.</li>
-  ${ctx.sombraActiva ? html`<li><strong>TypeSafe</strong> (Estados Unidos), durante una prueba: el texto de cada mensaje también pasa por su modelo Jev, para comparar filtros. No decide nada ni recibe datos de tu cuenta.</li>` : ''}
+  <li><strong>Anthropic</strong> (Estados Unidos): ${ctx.jevActivo ? 'los mensajes que el primer filtro no ve claramente dentro de las normas pasan' : 'el texto de cada mensaje pasa'} por su modelo Claude para revisarlo antes de publicarse. Se envía solo el texto, sin datos de tu cuenta.</li>
+  ${ctx.jevActivo
+    ? html`<li><strong>TypeSafe</strong> (Estados Unidos): el texto de cada mensaje pasa primero por su modelo Jev. Si lo ve claramente dentro de las normas, se publica; si no, lo revisa Claude. Se envía solo el texto, sin datos de tu cuenta.</li>`
+    : ctx.sombraActiva ? html`<li><strong>TypeSafe</strong> (Estados Unidos), durante una prueba: el texto de cada mensaje también pasa por su modelo Jev, para comparar filtros. No decide nada ni recibe datos de tu cuenta.</li>` : ''}
   <li><strong>Google</strong>: gestiona el ingreso con tu cuenta.</li>
   <li><strong>Railway</strong> (Estados Unidos): aloja el sitio y la base de datos. Como cualquier servidor, registra datos técnicos de las conexiones, como la dirección IP.</li>
 </ul>
@@ -547,8 +549,11 @@ ${paginacion(pagina, paginas, { q: texto })}`
   : ''}`;
 }
 
-export function sombra(ctx, { activa, total, cruce, gravesEscapados, desacuerdos, costo }) {
-  const pct = (n) => (total.n ? `${Math.round((n / (total.n - (total.errores ?? 0) || 1)) * 100)}%` : '—');
+export function sombra(ctx, { activa, mixto = false, total, cruce, gravesEscapados, desacuerdos, costo }) {
+  // Solo se comparan los mensajes que vieron los dos: los que Jev aprobó solo ('no-consultado') no cuentan.
+  const comparados = cruce.filter((c) => c.c !== 'no-consultado').reduce((s, c) => s + c.n, 0);
+  const soloJev = cruce.filter((c) => c.c === 'no-consultado').reduce((s, c) => s + c.n, 0);
+  const pct = (n, de = comparados) => (de ? `${Math.round((n / de) * 100)}%` : '—');
   const coinciden = cruce.filter((c) => c.c === c.j).reduce((s, c) => s + c.n, 0);
   const fila = (r) => {
     const resp = r.respuestas ? JSON.parse(r.respuestas) : {};
@@ -562,10 +567,14 @@ export function sombra(ctx, { activa, total, cruce, gravesEscapados, desacuerdos
   <p class="res-fragmento">${extracto(r.cuerpo ?? '', 280)}</p>
   <p class="ayuda">${top}</p></li>`;
   };
-  return html`<h1>Prueba Jev (en sombra)</h1>
-<p class="ayuda">${activa ? 'Activa: cada mensaje que revisa Claude también lo revisa Jev, sin decidir nada.' : 'Apagada: falta TYPESAFE_API_KEY.'}</p>
+  return html`<h1>${mixto ? 'Filtro mixto: Jev + Claude' : 'Prueba Jev (en sombra)'}</h1>
+<p class="ayuda">${mixto
+  ? 'Activo: Jev mira cada mensaje primero y aprueba solo lo claramente limpio; todo lo demás lo decide Claude.'
+  : activa ? 'Activa: cada mensaje que revisa Claude también lo revisa Jev, sin decidir nada.' : 'Apagada: falta TYPESAFE_API_KEY.'}</p>
 <ul>
-  <li>Mensajes comparados: <strong>${total.n}</strong>${total.errores ? ` (${total.errores} con error de Jev)` : ''}</li>
+  <li>Mensajes que vio Jev: <strong>${total.n}</strong>${total.errores ? ` (${total.errores} con error de Jev, los decidió Claude)` : ''}</li>
+  ${soloJev ? html`<li>Aprobados por Jev sin consultar a Claude: <strong>${soloJev}</strong> (${pct(soloJev, total.n - (total.errores ?? 0))})</li>` : ''}
+  <li>Vistos por los dos: <strong>${comparados}</strong></li>
   <li>Coinciden en la decisión: <strong>${pct(coinciden)}</strong></li>
   <li>Graves que detectó Claude y a Jev se le escaparon: <strong>${gravesEscapados.length}</strong></li>
   <li>Costo de Jev hasta ahora: <strong>US$${costo.toFixed(4)}</strong> · demora promedio: ${total.ms ? Math.round(total.ms) : '—'} ms</li>
