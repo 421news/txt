@@ -1,0 +1,31 @@
+# Corre npm test en cada push y en cada PR, también en los forks.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+# Solo lee el código: no escribe en el repo ni usa secretos.
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      # Si falla una versión, las otras siguen, así se ve cuál se rompió.
+      fail-fast: false
+      matrix:
+        # 20 es la mínima que pide package.json; 22 y 24 son las LTS vigentes.
+        node-version: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      # Instala exactamente lo de package-lock.json y falla si no coincide con package.json.
+      - run: npm ci
+      - run: npm test

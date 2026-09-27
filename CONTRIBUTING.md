@@ -21,7 +21,7 @@ txt tiene principios que no se negocian. Estos PRs se van a cerrar aunque estén
 
 ## Cómo tiene que venir un PR
 
-1. **Que pasen los tests** (`npm test`) y que lo nuevo tenga su test. Los tests no usan red ni API: Google y Claude van simulados.
+1. **Que pasen los tests** (`npm test`) y que lo nuevo tenga su test. Los tests no usan red ni API: Google y Claude van simulados. Además corren solos en cada push y en cada PR.
 2. **Un cambio por PR**, con una descripción de qué hace y por qué.
 3. **El estilo del código de alrededor**: ES modules, sin dependencias nuevas salvo que hagan falta de verdad, y nombres y comentarios en castellano, como el resto.
 4. **Todo lo que se muestra se escapa.** El HTML se arma con `html```, que escapa solo; `raw()` es solo para lo que ya es seguro.
