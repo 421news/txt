@@ -82,9 +82,19 @@
     }
   });
 
-  window.addEventListener('pageshow', () => {
+  window.addEventListener('pageshow', (e) => {
     for (const form of document.querySelectorAll('form.form-post[data-enviado]')) {
       delete form.dataset.enviado;
+      // Volver atrás después de publicar traía la página guardada con el texto todavía escrito, y
+      // sincronizar() lo volvía a guardar como borrador. Si la página vuelve de la caché, el envío
+      // ya salió: el formulario se vacía (si el filtro lo rechazó, el texto está en la página siguiente).
+      if (e.persisted) {
+        for (const campo of campos(form)) {
+          if (campo.type === 'checkbox') campo.checked = false;
+          else if (campo.tagName !== 'SELECT') campo.value = '';
+        }
+        borrar(form);
+      }
       for (const boton of form.querySelectorAll('button')) {
         boton.disabled = false;
         if (boton.dataset.texto) boton.textContent = boton.dataset.texto;
@@ -179,6 +189,16 @@
     // Con texto largo, el campo mostraría el principio y la cita nueva quedaría escondida abajo.
     if (campo.selectionEnd === campo.value.length) campo.scrollTop = campo.scrollHeight;
     campo.dispatchEvent(new Event('input', { bubbles: true })); // contador y borrador
+  });
+
+  // Ctrl+Enter (Cmd+Enter en Mac) publica desde el mensaje, como tocar "Publicar".
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.target.tagName !== 'TEXTAREA') return;
+    const form = e.target.form;
+    if (!form || !form.classList.contains('form-post')) return;
+    e.preventDefault();
+    const publicar = form.querySelector('.botones button:not([name])');
+    if (publicar && !publicar.disabled) form.requestSubmit(publicar);
   });
 
   // "Cancelar": vacía el formulario y borra el borrador (si no, lo escrito seguía apareciendo en cada

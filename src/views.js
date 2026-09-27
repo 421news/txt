@@ -357,6 +357,14 @@ ${listado(ctx, hilos, vista, {})}
 ${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}`;
 }
 
+// Símbolo y color que salen del ID (siempre los mismos para el mismo ID). 6 símbolos × 8 colores.
+const SIMBOLOS_ID = ['■', '▲', '●', '◆', '▼', '✦'];
+function marcaId(anon) {
+  let h = 0;
+  for (const c of String(anon)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return html`<span class="id c${h % 8}" title="Identifica a la misma persona dentro de esta publicación"><span class="id-marca" aria-hidden="true">${SIMBOLOS_ID[Math.floor(h / 8) % SIMBOLOS_ID.length]}</span>ID ${anon}</span>`;
+}
+
 // resumen: versión para listados (texto recortado, sin reportar, sin ancla propia).
 const abiertoPara = (p) => p.abierto !== false;
 
@@ -370,7 +378,7 @@ function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
   return html`<article class="${clases}" id="p${p.id}">
   <header class="post-meta">
     <span class="anon">Pseudoanónimo</span>
-    <span class="id" title="Identifica a la misma persona dentro de esta publicación">ID ${p.anon}</span>
+    ${marcaId(p.anon)}
     ${p.esAutorOp ? html`<span class="marca-op">OP</span>` : ''}
     ${p.esMio ? html`<span class="marca-vos" title="Solo lo ves vos">(vos)</span>` : ''}
     ${p.esNuevo && !resumen ? html`<span class="marca-nuevo" title="Desde tu visita anterior">nuevo</span>` : ''}
@@ -425,13 +433,16 @@ export function hilo(ctx, { thread, board, posts, ids, form, guardado = false })
   const ultimo = posts.length ? posts[posts.length - 1].id : 0;
   // data-hilo/data-ultimo los usa /static/vivo.js para traer lo nuevo sin recargar. Sin JS, la
   // página funciona igual que siempre.
-  return html`${formGuardar(ctx, thread, guardado)}<p class="ayuda"><a href="/b/${board.slug}">← ${board.nombre}</a>${botonGuardar(ctx, thread, guardado)}</p>
+  // En las publicaciones largas, links para ir al final y volver arriba (sin JavaScript).
+  const larga = posts.length > 8;
+  return html`${formGuardar(ctx, thread, guardado)}<p class="ayuda" id="arriba"><a href="/b/${board.slug}">← ${board.nombre}</a>${botonGuardar(ctx, thread, guardado)}${larga ? html` · <a href="#fin">↓ Ir al final</a>` : ''}</p>
 <h1>${thread.subject}</h1>
 ${estado}
 <div id="posts"${abierto ? raw(` data-hilo="${thread.id}" data-ultimo="${ultimo}"`) : ''}>
 ${postsSueltos(ctx, { thread, posts, ids })}
 </div>
 <p id="vivo-aviso" class="ayuda" hidden></p>
+${larga ? html`<p class="ayuda" id="fin"><a href="#arriba">↑ Volver arriba</a></p>` : html`<span id="fin"></span>`}
 ${abierto ? formRespuesta(ctx, thread, { ...form, ids }) : ''}
 ${abierto ? html`<script src="${estatico('vivo.js')}" defer></script>` : ''}
 <script src="${estatico('citas.js')}" defer></script>`;
@@ -753,9 +764,9 @@ export function terminos(ctx) {
 }
 
 export function respuestas(ctx, { lista }) {
-  const tipo = { comentario: 'comentó en tu publicación', respuesta: 'te respondió' };
+  const tipo = { comentario: 'comentó en tu publicación', respuesta: 'te respondió', guardado: 'comentó en una publicación que guardaste' };
   return html`<h1>Respuestas</h1>
-<p class="ayuda">Comentarios en las publicaciones que abriste y mensajes que te citan con &gt;&gt;. Solo dentro del sitio: no mandamos mails ni notificaciones.</p>
+<p class="ayuda">Comentarios en las publicaciones que abriste o guardaste, y mensajes que te citan con &gt;&gt;. Solo dentro del sitio: no mandamos mails ni notificaciones.</p>
 ${lista.length
   ? html`<ul class="avisos">${lista.map(
       (n) => html`<li${n.leida ? '' : raw(' class="nueva"')}>
@@ -768,7 +779,7 @@ ${lista.length
 
 export function guardados(ctx, { lista }) {
   return html`<h1>Guardados</h1>
-<p class="ayuda">Publicaciones que guardaste para leer después. Solo las ves vos. Se guardan o se sacan con el botón "Guardar" de cada publicación.</p>
+<p class="ayuda">Publicaciones que guardaste para leer después. Solo las ves vos. Cuando alguien comenta en una, te avisa en Respuestas. Se guardan o se sacan con el botón "Guardar" de cada publicación.</p>
 ${lista.length
   ? html`<ul class="mias">${lista.map((t) => html`<li><a href="/h/${t.id}">${t.subject}</a> <span class="ayuda">· ${boardBySlug(t.board)?.nombre ?? t.board} · ${t.reply_count} respuestas · ${fecha(t.bumped_at)}${t.archived ? ' · archivada' : ''}</span></li>`)}</ul>`
   : html`<p>Todavía no guardaste nada.</p>`}`;

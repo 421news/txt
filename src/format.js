@@ -21,6 +21,9 @@ export function formatear(texto, { idsLocales = new Set() } = {}) {
 }
 
 // Texto sin marcas para las fichas del catálogo: tapa los spoilers y junta las líneas.
+// Lo tapado con [spoiler] fuera, para lo que no puede taparlo (el índice de búsqueda).
+export const sinSpoilers = (texto) => texto.replace(/\[spoiler\][\s\S]*?\[\/spoiler\]/g, '[spoiler]');
+
 export function textoPlano(texto) {
   return texto.replace(/\[spoiler\][\s\S]*?\[\/spoiler\]/g, '[spoiler]').replace(/\s+/g, ' ').trim();
 }

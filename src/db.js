@@ -1,3 +1,4 @@
+import { sinSpoilers } from './format.js';
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -99,7 +100,7 @@ CREATE TABLE IF NOT EXISTS notificaciones (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   post_id INTEGER NOT NULL REFERENCES posts (id),
-  tipo TEXT NOT NULL CHECK (tipo IN ('comentario', 'respuesta')),
+  tipo TEXT NOT NULL CHECK (tipo IN ('comentario', 'respuesta', 'guardado')),
   created_at INTEGER NOT NULL,
   leida INTEGER NOT NULL DEFAULT 0,
   UNIQUE (user_id, post_id)
@@ -121,6 +122,18 @@ export function openDb(archivo) {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
+  // Avisos de publicaciones guardadas (2026-09-26): el CHECK de `tipo` no se puede cambiar con ALTER,
+  // así que una base vieja se migra copiando la tabla.
+  const avisos = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'notificaciones'").get();
+  if (avisos && !avisos.sql.includes("'guardado'")) {
+    db.transaction(() => {
+      db.exec('ALTER TABLE notificaciones RENAME TO notificaciones_vieja');
+      db.exec('DROP INDEX IF EXISTS notificaciones_usuario');
+      db.exec(ESQUEMA);
+      db.exec('INSERT INTO notificaciones SELECT * FROM notificaciones_vieja');
+      db.exec('DROP TABLE notificaciones_vieja');
+    })();
+  }
   db.exec(ESQUEMA);
   const columnas = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
   if (!columnas.includes('identidad')) {
@@ -177,10 +190,15 @@ export function openDb(archivo) {
   // Sin tildes ni mayúsculas. Qué se muestra se decide al consultar (publicado y publicación visible),
   // así que acá alcanza con que el texto esté al día.
   db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS busqueda USING fts5(asunto, cuerpo, tokenize = 'unicode61 remove_diacritics 2')`);
+  // Lo que está entre [spoiler] no se indexa (2026-09-26): el fragmento de /buscar lo mostraba destapado.
+  db.function('sin_spoilers', { deterministic: true }, (t) => sinSpoilers(t ?? ''));
   db.exec(`INSERT INTO busqueda (rowid, asunto, cuerpo)
-    SELECT p.id, CASE WHEN t.op_post_id = p.id THEN t.subject ELSE '' END, p.body
+    SELECT p.id, CASE WHEN t.op_post_id = p.id THEN t.subject ELSE '' END, sin_spoilers(p.body)
     FROM posts p JOIN threads t ON t.id = p.thread_id
     WHERE p.id NOT IN (SELECT rowid FROM busqueda)`);
+  // Los ya indexados con el spoiler adentro (antes de ese cambio). Solo toca los que lo tienen.
+  db.exec(`UPDATE busqueda SET cuerpo = sin_spoilers(cuerpo) WHERE rowid IN (SELECT id FROM posts WHERE body LIKE '%[spoiler]%')
+    AND cuerpo LIKE '%[spoiler]%[/spoiler]%'`);
   return db;
 }
 

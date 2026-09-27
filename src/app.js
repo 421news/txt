@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { BOARDS, LIMITS, boardBySlug } from './config.js';
 import { NORMAS } from './normas.js';
 import * as V from './views.js';
-import { extracto, textoPlano } from './format.js';
+import { extracto, textoPlano, sinSpoilers } from './format.js';
 import * as D from './documentos.js';
 import { decisionJev, PRECIO_JEV_POR_MTOK } from './sombra.js';
 import { PRECIO_CLAUDE } from './moderation.js';
@@ -181,6 +181,10 @@ export function createApp({
     if (t.op_post_id !== p.id) {
       const autorOp = q.post.get(t.op_post_id)?.user_id;
       if (autorOp && autorOp !== p.user_id) insertar.run(autorOp, p.id, 'comentario', now());
+      // Quien guardó la publicación también se entera (si ya tenía aviso por este mensaje, no se repite).
+      for (const g of db.prepare('SELECT user_id FROM guardados WHERE thread_id = ? AND user_id != ?').all(t.id, p.user_id)) {
+        insertar.run(g.user_id, p.id, 'guardado', now());
+      }
     }
   }
 
@@ -239,7 +243,7 @@ export function createApp({
         cache_write_tokens: v.cache_write_tokens ?? null,
       }).lastInsertRowid,
     );
-    db.prepare("INSERT INTO busqueda (rowid, asunto, cuerpo) VALUES (?, '', ?)").run(id, cuerpo);
+    db.prepare("INSERT INTO busqueda (rowid, asunto, cuerpo) VALUES (?, '', ?)").run(id, sinSpoilers(cuerpo));
     return id;
   }
 

@@ -787,6 +787,65 @@ test('mod: los mensajes a revisar y las suspensiones automáticas muestran de d�
   assert.ok(ctx[1].includes('No.2</a> <strong>(citado)') && ctx[1].includes('qué están viendo'));
 });
 
+test('búsqueda sin spoilers, avisos de lo guardado, marca por ID y links en publicaciones largas', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  const cami = await s.entrar('cami');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'F1', cuerpo: 'ganó [spoiler]Colapinto[/spoiler] al final' } });
+  // La búsqueda no encuentra ni muestra lo tapado.
+  assert.ok(!(await s.texto('/buscar?q=Colapinto')).includes('Colapinto</mark>'));
+  assert.ok(!(await s.texto('/buscar?q=final')).match(/Colapinto/));
+  // Guardar avisa cuando otra persona comenta; a quien comenta, no.
+  await s.pedir('/h/1/guardar', { sesion: cami, datos: {} });
+  s.avanzar(40);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'qué carrera' } });
+  const avisos = await s.texto('/respuestas', cami);
+  assert.ok(avisos.includes('comentó en una publicación que guardaste'));
+  // Cada ID lleva siempre el mismo símbolo y color dentro de la publicación.
+  s.avanzar(40);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'otra más' } });
+  const hilo = await s.texto('/h/1');
+  const marcas = [...hilo.matchAll(/<span class="id (c\d)"[^>]*><span class="id-marca" aria-hidden="true">(.)<\/span>ID ([^<]+)<\/span>/g)];
+  assert.equal(marcas.length, 3);
+  const deBea = marcas.filter((m) => m[3] === marcas[1][3]);
+  assert.equal(deBea.length, 2);
+  assert.equal(deBea[0][1] + deBea[0][2], deBea[1][1] + deBea[1][2]);
+  // Con pocas respuestas no hay "Ir al final"; con muchas, sí.
+  assert.ok(!hilo.includes('Ir al final'));
+  for (let i = 0; i < 8; i++) {
+    s.avanzar(40);
+    await s.pedir('/h/1/responder', { sesion: i % 2 ? bea : cami, datos: { cuerpo: `mensaje ${i}` } });
+  }
+  const larga = await s.texto('/h/1');
+  assert.ok(larga.includes('href="#fin">↓ Ir al final') && larga.includes('id="fin"><a href="#arriba">'));
+});
+
+test('una base con la tabla de avisos vieja se migra sin perder avisos', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const Database = (await import('better-sqlite3')).default;
+  const archivo = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'avisos-')), 'vieja.db');
+  const nueva = openDb(archivo);
+  nueva.prepare("INSERT INTO users (identidad, created_at) VALUES ('google:1', 1)").run();
+  nueva.prepare("INSERT INTO threads (board, subject, created_at, bumped_at) VALUES ('cultura', 'x', 1, 1)").run();
+  nueva.prepare("INSERT INTO posts (thread_id, user_id, body, created_at, status) VALUES (1, 1, 'hola', 1, 'published')").run();
+  nueva.close();
+  // Se vuelve la tabla al esquema de antes (sin 'guardado' en el CHECK), con un aviso adentro.
+  const cruda = new Database(archivo);
+  cruda.exec(`DROP TABLE notificaciones; CREATE TABLE notificaciones (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    post_id INTEGER NOT NULL REFERENCES posts (id), tipo TEXT NOT NULL CHECK (tipo IN ('comentario', 'respuesta')), created_at INTEGER NOT NULL,
+    leida INTEGER NOT NULL DEFAULT 0, UNIQUE (user_id, post_id)); INSERT INTO notificaciones (user_id, post_id, tipo, created_at) VALUES (1, 1, 'comentario', 5);`);
+  cruda.close();
+  const db = openDb(archivo);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM notificaciones').get().n, 1);
+  db.prepare("UPDATE notificaciones SET tipo = 'guardado'").run();
+  assert.ok(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'notificaciones_usuario'").get());
+  db.close();
+});
+
 test('Gemini: vincular un certificado con un código, responder y publicar en pasos', async (t) => {
   const { execFileSync } = await import('node:child_process');
   const fs = await import('node:fs');
