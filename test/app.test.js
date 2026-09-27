@@ -626,6 +626,63 @@ test('tema: el script que lo cambia sin recargar va en todas las páginas y el b
   assert.ok((await js.text()).includes("a[href^=\"/tema?\"]"));
 });
 
+test('vista lista o catálogo por cookie, y el parámetro le gana', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Largo', cuerpo: 'inicio' } });
+
+  const sinCookie = await s.texto('/');
+  assert.ok(sinCookie.includes('class="catalogo"'), 'sin cookie manda el catálogo');
+  assert.ok(sinCookie.includes('href="/vista?v=lista&amp;volver=%2F"'), 'el selector lleva a /vista');
+
+  const puesta = (r) => r.headers.getSetCookie().find((c) => c.startsWith('vista='));
+  const r = await s.pedir('/vista?v=lista&volver=%2F');
+  assert.equal(r.status, 303);
+  assert.equal(r.headers.get('location'), '/');
+  const cookie = puesta(r).split(';')[0];
+  assert.equal(cookie, 'vista=lista');
+
+  // La elección se mantiene sin ?vista= en la URL, también en un tablón.
+  for (const [ruta, volver] of [['/', '%2F'], ['/b/cultura', '%2Fb%2Fcultura']]) {
+    const pagina = await (await s.pedir(ruta, { cookie })).text();
+    assert.ok(pagina.includes('class="hilo-resumen"'), `${ruta} en lista`);
+    assert.ok(!pagina.includes('class="catalogo"'), `${ruta} sin catálogo`);
+    assert.ok(pagina.includes(`href="/vista?v=catalogo&amp;volver=${volver}"`), `${ruta} vuelve a su propia ruta`);
+  }
+
+  // El parámetro gana, pero no guarda nada: un link compartido se ve como lo mandaron y la
+  // preferencia de quien lo abre queda como estaba.
+  assert.ok((await (await s.pedir('/?vista=catalogo', { cookie })).text()).includes('class="catalogo"'));
+  assert.ok((await (await s.pedir('/', { cookie })).text()).includes('class="hilo-resumen"'), 'el parámetro no pisó la cookie');
+
+  // Volver al catálogo también se guarda: no es lo mismo que no haber elegido nunca.
+  const vuelta = puesta(await s.pedir('/vista?v=catalogo&volver=%2F')).split(';')[0];
+  assert.equal(vuelta, 'vista=catalogo');
+  assert.ok((await (await s.pedir('/', { cookie: vuelta })).text()).includes('class="catalogo"'));
+
+  // Un valor fuera de la lista borra la cookie, y el volver sigue siendo solo del propio sitio.
+  assert.ok(puesta(await s.pedir('/vista?v=zzz&volver=%2F')).startsWith('vista=;'));
+  for (const malo of ['//evil.com', '/\\evil.com', 'https://evil.com', '/\tevil']) {
+    assert.equal((await s.pedir(`/vista?v=lista&volver=${encodeURIComponent(malo)}`)).headers.get('location'), '/', malo);
+  }
+});
+
+test('vista: la cookie es httpOnly y la elección se ve en Mi cuenta', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  // A diferencia de `tema`, ningún script del cliente la toca.
+  const puesta = (r) => r.headers.getSetCookie().find((c) => c.startsWith('vista='));
+  assert.match(puesta(await s.pedir('/vista?v=lista&volver=%2F')), /httponly/i);
+
+  const ana = await s.entrar('ana');
+  const sinElegir = await s.texto('/cuenta', ana);
+  assert.ok(/href="\/vista\?v=catalogo[^"]*"[^>]*aria-current="true"/.test(sinElegir), 'sin cookie, catálogo es lo marcado');
+  assert.ok(sinElegir.includes('href="/vista?v=lista&amp;volver=%2Fcuenta"'));
+  const conLista = await (await s.pedir('/cuenta', { cookie: `${ana.cookie}; vista=lista` })).text();
+  assert.ok(/href="\/vista\?v=lista[^"]*"[^>]*aria-current="true"/.test(conLista), 'con cookie, lista es lo marcado');
+});
+
 test('tolerancia cero: un caso grave rechaza, suspende la cuenta y un mod la puede levantar', async (t) => {
   const s = await montar();
   t.after(s.cerrar);

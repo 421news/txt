@@ -11,6 +11,7 @@ import { PRECIO_CLAUDE } from './moderation.js';
 
 const DIA = 86_400_000;
 const TEMAS = ['claro', 'oscuro', 'descanso', 'monocromo'];
+const VISTAS = ['catalogo', 'lista'];
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 function leerCookies(header = '') {
@@ -322,7 +323,7 @@ export function createApp({
     const [d, u] = String(leerCookies(req.headers.cookie).visita ?? '').split('.').map(Number);
     let desde = Number.isSafeInteger(d) && d > 0 ? d : null;
     const ultima = Number.isSafeInteger(u) && u > 0 && u <= now() ? u : null;
-    if (req.method !== 'GET' || /^\/(static|auth)\/|\.(txt|xml)$|\/nuevos$|^\/(robots\.txt|favicon|tema)/.test(req.path)) return desde;
+    if (req.method !== 'GET' || /^\/(static|auth)\/|\.(txt|xml)$|\/nuevos$|^\/(robots\.txt|favicon|tema|vista)/.test(req.path)) return desde;
     if (!ultima || !desde) desde = now(); // primera vez (o cookie de antes de este cambio, con desde = 0)
     else if (now() - ultima > PAUSA_VISITA) desde = ultima;
     res.cookie('visita', `${desde ?? 0}.${now()}`, { httpOnly: true, sameSite: 'lax', secure: production, maxAge: 365 * DIA, path: '/' });
@@ -423,8 +424,9 @@ export function createApp({
     // Las páginas con sesión llevan el token CSRF y datos propios: que ninguna caché intermedia las guarde.
     if (req.user) res.set('Cache-Control', 'private, no-store');
     const novedades = req.user ? q.contarNovedades.get(req.user.id).n : 0;
-    const tema = TEMAS.includes(leerCookies(req.headers.cookie).tema) ? leerCookies(req.headers.cookie).tema : null;
-    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, tema, ruta: req.originalUrl, codigoUrl, sombraActiva: !!sombra, jevActivo };
+    const cookies = leerCookies(req.headers.cookie);
+    const tema = TEMAS.includes(cookies.tema) ? cookies.tema : null;
+    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, tema, vista: vistaDe(req), ruta: req.originalUrl, codigoUrl, sombraActiva: !!sombra, jevActivo };
     if (req.method === 'POST') {
       const origen = req.get('origin');
       if (origen && origen !== `${req.protocol}://${req.get('host')}`) return res.status(403).send('Origen no permitido');
@@ -463,8 +465,14 @@ export function createApp({
     return { pagina, paginas, porPagina, offset: (pagina - 1) * porPagina };
   }
 
-  // Catálogo por defecto; ?vista=lista muestra cada hilo con sus últimas respuestas.
-  const vistaDe = (req) => (req.query.vista === 'lista' ? 'lista' : 'catalogo');
+  // Catálogo por defecto; la vista de lista muestra cada hilo con sus últimas respuestas.
+  // El parámetro ?vista= le gana a la cookie: un link compartido se ve como lo mandaron, sin
+  // cambiarle la preferencia a quien lo abre. Guardarla es cosa de /vista y de nadie más.
+  const vistaDe = (req) => {
+    if (VISTAS.includes(req.query.vista)) return req.query.vista;
+    const guardada = leerCookies(req.headers.cookie).vista;
+    return VISTAS.includes(guardada) ? guardada : 'catalogo';
+  };
   const porPaginaDe = (vista) => (vista === 'lista' ? LIMITS.hilosPorPagina : LIMITS.hilosPorPaginaCatalogo);
 
   // Cada hilo de un listado lleva su mensaje inicial, las últimas respuestas y cuántas quedaron afuera.
@@ -798,17 +806,33 @@ export function createApp({
     enviar(res, { titulo: 'Versión texto', canonical: '/texto', descripcion: 'Cómo leer txt en texto puro: desde el navegador con .txt o desde la terminal con curl.', cuerpo: V.texto(res.locals.ctx, { gemini: geminiUrl }) }),
   );
 
+  // Adónde vuelve un cambio de preferencia: solo rutas del propio sitio. "/\\evil.com" pasaba el
+  // chequeo viejo y el navegador lo lee como //evil.com (auditoría 2026-09-25). Una sola copia para
+  // /tema y /vista: dos que se desincronizan es exactamente cómo vuelve ese agujero.
+  function volverSeguro(req) {
+    const volver = String(req.query.volver ?? '/');
+    const seguro = /^\/(?![\/\\])[^\s\\]*$/.test(volver) && new URL(volver, baseUrl).origin === new URL(baseUrl).origin;
+    return seguro ? volver : '/';
+  }
+
   // Tema claro/oscuro sin JavaScript: una cookie que el servidor lee para marcar <html data-tema>.
   // "auto" la borra y el sitio vuelve a seguir la preferencia del sistema.
   app.get('/tema', (req, res) => {
     const t = String(req.query.t ?? '');
     if (TEMAS.includes(t)) res.cookie('tema', t, { sameSite: 'lax', secure: production, maxAge: 365 * DIA, path: '/' });
     else res.clearCookie('tema', { path: '/' });
-    // Solo rutas del propio sitio. "/\\evil.com" pasaba el chequeo viejo y el navegador lo lee
-    // como //evil.com (auditoría 2026-09-25).
-    const volver = String(req.query.volver ?? '/');
-    const seguro = /^\/(?![\/\\])[^\s\\]*$/.test(volver) && new URL(volver, baseUrl).origin === new URL(baseUrl).origin;
-    res.redirect(303, seguro ? volver : '/');
+    res.redirect(303, volverSeguro(req));
+  });
+
+  // Lista o catálogo en los listados, con la misma idea que /tema. Se guardan las dos opciones, no
+  // solo "lista": si algún día cambia el default, quien eligió catálogo lo conserva. Un valor fuera
+  // de la lista borra la cookie y vuelve al default.
+  app.get('/vista', (req, res) => {
+    const v = String(req.query.v ?? '');
+    // httpOnly, al revés que `tema`: ningún script del cliente la lee ni la escribe.
+    if (VISTAS.includes(v)) res.cookie('vista', v, { httpOnly: true, sameSite: 'lax', secure: production, maxAge: 365 * DIA, path: '/' });
+    else res.clearCookie('vista', { path: '/' });
+    res.redirect(303, volverSeguro(req));
   });
 
   app.get('/robots.txt', (req, res) => {
