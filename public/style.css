@@ -259,7 +259,6 @@ code { color: var(--cita); }
 .acciones-post { margin: 0.5rem 0 0; }
 .acciones-post .citar { color: var(--fosforo); text-decoration: none; font-weight: 700; }
 .acciones-post .citar:hover { text-decoration: underline; background: transparent; }
-.botones .cancelar { color: var(--tenue); margin-left: 0.25rem; }
 .form-reportar label { display: block; margin: 0.6rem 0; font-size: 0.8rem; color: var(--tenue); text-transform: uppercase; }
 .form-reportar .botones { align-items: center; }
 .form-reportar select { width: auto; margin-left: 0.4rem; }
@@ -569,7 +568,7 @@ button.enlace::before, button.enlace::after { content: none; }
 .vista-previa { border: 1px dashed var(--fosforo); padding: 0.4rem 0.9rem 0.6rem; margin: 0.6rem 0 1rem; background: var(--caja); }
 .vista-previa h2 { margin: 0.3rem 0 0.4rem; }
 .botones { display: flex; flex-wrap: wrap; gap: 0.6rem; }
-button.secundario { border-style: dashed; opacity: 0.85; }
+button.secundario, a.boton.secundario { border-style: dashed; opacity: 0.85; }
 .contador { margin: 0.15rem 0 0; font-size: 0.72rem; color: var(--tenue); text-align: right; }
 .contador.cerca { color: var(--aviso); }
 
