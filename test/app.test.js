@@ -24,6 +24,8 @@ async function montar({ google = googleFalso, sombra = null, production = false,
     input_tokens: 1,
     output_tokens: 1,
     grave: filtro.grave ?? 'ninguna',
+    jev: filtro.jev,
+    filtro: filtro.filtro,
   });
   const app = createApp({
     db,
@@ -1054,6 +1056,17 @@ test('lupa: busca sin tildes, incluye el archivo, no muestra lo oculto y no romp
   assert.ok((await s.texto('/')).includes('href="/buscar"'));
 });
 
+test('cookies: una mal formada no descarta la sesión ni las preferencias válidas', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const r = await s.pedir('/cuenta', { cookie: `rota=%E0%A4%A; ${ana.cookie}; tema=claro` });
+  assert.equal(r.status, 200);
+  const pagina = await r.text();
+  assert.ok(pagina.includes('data-tema="claro"'));
+  assert.ok(pagina.includes('action="/salir"'));
+});
+
 test('prueba en sombra: guarda lo que diría Jev, no decide nada y un error no molesta', async (t) => {
   let llamadas = 0;
   const sombra = async () => {
@@ -1081,6 +1094,64 @@ test('prueba en sombra: guarda lo que diría Jev, no decide nada y un error no m
   assert.ok(panel.includes('Mensajes que vio Jev: <strong>2</strong>') && panel.includes('1 con error'));
   assert.equal((await s.pedir('/mod/sombra', { sesion: ana })).status, 404);
   assert.ok((await s.texto('/privacidad')).includes('TypeSafe'));
+});
+
+test('comparación del filtro mixto: conserva el resultado de Jev o su error junto al veredicto', async (t) => {
+  for (const caso of [
+    { nombre: 'Jev aprobó solo', filtro: 'jev', jev: { respuestas: { grave: { choice: 'ninguna' }, respeto: { noul: 0.01 } }, tokens: 50, ms: 10 }, claude: 'no-consultado', decision: 'approve', error: null },
+    { nombre: 'Claude decidió', filtro: 'claude', jev: { respuestas: { grave: { choice: 'ninguna' }, respeto: { noul: 0.8 } }, tokens: 50, ms: 10 }, claude: 'approve', decision: 'reject', error: null },
+    { nombre: 'Jev falló', filtro: 'claude', jev: { error: 'TypeSafe 503' }, claude: 'approve', decision: null, error: 'TypeSafe 503' },
+  ]) {
+    await t.test(caso.nombre, async (t) => {
+      const s = await montar();
+      t.after(s.cerrar);
+      Object.assign(s.filtro, { jev: caso.jev, filtro: caso.filtro });
+      const ana = await s.entrar('ana');
+      const r = await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Prueba', cuerpo: 'hola' } });
+      assert.equal(r.status, 303);
+      const fila = s.db.prepare('SELECT claude_decision, jev_decision, error FROM sombra_jev').get();
+      assert.deepEqual(fila, { claude_decision: caso.claude, jev_decision: caso.decision, error: caso.error });
+    });
+  }
+});
+
+test('prueba en sombra: una excepción síncrona del proveedor se guarda y no impide publicar', async (t) => {
+  const s = await montar({ sombra: () => { throw new Error('falló antes de devolver una promesa'); } });
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const r = await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Prueba', cuerpo: 'hola' } });
+  assert.equal(r.status, 303);
+  assert.equal(s.db.prepare('SELECT error FROM sombra_jev').get().error, 'falló antes de devolver una promesa');
+  assert.equal(s.db.prepare('SELECT visible FROM threads').get().visible, 1);
+});
+
+test('comparaciones: una falla de escritura se registra y no impide publicar', async (t) => {
+  const jev = { respuestas: { grave: { choice: 'ninguna' }, respeto: { noul: 0.01 } }, tokens: 50, ms: 10 };
+  for (const caso of [
+    { nombre: 'mixto con resultado', jev },
+    { nombre: 'mixto con error', jev: { error: 'TypeSafe 503' } },
+    { nombre: 'sombra con resultado', sombra: async () => jev },
+    { nombre: 'sombra con rechazo de promesa', sombra: async () => { throw new Error('TypeSafe 503'); } },
+    { nombre: 'sombra con excepción síncrona', sombra: () => { throw new Error('TypeSafe 503'); } },
+  ]) {
+    await t.test(caso.nombre, async (t) => {
+      const errores = t.mock.method(console, 'error', () => {});
+      const s = await montar({ sombra: caso.sombra });
+      t.after(s.cerrar);
+      s.filtro.jev = caso.jev;
+      s.db.exec(`CREATE TRIGGER fallo_sombra BEFORE INSERT ON sombra_jev
+        BEGIN SELECT RAISE(FAIL, 'fallo simulado de auditoría'); END`);
+      const ana = await s.entrar('ana');
+      const r = await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Prueba', cuerpo: 'hola' } });
+      assert.equal(r.status, 303);
+      assert.equal(s.db.prepare('SELECT visible FROM threads').get().visible, 1);
+      assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM sombra_jev').get().n, 0);
+      assert.equal(errores.mock.callCount(), 1);
+      const [mensaje, error] = errores.mock.calls[0].arguments;
+      assert.equal(mensaje, '[sombra] No se pudo guardar la comparación:');
+      assert.match(error.message, /fallo simulado de auditoría/);
+    });
+  }
 });
 
 test('estadísticas: cuenta visitas sin bots ni estáticos, activos, y solo la ven los mods', async (t) => {

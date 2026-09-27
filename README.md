@@ -22,6 +22,7 @@ Node 20 · Express 5 · SQLite (`better-sqlite3`) · HTML armado en el servidor 
 | Archivo | Qué hace |
 |---|---|
 | `src/app.js` | Rutas, sesiones, CSRF, límites, publicación y moderación. Recibe la base, el moderador y el reloj inyectados, así se testea sin red. |
+| `src/resultado.js` | `intentar` e `intentarAsync`: capturan una operación como `{ ok, valor }` o `{ ok, error }`. Cada uso decide cómo recuperarse, registrar o propagar el error. |
 | `src/sombra.js` | Jev: el primer paso del filtro mixto (`crearFiltroMixto`) y la comparación con Claude. |
 | `src/moderation.js` | El filtro con Claude: prompt, criterios y veredicto (`approve` / `queue` / `reject`, más los casos graves). |
 | `src/normas.js` | Las normas. Las usan la página `/normas`, el filtro y el menú de reportes. |

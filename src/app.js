@@ -8,6 +8,7 @@ import { extracto, textoPlano, sinSpoilers } from './format.js';
 import * as D from './documentos.js';
 import { decisionJev, PRECIO_JEV_POR_MTOK } from './sombra.js';
 import { PRECIO_CLAUDE } from './moderation.js';
+import { intentar, intentarAsync } from './resultado.js';
 
 const DIA = 86_400_000;
 const TEMAS = ['claro', 'oscuro', 'descanso', 'monocromo'];
@@ -18,11 +19,12 @@ function leerCookies(header = '') {
   for (const parte of header.split(';')) {
     const i = parte.indexOf('=');
     if (i <= 0) continue;
-    try {
-      out[parte.slice(0, i).trim()] = decodeURIComponent(parte.slice(i + 1).trim());
-    } catch {
-      // cookie mal formada: se ignora
+    const resultado = intentar(() => decodeURIComponent(parte.slice(i + 1).trim()));
+    if (!resultado.ok) {
+      if (resultado.error instanceof URIError) continue; // cookie mal formada: se ignora
+      throw resultado.error;
     }
+    out[parte.slice(0, i).trim()] = resultado.valor;
   }
   return out;
 }
@@ -915,6 +917,21 @@ export function createApp({
   const guardarSombra = db.prepare(`INSERT INTO sombra_jev (created_at, tablon, es_hilo, asunto, cuerpo, claude_decision,
     claude_rule, claude_grave, jev_decision, jev_rule, jev_grave, respuestas, tokens, ms, error)
     VALUES (@t, @tablon, @es_hilo, @asunto, @cuerpo, @cd, @cr, @cg, @jd, @jr, @jg, @respuestas, @tokens, @ms, @error)`);
+  function registrarComparacion(fila, resultado) {
+    const guardado = intentar(() => {
+      if (!resultado.ok) {
+        guardarSombra.run({ ...fila, jd: null, jr: null, jg: null, respuestas: null, tokens: null, ms: null,
+          error: String(resultado.error?.message ?? resultado.error).slice(0, 300) });
+        return;
+      }
+      const r = resultado.valor;
+      const j = decisionJev(r.respuestas);
+      guardarSombra.run({ ...fila, jd: j.decision, jr: j.rule, jg: j.grave, respuestas: JSON.stringify(r.respuestas), tokens: r.tokens, ms: r.ms, error: null });
+    });
+    // La comparación es auxiliar: una falla se registra, pero nunca impide publicar.
+    if (!guardado.ok) console.error('[sombra] No se pudo guardar la comparación:', guardado.error);
+  }
+
   function compararEnSombra(datos, v) {
     const base = { t: now(), tablon: datos.tablon, es_hilo: datos.esHilo ? 1 : 0, asunto: datos.asunto, cuerpo: datos.cuerpo,
       cd: v.decision, cr: v.rule ?? null, cg: v.grave ?? 'ninguna' };
@@ -923,26 +940,11 @@ export function createApp({
     if (v.jev) {
       const noConsultado = v.filtro === 'jev';
       const fila = noConsultado ? { ...base, cd: 'no-consultado', cr: null, cg: null } : base;
-      try {
-        if (v.jev.error) guardarSombra.run({ ...fila, jd: null, jr: null, jg: null, respuestas: null, tokens: null, ms: null, error: v.jev.error });
-        else {
-          const j = decisionJev(v.jev.respuestas);
-          guardarSombra.run({ ...fila, jd: j.decision, jr: j.rule, jg: j.grave, respuestas: JSON.stringify(v.jev.respuestas), tokens: v.jev.tokens, ms: v.jev.ms, error: null });
-        }
-      } catch {}
+      registrarComparacion(fila, v.jev.error ? { ok: false, error: v.jev.error } : { ok: true, valor: v.jev });
       return;
     }
     if (!sombra) return;
-    sombra(datos)
-      .then((r) => {
-        const j = decisionJev(r.respuestas);
-        guardarSombra.run({ ...base, jd: j.decision, jr: j.rule, jg: j.grave, respuestas: JSON.stringify(r.respuestas), tokens: r.tokens, ms: r.ms, error: null });
-      })
-      .catch((err) => {
-        try {
-          guardarSombra.run({ ...base, jd: null, jr: null, jg: null, respuestas: null, tokens: null, ms: null, error: String(err?.message ?? err).slice(0, 300) });
-        } catch {}
-      });
+    intentarAsync(() => sombra(datos)).then((resultado) => registrarComparacion(base, resultado));
   }
 
   // Corre `tarea` (moderar y guardar) una sola vez por cuenta. Devuelve { destino } o { error, status }.
