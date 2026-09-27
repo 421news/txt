@@ -49,6 +49,7 @@ const app = createApp({
   // Con clave de TypeSafe, filtro mixto: Jev primero, Claude solo para lo que Jev ve dudoso.
   moderar: jev ? crearFiltroMixto({ jev, claude: crearModerador({ siteName }) }) : crearModerador({ siteName }),
   jevActivo: !!jev,
+  alcanceKey: process.env.ALCANCE_KEY || null,
   geminiUrl: process.env.GEMINI_URL || null,
   codigoUrl: process.env.CODIGO_URL || null,
   adminEmails: (process.env.ADMIN_EMAILS || '')

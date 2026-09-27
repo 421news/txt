@@ -61,6 +61,7 @@ export function createApp({
   geminiUrl = null,
   codigoUrl = null,
   sombra = null,
+  alcanceKey = null,
   jevActivo = false,
 }) {
   const app = express();
@@ -1139,6 +1140,15 @@ export function createApp({
   });
 
   // Estadísticas para mods: últimos 30 días.
+  // Totales diarios de visitas para el panel de analíticas de 421 (suma txt al alcance del sitio).
+  // Solo agregados por día, con clave: sin ALCANCE_KEY no existe.
+  app.get('/api/alcance.json', (req, res) => {
+    const clave = String(req.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+    if (!alcanceKey || !iguales(clave, alcanceKey)) return noEncontrado(res);
+    res.set('Cache-Control', 'no-store');
+    res.json({ dias: db.prepare('SELECT dia, vistas, visitantes, estimado FROM visitas_dia ORDER BY dia').all().map((d) => ({ ...d, estimado: d.estimado === 1 })) });
+  });
+
   app.get('/mod/estadisticas', (req, res) => {
     if (!esMod(req.user)) return noEncontrado(res);
     const hoy = diaDe(now());

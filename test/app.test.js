@@ -12,7 +12,7 @@ const googleFalso = {
   canjearCodigo: async ({ code }) => ({ sub: `sub-${code}`, email: `${code}@gmail.com` }),
 };
 
-async function montar({ google = googleFalso, sombra = null, production = false } = {}) {
+async function montar({ google = googleFalso, sombra = null, production = false, alcanceKey = null } = {}) {
   const db = openDb(':memory:');
   const reloj = { t: 1_800_000_000_000 };
   const filtro = { decision: 'approve' };
@@ -38,6 +38,7 @@ async function montar({ google = googleFalso, sombra = null, production = false 
     sombra,
     geminiUrl: 'gemini://prueba',
     production,
+    alcanceKey,
   });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -844,6 +845,23 @@ test('una base con la tabla de avisos vieja se migra sin perder avisos', async (
   db.prepare("UPDATE notificaciones SET tipo = 'guardado'").run();
   assert.ok(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'notificaciones_usuario'").get());
   db.close();
+});
+
+test('alcance: totales diarios de visitas solo con la clave', async (t) => {
+  const s = await montar({ alcanceKey: 'clave-de-prueba' });
+  t.after(s.cerrar);
+  await fetch(s.base + '/', { headers: { 'user-agent': 'Mozilla/5.0' } });
+  s.db.prepare("INSERT INTO visitas_dia (dia, vistas, visitantes, estimado) VALUES ('2026-09-24', 100, 10, 1)").run();
+  assert.equal((await s.pedir('/api/alcance.json')).status, 404);
+  const mal = await fetch(s.base + '/api/alcance.json', { headers: { authorization: 'Bearer otra' } });
+  assert.equal(mal.status, 404);
+  const r = await fetch(s.base + '/api/alcance.json', { headers: { authorization: 'Bearer clave-de-prueba' } });
+  const { dias } = await r.json();
+  assert.deepEqual(dias[0], { dia: '2026-09-24', vistas: 100, visitantes: 10, estimado: true });
+  assert.ok(dias[1].vistas >= 1 && dias[1].estimado === false);
+  const sin = await montar();
+  t.after(sin.cerrar);
+  assert.equal((await fetch(sin.base + '/api/alcance.json', { headers: { authorization: 'Bearer ' } })).status, 404);
 });
 
 test('Gemini: vincular un certificado con un código, responder y publicar en pasos', async (t) => {
