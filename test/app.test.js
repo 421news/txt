@@ -12,7 +12,7 @@ const googleFalso = {
   canjearCodigo: async ({ code }) => ({ sub: `sub-${code}`, email: `${code}@gmail.com` }),
 };
 
-async function montar({ google = googleFalso, sombra = null } = {}) {
+async function montar({ google = googleFalso, sombra = null, production = false } = {}) {
   const db = openDb(':memory:');
   const reloj = { t: 1_800_000_000_000 };
   const filtro = { decision: 'approve' };
@@ -37,6 +37,7 @@ async function montar({ google = googleFalso, sombra = null } = {}) {
     now: () => reloj.t,
     sombra,
     geminiUrl: 'gemini://prueba',
+    production,
   });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -352,7 +353,7 @@ test('reportar: cada mensaje lleva un link y el formulario está en su propia p�
 
   // En la publicación, un link por mensaje y ningún formulario de reporte.
   const hilo = await s.texto('/h/1', ana);
-  assert.ok(hilo.includes('<a href="/p/2/reportar" rel="nofollow">Reportar</a>'));
+  assert.ok(hilo.includes('<a class="reportar" href="/p/2/reportar" rel="nofollow">Reportar</a>'));
   assert.ok(!hilo.includes('name="motivo"') && !hilo.includes('<details class="reportar"'));
 
   const pagina = await s.texto('/p/2/reportar', ana);
@@ -471,6 +472,18 @@ test('citas: la publicación carga citas.js y los >>N siguen siendo links a #pN'
   assert.ok(!(await s.texto('/')).includes('citas.js'), 'solo en las publicaciones');
 });
 
+test('fechas: corta a la vista, completa al pasar el mouse y en datetime', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  // El reloj de prueba arranca en 1.800.000.000.000 ms: 15/1/2027 08:00 UTC, 5:00 en Buenos Aires.
+  // Según la versión de ICU, "a. m." lleva un espacio duro (U+00A0 o U+202F): se normaliza.
+  const hilo = (await s.texto('/h/1')).replace(/[\u00a0\u202f]/g, ' ');
+  assert.ok(hilo.includes('<time datetime="2027-01-15T08:00:00.000Z" title="viernes, 15 de enero de 2027, 5:00 a. m.">15/1/27, 5:00 a. m.</time>'));
+  assert.ok(!hilo.includes('<time>'), 'ninguna fecha sin datetime');
+});
+
 test('responder a un post: cita precargada, respuestas entrantes y marca propia', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
@@ -547,6 +560,21 @@ test('actualización en vivo: /h/:id/nuevos trae solo lo posterior y respeta la 
   assert.ok(r.html.includes('algo nuevo') && !r.html.includes('arranque'));
   assert.equal(JSON.parse(await s.texto('/h/1/nuevos?desde=2')).html.trim(), '');
   assert.equal((await s.pedir('/h/99/nuevos?desde=0')).status, 404);
+});
+
+test('estáticos: con hash se guardan un año sin volver a preguntar; sin hash, un día', async (t) => {
+  const s = await montar({ production: true });
+  t.after(s.cerrar);
+  const css = (await s.texto('/normas')).match(/\/static\/style\.css\?v=[0-9a-f]+/)[0];
+  const cache = async (ruta) => (await s.pedir(ruta)).headers.get('cache-control');
+  assert.equal(await cache(css), 'public, max-age=31536000, immutable');
+  assert.equal(await cache('/static/favicon.svg'), 'public, max-age=86400');
+  const noExiste = await s.pedir('/static/no-existe.css?v=abc');
+  assert.equal(noExiste.status, 404);
+  assert.ok(!(noExiste.headers.get('cache-control') ?? '').includes('immutable'), 'un 404 no se guarda un año');
+  const dev = await montar();
+  t.after(dev.cerrar);
+  assert.equal((await dev.pedir(css)).headers.get('cache-control'), 'public, max-age=0');
 });
 
 test('tema claro/oscuro por cookie, sin JavaScript', async (t) => {
@@ -732,6 +760,31 @@ test('nuevo desde la última visita: se mantiene al recargar y se renueva tras u
   assert.ok(!v.html.includes('marca-nuevo'));
   // Lo propio nunca se marca.
   assert.ok(!(await s.texto('/h/1', ana)).includes('Desde tu visita anterior'));
+});
+
+test('mod: los mensajes a revisar y las suspensiones automáticas muestran de dónde salieron', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bob = await s.entrar('bob');
+  const mod = await s.entrar('mod');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Series', cuerpo: 'qué están viendo' } });
+  s.avanzar(40);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'mensaje de antes' } });
+  s.filtro.decision = 'reject';
+  s.filtro.grave = 'abuso';
+  s.avanzar(40);
+  await s.pedir('/h/1/responder', { sesion: bob, datos: { cuerpo: '>>1\nalgo grave' } });
+  s.filtro.grave = undefined;
+  s.filtro.decision = 'queue';
+  s.avanzar(40);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: '>>2\ndudoso' } });
+  const panel = await s.texto('/mod', mod);
+  const ctx = panel.match(/<details class="contexto-mod"[\s\S]*?<\/details>/g);
+  assert.equal(ctx.length, 2);
+  assert.ok(ctx.every((c) => c.includes('«Series»') && c.includes('href="/h/1"')));
+  assert.ok(ctx[0].includes('No.1</a> <strong>(citado)') && ctx[0].includes('mensaje de antes'));
+  assert.ok(ctx[1].includes('No.2</a> <strong>(citado)') && ctx[1].includes('qué están viendo'));
 });
 
 test('Gemini: vincular un certificado con un código, responder y publicar en pasos', async (t) => {
@@ -954,7 +1007,7 @@ test('prueba en sombra: guarda lo que diría Jev, no decide nada y un error no m
   assert.match(filas[1].error, /503/);
   const mod = await s.entrar('mod');
   const panel = await s.texto('/mod/sombra', mod);
-  assert.ok(panel.includes('Mensajes comparados: <strong>2</strong>') && panel.includes('1 con error'));
+  assert.ok(panel.includes('Mensajes que vio Jev: <strong>2</strong>') && panel.includes('1 con error'));
   assert.equal((await s.pedir('/mod/sombra', { sesion: ana })).status, 404);
   assert.ok((await s.texto('/privacidad')).includes('TypeSafe'));
 });
@@ -972,10 +1025,14 @@ test('estadísticas: cuenta visitas sin bots ni estáticos, activos, y solo la v
   assert.deepEqual(v, { vistas: 2, visitantes: 1 });
   const ana = await s.entrar('ana');
   await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Hola', cuerpo: 'algo' } });
+  // Costo: un millón de tokens de entrada de Claude (US$2) + un millón de Jev (US$0,042).
+  s.db.prepare("UPDATE posts SET mod_model = 'claude-sonnet-5', mod_input_tokens = 1000000, mod_output_tokens = 0").run();
+  s.db.prepare("INSERT INTO sombra_jev (created_at, tokens) VALUES ((SELECT MAX(created_at) FROM posts), 1000000)").run();
   const mod = await s.entrar('mod');
   const r = await fetch(s.base + '/mod/estadisticas', { headers: { cookie: mod.cookie, ...nav } });
   const html = await r.text();
   assert.ok(html.includes('Publicaciones hoy') && html.includes('<svg viewBox'));
+  assert.match(html, /US\$2\.04<\/span><span class="tile-k">Costo de moderación hoy/);
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM actividad_dia').get().n >= 1, true);
   assert.equal((await s.pedir('/mod/estadisticas', { sesion: ana })).status, 404);
   // No queda ninguna IP guardada: solo hashes del día.

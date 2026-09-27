@@ -254,9 +254,12 @@ code { color: var(--cita); }
 .spoiler { background: var(--fosforo); color: var(--fosforo); }
 .spoiler:hover, .spoiler:focus { background: transparent; color: inherit; }
 
-.reportar { margin: 0.4rem 0 0; font-size: 0.75rem; }
-.reportar a { color: var(--tenue); text-decoration: none; }
-.reportar a:hover { background: transparent; color: var(--fosforo); }
+.post-meta .reportar { color: var(--tenue); text-decoration: none; font-size: 0.85em; }
+.post-meta .reportar:hover { background: transparent; color: var(--fosforo); }
+.acciones-post { margin: 0.5rem 0 0; }
+.acciones-post .citar { color: var(--fosforo); text-decoration: none; font-weight: 700; }
+.acciones-post .citar:hover { text-decoration: underline; background: transparent; }
+.botones .cancelar { color: var(--tenue); margin-left: 0.25rem; }
 .form-reportar label { display: block; margin: 0.6rem 0; font-size: 0.8rem; color: var(--tenue); text-transform: uppercase; }
 .form-reportar .botones { align-items: center; }
 .form-reportar select { width: auto; margin-left: 0.4rem; }
@@ -605,3 +608,10 @@ mark { background: var(--fosforo); color: var(--fondo); padding: 0 0.1rem; }
 /* Botones pegados al cuadro de texto; el contador, en la misma fila, a la derecha. */
 .form-post .botones { align-items: center; margin: 0.4rem 0 0.6rem; }
 .botones .contador { margin: 0 0 0 auto; }
+
+/* Contexto de un mensaje en /mod: de dónde salió. */
+.contexto-mod { margin: 0.5rem 0.75rem; padding: 0.4rem 0.6rem; border-left: 2px solid var(--borde); font-size: 0.9em; }
+.contexto-mod summary { cursor: pointer; color: var(--tenue); }
+.contexto-mod ul { margin: 0.4rem 0 0; padding-left: 1rem; }
+.contexto-mod li { margin: 0.2rem 0; }
+.ctx-texto { white-space: pre-wrap; }

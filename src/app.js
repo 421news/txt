@@ -7,6 +7,7 @@ import * as V from './views.js';
 import { extracto, textoPlano } from './format.js';
 import * as D from './documentos.js';
 import { decisionJev, PRECIO_JEV_POR_MTOK } from './sombra.js';
+import { PRECIO_CLAUDE } from './moderation.js';
 
 const DIA = 86_400_000;
 const TEMAS = ['claro', 'oscuro', 'descanso', 'monocromo'];
@@ -60,6 +61,7 @@ export function createApp({
   geminiUrl = null,
   codigoUrl = null,
   sombra = null,
+  jevActivo = false,
 }) {
   const app = express();
   app.disable('x-powered-by');
@@ -373,9 +375,17 @@ export function createApp({
     });
     next();
   });
+  // Lo que se pide con ?v=<hash> (estaticos.js) no cambia nunca: si cambia el archivo, cambia la
+  // dirección. Se guarda un año y el navegador no vuelve a preguntar. Lo que va sin hash (favicon,
+  // apple-touch-icon) sigue con un día, para que un cambio llegue.
+  // setHeaders corre solo si el archivo existe: un 404 no queda guardado un año.
   app.use(
     '/static',
-    express.static(fileURLToPath(new URL('../public', import.meta.url)), { maxAge: production ? '1d' : 0 }),
+    express.static(fileURLToPath(new URL('../public', import.meta.url)), {
+      cacheControl: false,
+      setHeaders: (res) =>
+        res.set('Cache-Control', !production ? 'public, max-age=0' : res.req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=86400'),
+    }),
   );
   app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 
@@ -409,7 +419,7 @@ export function createApp({
     if (req.user) res.set('Cache-Control', 'private, no-store');
     const novedades = req.user ? q.contarNovedades.get(req.user.id).n : 0;
     const tema = TEMAS.includes(leerCookies(req.headers.cookie).tema) ? leerCookies(req.headers.cookie).tema : null;
-    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, tema, ruta: req.originalUrl, codigoUrl, sombraActiva: !!sombra };
+    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, tema, ruta: req.originalUrl, codigoUrl, sombraActiva: !!sombra, jevActivo };
     if (req.method === 'POST') {
       const origen = req.get('origin');
       if (origen && origen !== `${req.protocol}://${req.get('host')}`) return res.status(403).send('Origen no permitido');
@@ -901,9 +911,23 @@ export function createApp({
     claude_rule, claude_grave, jev_decision, jev_rule, jev_grave, respuestas, tokens, ms, error)
     VALUES (@t, @tablon, @es_hilo, @asunto, @cuerpo, @cd, @cr, @cg, @jd, @jr, @jg, @respuestas, @tokens, @ms, @error)`);
   function compararEnSombra(datos, v) {
-    if (!sombra) return;
     const base = { t: now(), tablon: datos.tablon, es_hilo: datos.esHilo ? 1 : 0, asunto: datos.asunto, cuerpo: datos.cuerpo,
       cd: v.decision, cr: v.rule ?? null, cg: v.grave ?? 'ninguna' };
+    // Filtro mixto: lo que dijo Jev ya viene en el veredicto. Si Jev lo aprobó solo, Claude no se
+    // consultó ('no-consultado'); se guarda igual para seguir su desempeño en /mod/sombra.
+    if (v.jev) {
+      const noConsultado = v.filtro === 'jev';
+      const fila = noConsultado ? { ...base, cd: 'no-consultado', cr: null, cg: null } : base;
+      try {
+        if (v.jev.error) guardarSombra.run({ ...fila, jd: null, jr: null, jg: null, respuestas: null, tokens: null, ms: null, error: v.jev.error });
+        else {
+          const j = decisionJev(v.jev.respuestas);
+          guardarSombra.run({ ...fila, jd: j.decision, jr: j.rule, jg: j.grave, respuestas: JSON.stringify(v.jev.respuestas), tokens: v.jev.tokens, ms: v.jev.ms, error: null });
+        }
+      } catch {}
+      return;
+    }
+    if (!sombra) return;
     sombra(datos)
       .then((r) => {
         const j = decisionJev(r.respuestas);
@@ -1081,13 +1105,31 @@ export function createApp({
 
   // --- Moderación ----------------------------------------------------------------------------
 
+  // Dónde se escribió un mensaje, para moderarlo con contexto: la publicación, los mensajes que cita
+  // (>>N) y los últimos 3 anteriores. Incluye texto de mensajes ya retirados: es solo para mods.
+  function contextoMod(threadId, cuerpo, creado, propio = null) {
+    if (!threadId) return null;
+    const hilo = q.hilo.get(threadId);
+    if (!hilo) return null;
+    const ids = [...new Set([...String(cuerpo).matchAll(/>>(\d+)/g)].map((m) => Number(m[1])))].slice(0, 5);
+    const citados = ids.map((id) => q.post.get(id)).filter((p) => p && p.thread_id === threadId);
+    const previos = db
+      .prepare(`SELECT id, body, status FROM posts WHERE thread_id = ? AND created_at < ? AND id != ? AND status = 'published'
+        ORDER BY id DESC LIMIT 3`)
+      .all(threadId, creado, propio ?? -1)
+      .filter((p) => !ids.includes(p.id))
+      .reverse();
+    return { hilo: { id: hilo.id, subject: hilo.subject }, citados, previos };
+  }
+
   app.get('/mod', (req, res) => {
     if (!esMod(req.user)) return noEncontrado(res);
-    const nombrar = (p) => ({ ...p, board_nombre: boardBySlug(p.board)?.nombre ?? p.board });
+    const nombrar = (p) => ({ ...p, board_nombre: boardBySlug(p.board)?.nombre ?? p.board, contexto: contextoMod(p.thread_id, p.body, p.created_at, p.id) });
     const graves = db
-      .prepare(`SELECT r.id, r.user_id, r.body, r.subject, r.rule, r.reason, r.grave, r.created_at, u.banned_until
+      .prepare(`SELECT r.id, r.user_id, r.board, r.thread_id, r.body, r.subject, r.rule, r.reason, r.grave, r.created_at, u.banned_until
         FROM rechazos r JOIN users u ON u.id = r.user_id WHERE r.grave IS NOT NULL ORDER BY r.id DESC LIMIT 50`)
-      .all();
+      .all()
+      .map((g) => ({ ...g, board_nombre: boardBySlug(g.board)?.nombre ?? g.board, contexto: contextoMod(g.thread_id, g.body, g.created_at) }));
     const cuerpo = V.mod(res.locals.ctx, { cola: q.colaMod.all().map(nombrar), reportados: q.reportadosMod.all().map(nombrar), graves });
     enviar(res, { titulo: 'Moderación', indexar: false, cuerpo });
   });
@@ -1108,9 +1150,21 @@ export function createApp({
     const respuestas = porDia(`SELECT ${diaSql.replace('created_at', 'p.created_at')} AS dia, COUNT(*) AS n FROM posts p JOIN threads t ON t.id = p.thread_id
       WHERE t.op_post_id != p.id AND p.created_at >= ? AND p.status != 'removed' GROUP BY 1`, desde);
     const nuevas = porDia(`SELECT ${diaSql} AS dia, COUNT(*) AS n FROM users WHERE created_at >= ? AND identidad NOT LIKE 'borrada:%' GROUP BY 1`, desde);
+    // Costo de moderación por día (US$ a precio de lista): Claude por los tokens guardados en posts y
+    // rechazos (sin contar lo que Jev aprobó solo), más todas las consultas a Jev.
+    const usdClaude = `(COALESCE(SUM(i), 0) * ${PRECIO_CLAUDE.entrada} + COALESCE(SUM(o), 0) * ${PRECIO_CLAUDE.salida}
+      + COALESCE(SUM(cr), 0) * ${PRECIO_CLAUDE.cacheLectura} + COALESCE(SUM(cw), 0) * ${PRECIO_CLAUDE.cacheEscritura}) / 1e6`;
+    const claude = porDia(`SELECT ${diaSql} AS dia, ${usdClaude} AS n FROM (
+        SELECT created_at, mod_input_tokens i, mod_output_tokens o, mod_cache_read_tokens cr, mod_cache_write_tokens cw
+          FROM posts WHERE created_at >= ? AND mod_model LIKE 'claude%'
+        UNION ALL SELECT created_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+          FROM rechazos WHERE created_at >= ? AND model LIKE 'claude%') GROUP BY 1`, desde, desde);
+    const jev = porDia(`SELECT ${diaSql} AS dia, COALESCE(SUM(tokens), 0) * ${PRECIO_JEV_POR_MTOK} / 1e6 AS n FROM sombra_jev WHERE created_at >= ? GROUP BY 1`, desde);
+    const costo = Object.fromEntries(dias.map((d) => [d, Math.round(((claude[d] ?? 0) + (jev[d] ?? 0)) * 100) / 100]));
     const serie = (m) => dias.map((dia) => ({ dia, n: m[dia] ?? 0 }));
     const total = db.prepare("SELECT COUNT(*) AS n FROM users WHERE identidad NOT LIKE 'borrada:%'").get().n;
-    const desdeVisitas = db.prepare('SELECT MIN(dia) AS d FROM visitas_dia').get().d;
+    const desdeVisitas = db.prepare('SELECT MIN(dia) AS d FROM visitas_dia WHERE estimado IS NOT 1').get().d;
+    const estimados = db.prepare('SELECT dia FROM visitas_dia WHERE estimado = 1').all().map((r) => r.dia);
     enviar(res, {
       titulo: 'Estadísticas',
       indexar: false,
@@ -1118,6 +1172,7 @@ export function createApp({
         hoy,
         total,
         desdeVisitas,
+        estimados,
         series: {
           vistas: serie(vistas),
           visitantes: serie(visitantes),
@@ -1125,6 +1180,7 @@ export function createApp({
           publicaciones: serie(publicaciones),
           respuestas: serie(respuestas),
           nuevas: serie(nuevas),
+          costo: serie(costo),
         },
       }),
     });
@@ -1141,13 +1197,13 @@ export function createApp({
       .prepare(`SELECT * FROM sombra_jev WHERE error IS NULL AND claude_grave != 'ninguna' AND jev_grave = 'ninguna' ORDER BY id DESC LIMIT 20`)
       .all();
     const desacuerdos = db
-      .prepare(`SELECT * FROM sombra_jev WHERE error IS NULL AND claude_decision != jev_decision ORDER BY id DESC LIMIT 40`)
+      .prepare(`SELECT * FROM sombra_jev WHERE error IS NULL AND claude_decision != 'no-consultado' AND claude_decision != jev_decision ORDER BY id DESC LIMIT 40`)
       .all();
     const costo = ((total.tokens ?? 0) * PRECIO_JEV_POR_MTOK) / 1e6;
     enviar(res, {
       titulo: 'Prueba Jev',
       indexar: false,
-      cuerpo: V.sombra(res.locals.ctx, { activa: !!sombra, total, cruce, gravesEscapados, desacuerdos, costo }),
+      cuerpo: V.sombra(res.locals.ctx, { activa: !!sombra || jevActivo, mixto: jevActivo, total, cruce, gravesEscapados, desacuerdos, costo }),
     });
   });
 

@@ -181,6 +181,24 @@
     campo.dispatchEvent(new Event('input', { bubbles: true })); // contador y borrador
   });
 
+  // "Cancelar": vacía el formulario y borra el borrador (si no, lo escrito seguía apareciendo en cada
+  // página). Sin JavaScript es un link a la página sin el formulario abierto.
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('a.cancelar');
+    const form = link?.closest('form.form-post');
+    if (!form || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    for (const campo of campos(form)) {
+      if (campo.type === 'checkbox') campo.checked = false;
+      else campo.value = '';
+    }
+    for (const nodo of form.querySelectorAll('.error, .vista-previa')) nodo.remove();
+    borrar(form);
+    for (const [campo, actualizar] of contadores) if (campo.form === form) actualizar();
+    const caja = form.closest('details');
+    if (caja) caja.open = false;
+  });
+
   sincronizar(); // el guion va con defer: el DOM ya está
   window.addEventListener('pageshow', sincronizar);
 })();

@@ -13,6 +13,9 @@ const Veredicto = z.object({
   grave: z.enum(['ninguna', 'menores', 'abuso', 'violencia_explicita']),
 });
 
+// USD por millón de tokens de claude-sonnet-5, a precio de lista (para /mod/estadisticas).
+export const PRECIO_CLAUDE = { entrada: 2, salida: 10, cacheLectura: 0.2, cacheEscritura: 2.5 };
+
 export function promptSistema(siteName) {
   const normas = NORMAS.map((n) => `- ${n.id} (${n.titulo}): ${n.texto}`).join('\n');
   return `Sos el filtro de moderación de ${siteName}, un foro de texto pseudoanónimo en español. El sitio quiere conversaciones buenas: con desacuerdo, humor y temas difíciles, pero sin crueldad.

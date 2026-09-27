@@ -7,7 +7,7 @@ import { createApp } from './app.js';
 import { crearModerador } from './moderation.js';
 import { crearGoogle } from './google.js';
 import { crearCapsula } from './gemini.js';
-import { crearSombra } from './sombra.js';
+import { crearSombra, crearFiltroMixto } from './sombra.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
 const production = process.env.NODE_ENV === 'production';
@@ -37,6 +37,7 @@ const port = Number(process.env.PORT) || 3000;
 const baseUrl = process.env.BASE_URL || `http://localhost:${port}`;
 const db = openDb(path.resolve(raiz, process.env.DB_PATH || 'data/textboard.db'));
 
+const jev = process.env.TYPESAFE_API_KEY ? crearSombra({ apiKey: process.env.TYPESAFE_API_KEY }) : null;
 const app = createApp({
   db,
   secret,
@@ -45,10 +46,11 @@ const app = createApp({
   production,
   google,
   loginDePrueba: !google && !production,
-  moderar: crearModerador({ siteName }),
+  // Con clave de TypeSafe, filtro mixto: Jev primero, Claude solo para lo que Jev ve dudoso.
+  moderar: jev ? crearFiltroMixto({ jev, claude: crearModerador({ siteName }) }) : crearModerador({ siteName }),
+  jevActivo: !!jev,
   geminiUrl: process.env.GEMINI_URL || null,
   codigoUrl: process.env.CODIGO_URL || null,
-  sombra: process.env.TYPESAFE_API_KEY ? crearSombra({ apiKey: process.env.TYPESAFE_API_KEY }) : null,
   adminEmails: (process.env.ADMIN_EMAILS || '')
     .split(',')
     .map((s) => s.trim().toLowerCase())

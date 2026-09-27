@@ -104,3 +104,39 @@ export function crearSombra({ apiKey, fetch: pedir = globalThis.fetch, timeoutMs
     return { modelo: datos.model, respuestas: datos.answers, tokens: datos.usage?.input_tokens ?? null, ms: Date.now() - inicio };
   };
 }
+
+// --- Filtro mixto (desde 2026-09-26, decisión del usuario) ------------------------------------
+// Jev mira cada mensaje primero. Si lo ve claramente limpio (ninguna norma llega a UMBRAL_LIMPIO y no
+// marca ningún caso grave), se publica sin consultar a Claude. Todo lo demás, y cualquier falla de
+// Jev, lo decide Claude como siempre: Jev nunca rechaza ni suspende por su cuenta.
+// Medido con 1.420 mensajes reales (2026-09-26): con 0,2 se saltea a Claude en el 78% y ninguno de
+// los que Claude rechazó hubiera pasado. Jev solo frenaba de más el humor sexual y las puteadas.
+export const UMBRAL_LIMPIO = 0.2;
+
+export function limpioParaJev(respuestas, umbral = UMBRAL_LIMPIO) {
+  if (respuestas?.grave?.choice !== 'ninguna') return false;
+  const valores = NORMAS.map((n) => respuestas?.[n.id]?.noul);
+  if (valores.some((v) => typeof v !== 'number')) return false;
+  return Math.max(...valores) < umbral;
+}
+
+export function crearFiltroMixto({ jev, claude, umbral = UMBRAL_LIMPIO }) {
+  return async function moderar(datos) {
+    let r;
+    try {
+      r = await jev(datos);
+    } catch (err) {
+      const v = await claude(datos);
+      return { ...v, jev: { error: String(err?.message ?? err).slice(0, 300) } };
+    }
+    if (limpioParaJev(r.respuestas, umbral)) {
+      return {
+        decision: 'approve', rule: 'ninguna', reason: '', grave: 'ninguna', filtro: 'jev',
+        model: r.modelo ?? MODELO_JEV, input_tokens: r.tokens, output_tokens: 0, cache_read_tokens: null, cache_write_tokens: null,
+        jev: r,
+      };
+    }
+    const v = await claude(datos);
+    return { ...v, filtro: 'claude', jev: r };
+  };
+}

@@ -18,7 +18,7 @@
   const copia = (post, clase) => {
     const c = post.cloneNode(true);
     for (const el of [c, ...c.querySelectorAll('[id]')]) el.removeAttribute('id');
-    for (const el of c.querySelectorAll('.citar, .reportar, .respuestas')) el.remove();
+    for (const el of c.querySelectorAll('.acciones-post, .reportar, .respuestas')) el.remove();
     c.classList.add(clase);
     return c;
   };

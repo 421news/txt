@@ -10,6 +10,15 @@ const formatoFecha = new Intl.DateTimeFormat('es-AR', {
   timeZone: process.env.TZ_SITIO || 'America/Argentina/Buenos_Aires',
 });
 export const fecha = (ms) => formatoFecha.format(new Date(ms));
+const formatoFechaLarga = new Intl.DateTimeFormat('es-AR', {
+  dateStyle: 'full',
+  timeStyle: 'short',
+  timeZone: process.env.TZ_SITIO || 'America/Argentina/Buenos_Aires',
+});
+// La fecha de un mensaje: corta a la vista, completa al pasar el mouse ("viernes, 25 de septiembre
+// de 2026, 3:17 p. m."; la corta no dice el año entero y se confunde día y mes) y en datetime para
+// lectores de pantalla y buscadores.
+const hora = (ms) => html`<time datetime="${new Date(ms).toISOString()}" title="${formatoFechaLarga.format(new Date(ms))}">${fecha(ms)}</time>`;
 
 const esMod = (u) => !!u && (u.role === 'mod' || u.role === 'admin');
 
@@ -313,7 +322,7 @@ function formHilo(ctx, board, { asunto = '', cuerpo = '', tablon = '', error, ab
     </select></label>`}
     <label>Asunto <input type="text" name="asunto" maxlength="${LIMITS.asunto}" required value="${asunto}"></label>
     <label>Mensaje <textarea name="cuerpo" rows="8" maxlength="${LIMITS.cuerpo}" required>${cuerpo}</textarea></label>
-    <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button></p>
+    <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button> <a class="cancelar" href="${board ? `/b/${board.slug}` : '/'}">Cancelar</a></p>
     <p class="ayuda">${AYUDA}</p>
   </form>
 </details>`;
@@ -328,7 +337,7 @@ function formRespuesta(ctx, thread, { cuerpo = '', sage = false, error, previa, 
   ${error ? html`<p class="error">${error}</p>` : ''}
   <input type="hidden" name="_csrf" value="${ctx.csrf}">
   <textarea name="cuerpo" rows="6" maxlength="${LIMITS.cuerpo}" required aria-label="Mensaje"${previa ? raw(' autofocus') : ''}${cita ? html` data-cita="${cita}"` : ''}>${cuerpo}</textarea>
-  <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button></p>
+  <p class="botones"><button>Publicar</button> <button class="secundario" name="vista" value="1" formnovalidate>Vista previa</button> <a class="cancelar" href="/h/${thread.id}">Cancelar</a></p>
   <label class="ayuda"><input type="checkbox" name="sage" value="1"${sage ? raw(' checked') : ''}> sage: responder sin subir la publicación</label>
   <p class="ayuda">${AYUDA}</p>
 </form>`;
@@ -365,20 +374,20 @@ function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
     ${p.esAutorOp ? html`<span class="marca-op">OP</span>` : ''}
     ${p.esMio ? html`<span class="marca-vos" title="Solo lo ves vos">(vos)</span>` : ''}
     ${p.esNuevo && !resumen ? html`<span class="marca-nuevo" title="Desde tu visita anterior">nuevo</span>` : ''}
-    <time>${fecha(p.created_at)}</time>
+    ${hora(p.created_at)}
     <a class="num" href="#p${p.id}">No.${p.id}</a>
-    ${!resumen && ctx.user && p.status === 'published' && abiertoPara(p)
-      ? html`<a class="citar" href="?cita=${p.id}#responder">Responder</a>`
-      : ''}
     ${p.sage ? html`<span class="sage">sage</span>` : ''}
+    ${!resumen && ctx.user && p.status === 'published'
+      ? html`<a class="reportar" href="/p/${p.id}/reportar" rel="nofollow">Reportar</a>`
+      : ''}
   </header>
   ${p.status === 'queued' ? html`<p class="nota">En revisión: por ahora solo lo ves vos.</p>` : ''}
   <div class="texto">${raw(formatear(resumen ? extracto(p.body, 800) : p.body, { idsLocales: ids }))}</div>
   ${!resumen && p.respuestas?.length
     ? html`<p class="respuestas">Respuestas: ${p.respuestas.map((n) => html`<a href="#p${n}">&gt;&gt;${n}</a> `)}</p>`
     : ''}
-  ${!resumen && ctx.user && p.status === 'published'
-    ? html`<p class="reportar"><a href="/p/${p.id}/reportar" rel="nofollow">Reportar</a></p>`
+  ${!resumen && ctx.user && p.status === 'published' && abiertoPara(p)
+    ? html`<p class="acciones-post"><a class="citar" href="?cita=${p.id}#responder">Responder</a></p>`
     : ''}
 </article>`;
 }
@@ -460,8 +469,10 @@ export function privacidad(ctx) {
 
 <h2>Con quién se comparte</h2>
 <ul>
-  <li><strong>Anthropic</strong> (Estados Unidos): el texto de cada mensaje pasa por su modelo Claude para revisarlo antes de publicarse. Se envía solo el texto, sin datos de tu cuenta.</li>
-  ${ctx.sombraActiva ? html`<li><strong>TypeSafe</strong> (Estados Unidos), durante una prueba: el texto de cada mensaje también pasa por su modelo Jev, para comparar filtros. No decide nada ni recibe datos de tu cuenta.</li>` : ''}
+  <li><strong>Anthropic</strong> (Estados Unidos): ${ctx.jevActivo ? 'los mensajes que el primer filtro no ve claramente dentro de las normas pasan' : 'el texto de cada mensaje pasa'} por su modelo Claude para revisarlo antes de publicarse. Se envía solo el texto, sin datos de tu cuenta.</li>
+  ${ctx.jevActivo
+    ? html`<li><strong>TypeSafe</strong> (Estados Unidos): el texto de cada mensaje pasa primero por su modelo Jev. Si lo ve claramente dentro de las normas, se publica; si no, lo revisa Claude. Se envía solo el texto, sin datos de tu cuenta.</li>`
+    : ctx.sombraActiva ? html`<li><strong>TypeSafe</strong> (Estados Unidos), durante una prueba: el texto de cada mensaje también pasa por su modelo Jev, para comparar filtros. No decide nada ni recibe datos de tu cuenta.</li>` : ''}
   <li><strong>Google</strong>: gestiona el ingreso con tu cuenta.</li>
   <li><strong>Railway</strong> (Estados Unidos): aloja el sitio y la base de datos. Como cualquier servidor, registra datos técnicos de las conexiones, como la dirección IP.</li>
 </ul>
@@ -548,8 +559,11 @@ ${paginacion(pagina, paginas, { q: texto })}`
   : ''}`;
 }
 
-export function sombra(ctx, { activa, total, cruce, gravesEscapados, desacuerdos, costo }) {
-  const pct = (n) => (total.n ? `${Math.round((n / (total.n - (total.errores ?? 0) || 1)) * 100)}%` : '—');
+export function sombra(ctx, { activa, mixto = false, total, cruce, gravesEscapados, desacuerdos, costo }) {
+  // Solo se comparan los mensajes que vieron los dos: los que Jev aprobó solo ('no-consultado') no cuentan.
+  const comparados = cruce.filter((c) => c.c !== 'no-consultado').reduce((s, c) => s + c.n, 0);
+  const soloJev = cruce.filter((c) => c.c === 'no-consultado').reduce((s, c) => s + c.n, 0);
+  const pct = (n, de = comparados) => (de ? `${Math.round((n / de) * 100)}%` : '—');
   const coinciden = cruce.filter((c) => c.c === c.j).reduce((s, c) => s + c.n, 0);
   const fila = (r) => {
     const resp = r.respuestas ? JSON.parse(r.respuestas) : {};
@@ -563,10 +577,14 @@ export function sombra(ctx, { activa, total, cruce, gravesEscapados, desacuerdos
   <p class="res-fragmento">${extracto(r.cuerpo ?? '', 280)}</p>
   <p class="ayuda">${top}</p></li>`;
   };
-  return html`<h1>Prueba Jev (en sombra)</h1>
-<p class="ayuda">${activa ? 'Activa: cada mensaje que revisa Claude también lo revisa Jev, sin decidir nada.' : 'Apagada: falta TYPESAFE_API_KEY.'}</p>
+  return html`<h1>${mixto ? 'Filtro mixto: Jev + Claude' : 'Prueba Jev (en sombra)'}</h1>
+<p class="ayuda">${mixto
+  ? 'Activo: Jev mira cada mensaje primero y aprueba solo lo claramente limpio; todo lo demás lo decide Claude.'
+  : activa ? 'Activa: cada mensaje que revisa Claude también lo revisa Jev, sin decidir nada.' : 'Apagada: falta TYPESAFE_API_KEY.'}</p>
 <ul>
-  <li>Mensajes comparados: <strong>${total.n}</strong>${total.errores ? ` (${total.errores} con error de Jev)` : ''}</li>
+  <li>Mensajes que vio Jev: <strong>${total.n}</strong>${total.errores ? ` (${total.errores} con error de Jev, los decidió Claude)` : ''}</li>
+  ${soloJev ? html`<li>Aprobados por Jev sin consultar a Claude: <strong>${soloJev}</strong> (${pct(soloJev, total.n - (total.errores ?? 0))})</li>` : ''}
+  <li>Vistos por los dos: <strong>${comparados}</strong></li>
   <li>Coinciden en la decisión: <strong>${pct(coinciden)}</strong></li>
   <li>Graves que detectó Claude y a Jev se le escaparon: <strong>${gravesEscapados.length}</strong></li>
   <li>Costo de Jev hasta ahora: <strong>US$${costo.toFixed(4)}</strong> · demora promedio: ${total.ms ? Math.round(total.ms) : '—'} ms</li>
@@ -582,7 +600,7 @@ ${desacuerdos.length ? html`<ul class="resultados">${desacuerdos.map(fila)}</ul>
 // Gráfico de líneas en SVG inline, sin JS, en el estilo del panel de analíticas de 421: curva suave,
 // área rellena muy suave, un punto por día. Curva monótona (Fritsch-Carlson): no inventa picos ni
 // baja de cero entre dos puntos. El detalle de cada día va en <title> sobre un área de toque ancha.
-function lineas(titulo, datos) {
+function lineas(titulo, datos, formato = (n) => String(n)) {
   const W = 600;
   const H = 170;
   const arriba = 18;
@@ -620,7 +638,7 @@ function lineas(titulo, datos) {
   const puntos = datos
     .map((d, i) => {
       const [x, y] = pts[i];
-      return `<g class="punto"><rect x="${f(x - paso / 2)}" y="0" width="${f(paso)}" height="${base}" class="hit"/><circle cx="${f(x)}" cy="${f(y)}" r="3.5"/><title>${etiqueta(d.dia)}: ${d.n}</title></g>`;
+      return `<g class="punto"><rect x="${f(x - paso / 2)}" y="0" width="${f(paso)}" height="${base}" class="hit"/><circle cx="${f(x)}" cy="${f(y)}" r="3.5"/><title>${etiqueta(d.dia)}: ${formato(d.n, d.dia)}</title></g>`;
     })
     .join('');
   const grilla = [0.5, 1]
@@ -636,12 +654,14 @@ function lineas(titulo, datos) {
     .join('');
   const hoy = datos[n - 1]?.n ?? 0;
   return html`<figure class="grafico">
-  <figcaption><strong>${titulo}</strong> <span class="ayuda">hoy ${hoy} · máximo ${maximo}</span></figcaption>
-  ${raw(`<svg viewBox="-4 0 ${W + 8} ${H}" role="img" aria-label="${esc(titulo)}, últimos ${n} días">${grilla}<line x1="0" y1="${base + 0.5}" x2="${W}" y2="${base + 0.5}" class="base"/><text x="0" y="12" class="tope">${maximo}</text><path d="${area}" class="area"/><path d="${curva}" class="linea"/>${puntos}${ejeX}</svg>`)}
+  <figcaption><strong>${titulo}</strong> <span class="ayuda">hoy ${formato(hoy)} · máximo ${formato(maximo)}</span></figcaption>
+  ${raw(`<svg viewBox="-4 0 ${W + 8} ${H}" role="img" aria-label="${esc(titulo)}, últimos ${n} días">${grilla}<line x1="0" y1="${base + 0.5}" x2="${W}" y2="${base + 0.5}" class="base"/><text x="0" y="12" class="tope">${esc(formato(maximo))}</text><path d="${area}" class="area"/><path d="${curva}" class="linea"/>${puntos}${ejeX}</svg>`)}
 </figure>`;
 }
 
-export function estadisticas(ctx, { hoy, total, desdeVisitas, series }) {
+const usd = (n) => `US$${n.toFixed(2)}`;
+
+export function estadisticas(ctx, { hoy, total, desdeVisitas, estimados = [], series }) {
   const ultimo = (k) => series[k][series[k].length - 1]?.n ?? 0;
   const tiles = [
     ['Usuarios registrados', total],
@@ -651,17 +671,20 @@ export function estadisticas(ctx, { hoy, total, desdeVisitas, series }) {
     ['Visitantes hoy', ultimo('visitantes')],
     ['Publicaciones hoy', ultimo('publicaciones')],
     ['Respuestas hoy', ultimo('respuestas')],
+    ['Costo de moderación hoy', usd(ultimo('costo'))],
   ];
-  const nombres = { vistas: 'Visitas', visitantes: 'Visitantes únicos', activos: 'Usuarios activos', publicaciones: 'Publicaciones', respuestas: 'Respuestas', nuevas: 'Cuentas nuevas' };
-  const orden = ['vistas', 'visitantes', 'activos', 'publicaciones', 'respuestas', 'nuevas'];
+  const nombres = { vistas: 'Visitas', visitantes: 'Visitantes únicos', activos: 'Usuarios activos', publicaciones: 'Publicaciones', respuestas: 'Respuestas', nuevas: 'Cuentas nuevas', costo: 'Costo de moderación (US$)' };
+  const orden = ['vistas', 'visitantes', 'activos', 'publicaciones', 'respuestas', 'nuevas', 'costo'];
+  const estimado = (n, dia) => (estimados.includes(dia) ? `~${n} (estimado)` : String(n));
+  const formatos = { costo: usd, vistas: estimado, visitantes: estimado };
   return html`<h1>Estadísticas</h1>
-<p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas. "Usuarios activos" = cuentas que entraron al sitio ese día; los días anteriores se reconstruyeron con inicios de sesión, mensajes y reportes.</p>
+<p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas${estimados.length ? `, salvo ${estimados.join(', ')}, estimado con los requests que registró Railway (marcado con ~)` : ''}. "Usuarios activos" = cuentas que entraron al sitio ese día; los días anteriores se reconstruyeron con inicios de sesión, mensajes y reportes. "Costo de moderación" = Claude + Jev, estimado a precio de lista con los tokens de cada mensaje (no incluye pruebas del filtro).</p>
 <div class="tiles">${tiles.map(([k, v]) => html`<div class="tile"><span class="tile-n">${v.toLocaleString('es-AR')}</span><span class="tile-k">${k}</span></div>`)}</div>
-<div class="graficos">${orden.map((k) => lineas(nombres[k], series[k]))}</div>
+<div class="graficos">${orden.map((k) => lineas(nombres[k], series[k], formatos[k]))}</div>
 <details class="tabla-datos"><summary>Ver los números</summary>
 <table class="cruce"><tr><th>Día</th>${orden.map((k) => html`<th>${nombres[k]}</th>`)}</tr>
 ${series.vistas
-  .map((_, i) => html`<tr><td>${series.vistas[i].dia}</td>${orden.map((k) => html`<td>${series[k][i].n}</td>`)}</tr>`)
+  .map((_, i) => html`<tr><td>${series.vistas[i].dia}</td>${orden.map((k) => html`<td>${(formatos[k] ?? String)(series[k][i].n, series[k][i].dia)}</td>`)}</tr>`)
   .reverse()}</table>
 </details>`;
 }
@@ -811,6 +834,18 @@ ${prueba
   : ''}`;
 }
 
+// Contexto de un mensaje en /mod: la publicación, lo que cita y los mensajes de justo antes.
+function contextoMod(c, seccion) {
+  if (!c) return '';
+  const linea = (p, etiqueta) => html`<li><a href="/h/${c.hilo.id}#p${p.id}">No.${p.id}</a>${etiqueta}: <span class="ctx-texto">${extracto(p.body, 400)}</span></li>`;
+  return html`<details class="contexto-mod" open><summary>Contexto: «${c.hilo.subject}»${seccion ? ` en ${seccion}` : ''} · <a href="/h/${c.hilo.id}">abrir</a></summary>
+  <ul>
+    ${c.previos.map((p) => linea(p, ''))}
+    ${c.citados.map((p) => linea(p, html` <strong>(citado${p.status === 'removed' ? ', retirado' : ''})</strong>`))}
+  </ul>
+</details>`;
+}
+
 function botonMod(ctx, id, accion, texto) {
   return html`<form method="post" action="/mod/p/${id}/${accion}" class="en-linea"><input type="hidden" name="_csrf" value="${ctx.csrf}"><button>${texto}</button></form>`;
 }
@@ -823,8 +858,9 @@ function itemMod(ctx, p) {
     <span>${p.board_nombre} · ${p.subject}</span>
     <span>cuenta #${p.user_id}, creada ${fecha(p.user_created)}</span>
     <span>${p.eliminados} eliminados antes</span>
-    <time>${fecha(p.created_at)}</time>
+    ${hora(p.created_at)}
   </header>
+  ${contextoMod(p.contexto)}
   <div class="texto">${raw(formatear(p.body))}</div>
   <p class="ayuda">Filtro: ${filtro || '—'}</p>
   ${p.reportes ? html`<p class="ayuda">Reportes: ${p.reportes}</p>` : ''}
@@ -849,8 +885,10 @@ export function mod(ctx, { cola, reportados, graves = [] }) {
 <p class="ayuda">Tolerancia cero: el filtro rechazó el mensaje y suspendió la cuenta. Si fue un error, levantá la suspensión.</p>
 ${graves.length
   ? graves.map((g) => html`<article class="post en-revision">
-  <header class="post-meta"><span>${graveTexto[g.grave] ?? g.grave}</span><time>${fecha(g.created_at)}</time></header>
+  <header class="post-meta"><span>${graveTexto[g.grave] ?? g.grave}</span>${hora(g.created_at)}</header>
   <p class="nota">${g.reason ?? ''}</p>
+  ${g.contexto ? '' : html`<p class="ayuda">Publicación nueva en ${g.board_nombre}.</p>`}
+  ${contextoMod(g.contexto, g.board_nombre)}
   <div class="texto">${g.subject ? html`<strong>${g.subject}</strong><br>` : ''}${g.body}</div>
   ${g.banned_until && g.banned_until > ctx.ahora
     ? html`<form method="post" action="/mod/u/${g.user_id}/levantar" class="en-linea"><input type="hidden" name="_csrf" value="${ctx.csrf}"><button>Levantar suspensión</button></form>`
