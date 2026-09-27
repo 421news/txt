@@ -193,7 +193,12 @@ code { color: var(--cita); }
 }
 /* El mensaje al que se saltó (>>123, "Respuestas", la lupa): contorno plano, sin brillo. El salto
    deja libre el alto de la barra fija gracias al scroll-padding-top de html (idea del PR #9). */
-.post:target { outline: 2px solid var(--fosforo); outline-offset: 3px; }
+.post:target {
+  outline: 2px solid var(--fosforo);
+  outline-offset: 3px;
+  /* Un tinte plano del acento: el contorno solo se perdía entre tantas cajas con borde. */
+  background: color-mix(in srgb, var(--fosforo) 10%, var(--caja));
+}
 .post-meta {
   display: flex;
   flex-wrap: wrap;
@@ -230,6 +235,18 @@ code { color: var(--cita); }
 .post.en-revision .post-meta { color: var(--aviso); }
 .post.op.en-revision .post-meta { color: var(--fondo); }
 .post.retirado { background: transparent; border: 1px dashed var(--borde); color: var(--tenue); padding: 0.1rem 0.9rem; }
+/* Copias de un mensaje citado (public/citas.js): flotando sobre el link con mouse, desplegada en el
+   lugar en pantallas táctiles. Planas, con el borde de acento para que no se confundan con el hilo. */
+.post.flotante, .post.desplegada { background: var(--caja); border: 1px solid var(--fosforo); }
+.post.flotante {
+  position: fixed;
+  z-index: 4;
+  margin: 0;
+  width: max-content;
+  max-width: min(46rem, calc(100vw - 1rem));
+  pointer-events: none;
+}
+.post.desplegada { margin: 0.4rem 0; }
 
 .texto { overflow-wrap: anywhere; }
 .verde { color: var(--cita); }

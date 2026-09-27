@@ -457,13 +457,29 @@ test('SEO: metas, canonical, noindex donde corresponde, sitemap y datos de foro'
   assert.ok((await s.texto('/robots.txt')).includes('Sitemap:'));
 });
 
+test('citas: la publicación carga citas.js y los >>N siguen siendo links a #pN', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: '>>1\nte contesto' } });
+  const hilo = await s.texto('/h/1');
+  assert.match(hilo, /<script src="\/static\/citas\.js\?v=[0-9a-f]+" defer><\/script>/);
+  // Sin JavaScript todo sigue funcionando: la cita y la respuesta entrante son links al mensaje.
+  assert.ok(hilo.includes('<a class="cita" href="#p1">&gt;&gt;1</a>') && hilo.includes('<a href="#p2">&gt;&gt;2</a>'));
+  assert.ok(!(await s.texto('/')).includes('citas.js'), 'solo en las publicaciones');
+});
+
 test('fechas: corta a la vista, completa al pasar el mouse y en datetime', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
   const ana = await s.entrar('ana');
   await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
   // El reloj de prueba arranca en 1.800.000.000.000 ms: 15/1/2027 08:00 UTC, 5:00 en Buenos Aires.
-  const hilo = await s.texto('/h/1');
+  // Según la versión de ICU, "a. m." lleva un espacio duro (U+00A0 o U+202F): se normaliza.
+  const hilo = (await s.texto('/h/1')).replace(/[\u00a0\u202f]/g, ' ');
   assert.ok(hilo.includes('<time datetime="2027-01-15T08:00:00.000Z" title="viernes, 15 de enero de 2027, 5:00 a. m.">15/1/27, 5:00 a. m.</time>'));
   assert.ok(!hilo.includes('<time>'), 'ninguna fecha sin datetime');
 });
