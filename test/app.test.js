@@ -982,10 +982,14 @@ test('estadísticas: cuenta visitas sin bots ni estáticos, activos, y solo la v
   assert.deepEqual(v, { vistas: 2, visitantes: 1 });
   const ana = await s.entrar('ana');
   await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Hola', cuerpo: 'algo' } });
+  // Costo: un millón de tokens de entrada de Claude (US$2) + un millón de Jev (US$0,042).
+  s.db.prepare("UPDATE posts SET mod_model = 'claude-sonnet-5', mod_input_tokens = 1000000, mod_output_tokens = 0").run();
+  s.db.prepare("INSERT INTO sombra_jev (created_at, tokens) VALUES ((SELECT MAX(created_at) FROM posts), 1000000)").run();
   const mod = await s.entrar('mod');
   const r = await fetch(s.base + '/mod/estadisticas', { headers: { cookie: mod.cookie, ...nav } });
   const html = await r.text();
   assert.ok(html.includes('Publicaciones hoy') && html.includes('<svg viewBox'));
+  assert.match(html, /US\$2\.04<\/span><span class="tile-k">Costo de moderación hoy/);
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM actividad_dia').get().n >= 1, true);
   assert.equal((await s.pedir('/mod/estadisticas', { sesion: ana })).status, 404);
   // No queda ninguna IP guardada: solo hashes del día.

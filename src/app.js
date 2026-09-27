@@ -7,6 +7,7 @@ import * as V from './views.js';
 import { extracto, textoPlano } from './format.js';
 import * as D from './documentos.js';
 import { decisionJev, PRECIO_JEV_POR_MTOK } from './sombra.js';
+import { PRECIO_CLAUDE } from './moderation.js';
 
 const DIA = 86_400_000;
 const TEMAS = ['claro', 'oscuro', 'descanso', 'monocromo'];
@@ -1141,6 +1142,17 @@ export function createApp({
     const respuestas = porDia(`SELECT ${diaSql.replace('created_at', 'p.created_at')} AS dia, COUNT(*) AS n FROM posts p JOIN threads t ON t.id = p.thread_id
       WHERE t.op_post_id != p.id AND p.created_at >= ? AND p.status != 'removed' GROUP BY 1`, desde);
     const nuevas = porDia(`SELECT ${diaSql} AS dia, COUNT(*) AS n FROM users WHERE created_at >= ? AND identidad NOT LIKE 'borrada:%' GROUP BY 1`, desde);
+    // Costo de moderación por día (US$ a precio de lista): Claude por los tokens guardados en posts y
+    // rechazos (sin contar lo que Jev aprobó solo), más todas las consultas a Jev.
+    const usdClaude = `(COALESCE(SUM(i), 0) * ${PRECIO_CLAUDE.entrada} + COALESCE(SUM(o), 0) * ${PRECIO_CLAUDE.salida}
+      + COALESCE(SUM(cr), 0) * ${PRECIO_CLAUDE.cacheLectura} + COALESCE(SUM(cw), 0) * ${PRECIO_CLAUDE.cacheEscritura}) / 1e6`;
+    const claude = porDia(`SELECT ${diaSql} AS dia, ${usdClaude} AS n FROM (
+        SELECT created_at, mod_input_tokens i, mod_output_tokens o, mod_cache_read_tokens cr, mod_cache_write_tokens cw
+          FROM posts WHERE created_at >= ? AND mod_model LIKE 'claude%'
+        UNION ALL SELECT created_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+          FROM rechazos WHERE created_at >= ? AND model LIKE 'claude%') GROUP BY 1`, desde, desde);
+    const jev = porDia(`SELECT ${diaSql} AS dia, COALESCE(SUM(tokens), 0) * ${PRECIO_JEV_POR_MTOK} / 1e6 AS n FROM sombra_jev WHERE created_at >= ? GROUP BY 1`, desde);
+    const costo = Object.fromEntries(dias.map((d) => [d, Math.round(((claude[d] ?? 0) + (jev[d] ?? 0)) * 100) / 100]));
     const serie = (m) => dias.map((dia) => ({ dia, n: m[dia] ?? 0 }));
     const total = db.prepare("SELECT COUNT(*) AS n FROM users WHERE identidad NOT LIKE 'borrada:%'").get().n;
     const desdeVisitas = db.prepare('SELECT MIN(dia) AS d FROM visitas_dia').get().d;
@@ -1158,6 +1170,7 @@ export function createApp({
           publicaciones: serie(publicaciones),
           respuestas: serie(respuestas),
           nuevas: serie(nuevas),
+          costo: serie(costo),
         },
       }),
     });

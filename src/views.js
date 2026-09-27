@@ -590,7 +590,7 @@ ${desacuerdos.length ? html`<ul class="resultados">${desacuerdos.map(fila)}</ul>
 // Gráfico de líneas en SVG inline, sin JS, en el estilo del panel de analíticas de 421: curva suave,
 // área rellena muy suave, un punto por día. Curva monótona (Fritsch-Carlson): no inventa picos ni
 // baja de cero entre dos puntos. El detalle de cada día va en <title> sobre un área de toque ancha.
-function lineas(titulo, datos) {
+function lineas(titulo, datos, formato = (n) => String(n)) {
   const W = 600;
   const H = 170;
   const arriba = 18;
@@ -628,7 +628,7 @@ function lineas(titulo, datos) {
   const puntos = datos
     .map((d, i) => {
       const [x, y] = pts[i];
-      return `<g class="punto"><rect x="${f(x - paso / 2)}" y="0" width="${f(paso)}" height="${base}" class="hit"/><circle cx="${f(x)}" cy="${f(y)}" r="3.5"/><title>${etiqueta(d.dia)}: ${d.n}</title></g>`;
+      return `<g class="punto"><rect x="${f(x - paso / 2)}" y="0" width="${f(paso)}" height="${base}" class="hit"/><circle cx="${f(x)}" cy="${f(y)}" r="3.5"/><title>${etiqueta(d.dia)}: ${formato(d.n)}</title></g>`;
     })
     .join('');
   const grilla = [0.5, 1]
@@ -644,10 +644,12 @@ function lineas(titulo, datos) {
     .join('');
   const hoy = datos[n - 1]?.n ?? 0;
   return html`<figure class="grafico">
-  <figcaption><strong>${titulo}</strong> <span class="ayuda">hoy ${hoy} · máximo ${maximo}</span></figcaption>
-  ${raw(`<svg viewBox="-4 0 ${W + 8} ${H}" role="img" aria-label="${esc(titulo)}, últimos ${n} días">${grilla}<line x1="0" y1="${base + 0.5}" x2="${W}" y2="${base + 0.5}" class="base"/><text x="0" y="12" class="tope">${maximo}</text><path d="${area}" class="area"/><path d="${curva}" class="linea"/>${puntos}${ejeX}</svg>`)}
+  <figcaption><strong>${titulo}</strong> <span class="ayuda">hoy ${formato(hoy)} · máximo ${formato(maximo)}</span></figcaption>
+  ${raw(`<svg viewBox="-4 0 ${W + 8} ${H}" role="img" aria-label="${esc(titulo)}, últimos ${n} días">${grilla}<line x1="0" y1="${base + 0.5}" x2="${W}" y2="${base + 0.5}" class="base"/><text x="0" y="12" class="tope">${esc(formato(maximo))}</text><path d="${area}" class="area"/><path d="${curva}" class="linea"/>${puntos}${ejeX}</svg>`)}
 </figure>`;
 }
+
+const usd = (n) => `US$${n.toFixed(2)}`;
 
 export function estadisticas(ctx, { hoy, total, desdeVisitas, series }) {
   const ultimo = (k) => series[k][series[k].length - 1]?.n ?? 0;
@@ -659,17 +661,19 @@ export function estadisticas(ctx, { hoy, total, desdeVisitas, series }) {
     ['Visitantes hoy', ultimo('visitantes')],
     ['Publicaciones hoy', ultimo('publicaciones')],
     ['Respuestas hoy', ultimo('respuestas')],
+    ['Costo de moderación hoy', usd(ultimo('costo'))],
   ];
-  const nombres = { vistas: 'Visitas', visitantes: 'Visitantes únicos', activos: 'Usuarios activos', publicaciones: 'Publicaciones', respuestas: 'Respuestas', nuevas: 'Cuentas nuevas' };
-  const orden = ['vistas', 'visitantes', 'activos', 'publicaciones', 'respuestas', 'nuevas'];
+  const nombres = { vistas: 'Visitas', visitantes: 'Visitantes únicos', activos: 'Usuarios activos', publicaciones: 'Publicaciones', respuestas: 'Respuestas', nuevas: 'Cuentas nuevas', costo: 'Costo de moderación (US$)' };
+  const orden = ['vistas', 'visitantes', 'activos', 'publicaciones', 'respuestas', 'nuevas', 'costo'];
+  const formatos = { costo: usd };
   return html`<h1>Estadísticas</h1>
-<p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas. "Usuarios activos" = cuentas que entraron al sitio ese día; los días anteriores se reconstruyeron con inicios de sesión, mensajes y reportes.</p>
+<p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas. "Usuarios activos" = cuentas que entraron al sitio ese día; los días anteriores se reconstruyeron con inicios de sesión, mensajes y reportes. "Costo de moderación" = Claude + Jev, estimado a precio de lista con los tokens de cada mensaje (no incluye pruebas del filtro).</p>
 <div class="tiles">${tiles.map(([k, v]) => html`<div class="tile"><span class="tile-n">${v.toLocaleString('es-AR')}</span><span class="tile-k">${k}</span></div>`)}</div>
-<div class="graficos">${orden.map((k) => lineas(nombres[k], series[k]))}</div>
+<div class="graficos">${orden.map((k) => lineas(nombres[k], series[k], formatos[k]))}</div>
 <details class="tabla-datos"><summary>Ver los números</summary>
 <table class="cruce"><tr><th>Día</th>${orden.map((k) => html`<th>${nombres[k]}</th>`)}</tr>
 ${series.vistas
-  .map((_, i) => html`<tr><td>${series.vistas[i].dia}</td>${orden.map((k) => html`<td>${series[k][i].n}</td>`)}</tr>`)
+  .map((_, i) => html`<tr><td>${series.vistas[i].dia}</td>${orden.map((k) => html`<td>${(formatos[k] ?? String)(series[k][i].n)}</td>`)}</tr>`)
   .reverse()}</table>
 </details>`;
 }
