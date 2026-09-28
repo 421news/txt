@@ -199,6 +199,15 @@ export function openDb(archivo) {
   // Los ya indexados con el spoiler adentro (antes de ese cambio). Solo toca los que lo tienen.
   db.exec(`UPDATE busqueda SET cuerpo = sin_spoilers(cuerpo) WHERE rowid IN (SELECT id FROM posts WHERE body LIKE '%[spoiler]%')
     AND cuerpo LIKE '%[spoiler]%[/spoiler]%'`);
+  // Estadísticas para que SQLite elija bien los índices: sin ellas, los listados recorrían todos los
+  // mensajes publicados. 0x10002 es lo que recomienda sqlite.org/pragma.html#pragma_optimize para
+  // servidores que abren la base al arrancar y la dejan abierta. Si no se pueden calcular, queda en el
+  // log y la base se abre igual.
+  try {
+    db.pragma('optimize = 0x10002');
+  } catch (err) {
+    console.error('[estadísticas] No se pudieron calcular al abrir la base:', err);
+  }
   return db;
 }
 
