@@ -215,9 +215,13 @@ function catalogo(hilos, { conTablon = false } = {}) {
   )}</div>`;
 }
 
-function selectorVista(vista) {
-  return html`<nav class="vistas">Vista: ${vista === 'catalogo' ? html`<strong>catálogo</strong>` : html`<a href="?">catálogo</a>`}
-  ${vista === 'lista' ? html`<strong>lista</strong>` : html`<a href="?vista=lista">lista</a>`}</nav>`;
+// Los links pasan por /vista, que guarda la elección en una cookie y vuelve acá. El `volver` va sin
+// query: cada vista trae distinta cantidad de hilos por página, así que la página N no es la misma.
+function selectorVista(vista, ruta = '/') {
+  const volver = encodeURIComponent(ruta.split('?')[0]);
+  const opcion = (v, nombre) =>
+    vista === v ? html`<strong>${nombre}</strong>` : html`<a href="/vista?v=${v}&amp;volver=${volver}" rel="nofollow">${nombre}</a>`;
+  return html`<nav class="vistas">Vista: ${opcion('catalogo', 'catálogo')} ${opcion('lista', 'lista')}</nav>`;
 }
 
 const listado = (ctx, hilos, vista, opciones) =>
@@ -281,7 +285,7 @@ export function portada(ctx, { hilos, vista, pagina: actual, paginas, form }) {
   return html`<h1 class="solo-lector">Últimas publicaciones</h1>
 ${formHilo(ctx, null, form)}
 <p class="ayuda">Pseudoanónimo y moderado: cada mensaje se revisa antes de publicarse. <a href="/normas">Normas</a></p>
-${selectorVista(vista)}
+${selectorVista(vista, ctx.ruta)}
 ${listado(ctx, hilos, vista, { conTablon: true })}
 ${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}`;
 }
@@ -353,7 +357,7 @@ export function tablon(ctx, { board, hilos, vista, pagina: actual, paginas, arch
     : html`<a href="/b/${board.slug}/archivo">Archivo</a>`}</p>
 </header>
 ${archivo ? '' : formHilo(ctx, board, form)}
-${selectorVista(vista)}
+${selectorVista(vista, ctx.ruta)}
 ${listado(ctx, hilos, vista, {})}
 ${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}`;
 }
@@ -802,7 +806,7 @@ ${mias.length
   ? html`<ul class="mias">${mias.map((t) => html`<li><a href="/h/${t.id}">${t.subject}</a> <span class="ayuda">· ${boardBySlug(t.board)?.nombre ?? t.board} · ${t.reply_count} respuestas · tu último mensaje: ${fecha(t.ultima)}</span></li>`)}</ul>`
   : html`<p class="ayuda">Todavía no publicaste nada.</p>`}
 <p class="ayuda">Solo lo ves vos. En cada publicación, tus mensajes aparecen marcados con "(vos)".</p>
-${preferencias(ctx.tema)}
+${preferencias(ctx.tema, ctx.vista)}
 ${geminiUrl ? gemini(ctx, llaves, geminiUrl) : ''}
 <h2>Borrar la cuenta</h2>
 <p>Se borra el texto de todos tus mensajes, los que el filtro te rechazó y los reportes que hiciste. Donde había un mensaje tuyo va a decir "Eliminado por su autor". Si abriste una publicación que tiene respuestas de otras personas, esas respuestas siguen ahí. No se puede deshacer.</p>
@@ -832,11 +836,16 @@ ${llaves.length
   : html`<p class="ayuda">No tenés certificados vinculados.</p>`}`;
 }
 
-function preferencias(tema) {
+function preferencias(tema, vista) {
   // "sistema" = sin cookie: sigue a prefers-color-scheme (claro u oscuro). Marcado = lo elegido de verdad.
   const opciones = [['auto', 'sistema', !tema], ...Object.keys(COLOR_TEMA).map((v) => [v, v, tema === v])];
+  // Los listados no tienen "sistema": son dos y el catálogo es el default.
+  const vistas = [['catalogo', 'catálogo'], ['lista', 'lista']];
   return html`<h2>Preferencias</h2>
-<p class="temas">${opciones.map(([valor, nombre, actual]) => html`<a href="/tema?t=${valor}&amp;volver=%2Fcuenta" rel="nofollow"${actual ? raw(' aria-current="true"') : ''}><span class="muestra muestra-${valor}" aria-hidden="true">Aa</span> ${nombre}</a>`)}</p>`;
+<p class="ayuda">Tema</p>
+<p class="temas">${opciones.map(([valor, nombre, actual]) => html`<a href="/tema?t=${valor}&amp;volver=%2Fcuenta" rel="nofollow"${actual ? raw(' aria-current="true"') : ''}><span class="muestra muestra-${valor}" aria-hidden="true">Aa</span> ${nombre}</a>`)}</p>
+<p class="ayuda">Listados</p>
+<p class="opciones">${vistas.map(([valor, nombre]) => html`<a href="/vista?v=${valor}&amp;volver=%2Fcuenta" rel="nofollow"${vista === valor ? raw(' aria-current="true"') : ''}>${nombre}</a>`)}</p>`;
 }
 
 export function entrar(ctx, { google, prueba, error } = {}) {
