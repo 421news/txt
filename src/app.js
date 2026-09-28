@@ -953,11 +953,15 @@ export function createApp({
           const j = decisionJev(v.jev.respuestas);
           guardarSombra.run({ ...fila, jd: j.decision, jr: j.rule, jg: j.grave, respuestas: JSON.stringify(v.jev.respuestas), tokens: v.jev.tokens, ms: v.jev.ms, error: null });
         }
-      } catch {}
+      } catch (err) {
+        // La comparación es auxiliar: si no se puede guardar, queda en el log y se publica igual.
+        console.error('[sombra] No se pudo guardar la comparación:', err);
+      }
       return;
     }
     if (!sombra) return;
-    sombra(datos)
+    // async: una excepción síncrona del proveedor también termina en el .catch.
+    (async () => sombra(datos))()
       .then((r) => {
         const j = decisionJev(r.respuestas);
         guardarSombra.run({ ...base, jd: j.decision, jr: j.rule, jg: j.grave, respuestas: JSON.stringify(r.respuestas), tokens: r.tokens, ms: r.ms, error: null });
@@ -965,7 +969,9 @@ export function createApp({
       .catch((err) => {
         try {
           guardarSombra.run({ ...base, jd: null, jr: null, jg: null, respuestas: null, tokens: null, ms: null, error: String(err?.message ?? err).slice(0, 300) });
-        } catch {}
+        } catch (err2) {
+          console.error('[sombra] No se pudo guardar la comparación:', err2);
+        }
       });
   }
 

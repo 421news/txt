@@ -1140,6 +1140,21 @@ test('prueba en sombra: guarda lo que diría Jev, no decide nada y un error no m
   assert.ok((await s.texto('/privacidad')).includes('TypeSafe'));
 });
 
+test('prueba en sombra: si no se puede guardar la comparación, queda en el log y se publica igual', async (t) => {
+  const errores = t.mock.method(console, 'error', () => {});
+  // Excepción síncrona, antes de devolver una promesa: antes se escapaba del .catch.
+  const s = await montar({ sombra: () => { throw new Error('TypeSafe 503'); } });
+  t.after(s.cerrar);
+  s.db.exec(`CREATE TRIGGER fallo_sombra BEFORE INSERT ON sombra_jev BEGIN SELECT RAISE(FAIL, 'disco lleno'); END`);
+  const ana = await s.entrar('ana');
+  const r = await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Uno', cuerpo: 'hola' } });
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(r.status, 303);
+  assert.equal(s.db.prepare('SELECT visible FROM threads').get().visible, 1);
+  assert.equal(errores.mock.callCount(), 1);
+  assert.match(errores.mock.calls[0].arguments[1].message, /disco lleno/);
+});
+
 test('estadísticas: cuenta visitas sin bots ni estáticos, activos, y solo la ven los mods', async (t) => {
   const s = await montar();
   t.after(s.cerrar);

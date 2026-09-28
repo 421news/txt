@@ -1,6 +1,7 @@
 // Se importa primero en server.js: carga .env antes de que el resto de los módulos lea process.env.
 try {
   process.loadEnvFile();
-} catch {
-  // Sin .env: se usan las variables del entorno (así corre en producción).
+} catch (err) {
+  // Sin .env: se usan las variables del entorno (así corre en producción). Cualquier otro error frena el arranque.
+  if (err?.code !== 'ENOENT') throw err;
 }
