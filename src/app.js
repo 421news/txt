@@ -1444,8 +1444,14 @@ export function createApp({
   app.get('/respuestas', (req, res) => {
     if (!req.user) return res.redirect(303, '/entrar');
     const lista = q.notificaciones.all(req.user.id);
+    const mias = db
+      .prepare(`SELECT t.id, t.subject, t.board, t.reply_count, t.bumped_at, MAX(p.created_at) AS ultima
+        FROM posts p JOIN threads t ON t.id = p.thread_id
+        WHERE p.user_id = ? AND p.status != 'removed' AND (t.visible = 1 OR t.op_post_id = p.id)
+        GROUP BY t.id ORDER BY ultima DESC LIMIT 100`)
+      .all(req.user.id);
     q.marcarLeidas.run(req.user.id);
-    enviar(res, { titulo: 'Respuestas', indexar: false, cuerpo: V.respuestas(res.locals.ctx, { lista }) });
+    enviar(res, { titulo: 'Respuestas', indexar: false, cuerpo: V.respuestas(res.locals.ctx, { lista, mias }) });
   });
 
   app.get('/guardados', (req, res) => {
@@ -1455,14 +1461,8 @@ export function createApp({
 
   app.get('/cuenta', (req, res) => {
     if (!req.user) return res.redirect(303, '/entrar');
-    const mias = db
-      .prepare(`SELECT t.id, t.subject, t.board, t.reply_count, t.bumped_at, MAX(p.created_at) AS ultima
-        FROM posts p JOIN threads t ON t.id = p.thread_id
-        WHERE p.user_id = ? AND p.status != 'removed' AND (t.visible = 1 OR t.op_post_id = p.id)
-        GROUP BY t.id ORDER BY ultima DESC LIMIT 100`)
-      .all(req.user.id);
     const llaves = db.prepare('SELECT huella, created_at, ultimo_uso FROM gemini_llaves WHERE user_id = ? ORDER BY created_at').all(req.user.id);
-    enviar(res, { titulo: 'Cuenta', indexar: false, aviso: req.query.aviso, cuerpo: V.cuenta(res.locals.ctx, { suspendida: suspendido(req.user), mias, llaves, geminiUrl }) });
+    enviar(res, { titulo: 'Cuenta', indexar: false, aviso: req.query.aviso, cuerpo: V.cuenta(res.locals.ctx, { suspendida: suspendido(req.user), llaves, geminiUrl }) });
   });
 
   app.post('/cuenta/borrar', (req, res) => {

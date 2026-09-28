@@ -510,8 +510,8 @@ test('responder a un post: cita precargada, respuestas entrantes y marca propia'
   assert.equal(hilo.split('marca-vos').length - 1, 1);
   assert.ok(!(await s.texto('/h/1')).includes('marca-vos'));
 
-  const cuenta = await s.texto('/cuenta', ana);
-  assert.ok(cuenta.includes('href="/h/1">Tema</a>'));
+  const participaste = await s.texto('/respuestas', ana);
+  assert.ok(participaste.includes('href="/h/1">Tema</a>'));
 });
 
 test('la página de formato muestra cada código escrito y renderizado', async (t) => {
@@ -1348,4 +1348,16 @@ test('publicar y responder: el navegador no rellena el formulario con lo ya envi
   await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
   assert.ok((await s.texto('/b/cultura', ana)).includes('<form class="form-post" method="post" autocomplete="off" action="/b/cultura/hilo">'));
   assert.ok((await s.texto('/h/1', ana)).includes('<form class="form-post" method="post" autocomplete="off" action="/h/1/responder" id="responder">'));
+});
+
+test('donde participaste: está en Respuestas y ya no en Mi cuenta', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Asunto Remolacha', cuerpo: 'arranque' } });
+  const respuestas = await s.texto('/respuestas', ana);
+  assert.ok(respuestas.includes('<h2>Donde participaste</h2>') && respuestas.includes('Asunto Remolacha'));
+  const cuenta = await s.texto('/cuenta', ana);
+  assert.ok(!cuenta.includes('Donde participaste') && !cuenta.includes('Asunto Remolacha'));
+  assert.ok(cuenta.includes('<h2>Preferencias</h2>') && cuenta.includes('Borrar la cuenta'));
 });

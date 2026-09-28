@@ -776,7 +776,7 @@ export function terminos(ctx) {
 <p class="ayuda">Última actualización: 23 de septiembre de 2026.</p>`;
 }
 
-export function respuestas(ctx, { lista }) {
+export function respuestas(ctx, { lista, mias = [] }) {
   const tipo = { comentario: 'comentó en tu publicación', respuesta: 'te respondió', guardado: 'comentó en una publicación que guardaste' };
   return html`<h1>Respuestas</h1>
 <p class="ayuda">Comentarios en las publicaciones que abriste o guardaste, y mensajes que te citan con &gt;&gt;. Solo dentro del sitio: no mandamos mails ni notificaciones.</p>
@@ -787,7 +787,12 @@ ${lista.length
     <div class="extracto">${extracto(textoPlano(n.body), 200)}</div>
   </li>`,
     )}</ul>`
-  : html`<p>Todavía no hay respuestas.</p>`}`;
+  : html`<p>Todavía no hay respuestas.</p>`}
+<h2>Donde participaste</h2>
+${mias.length
+  ? html`<ul class="mias">${mias.map((t) => html`<li><a href="/h/${t.id}">${t.subject}</a> <span class="ayuda">· ${boardBySlug(t.board)?.nombre ?? t.board} · ${t.reply_count} respuestas · tu último mensaje: ${fecha(t.ultima)}</span></li>`)}</ul>`
+  : html`<p class="ayuda">Todavía no publicaste nada.</p>`}
+<p class="ayuda">Solo lo ves vos. En cada publicación, tus mensajes aparecen marcados con "(vos)".</p>`;
 }
 
 export function guardados(ctx, { lista }) {
@@ -798,14 +803,9 @@ ${lista.length
   : html`<p>Todavía no guardaste nada.</p>`}`;
 }
 
-export function cuenta(ctx, { suspendida, error, mias = [], llaves = [], geminiUrl = null } = {}) {
+export function cuenta(ctx, { suspendida, error, llaves = [], geminiUrl = null } = {}) {
   return html`<h1>Cuenta</h1>
 <p>Para el resto del foro sos pseudoanónimo. De tu cuenta de Google solo guardamos un identificador (ver <a href="/privacidad">Privacidad</a>).</p>
-<h2>Donde participaste</h2>
-${mias.length
-  ? html`<ul class="mias">${mias.map((t) => html`<li><a href="/h/${t.id}">${t.subject}</a> <span class="ayuda">· ${boardBySlug(t.board)?.nombre ?? t.board} · ${t.reply_count} respuestas · tu último mensaje: ${fecha(t.ultima)}</span></li>`)}</ul>`
-  : html`<p class="ayuda">Todavía no publicaste nada.</p>`}
-<p class="ayuda">Solo lo ves vos. En cada publicación, tus mensajes aparecen marcados con "(vos)".</p>
 ${preferencias(ctx.tema, ctx.vista)}
 ${geminiUrl ? gemini(ctx, llaves, geminiUrl) : ''}
 <h2>Borrar la cuenta</h2>
