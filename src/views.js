@@ -624,16 +624,31 @@ ${desacuerdos.length ? html`<ul class="resultados">${desacuerdos.map(fila)}</ul>
 // Gráfico de líneas en SVG inline, sin JS, en el estilo del panel de analíticas de 421: curva suave,
 // área rellena muy suave, un punto por día. Curva monótona (Fritsch-Carlson): no inventa picos ni
 // baja de cero entre dos puntos. El detalle de cada día va en <title> sobre un área de toque ancha.
-function lineas(titulo, datos, formato = (n) => String(n)) {
+// Eje vertical en números redondos (0, intermedios y tope), con su valor en un margen a la izquierda.
+// `resumen` = lo que va al lado del título después de "hoy" y "máximo" (el acumulado o el promedio).
+function lineas(titulo, datos, { formato = (n) => String(n), eje = (n) => n.toLocaleString('es-AR'), resumen = '', minPaso = 1 } = {}) {
   const W = 600;
   const H = 170;
   const arriba = 18;
   const base = H - 26;
   const maximo = Math.max(0, ...datos.map((d) => d.n));
-  const max = Math.max(1, maximo);
+  // Paso redondo (1, 2, 2,5 o 5 por potencia de 10) para unas 3 divisiones, nunca menor que `minPaso`
+  // (1 en los conteos, que no tienen medios; 0,01 en dólares).
+  const bruto = Math.max(maximo, minPaso) / 3;
+  const mag = 10 ** Math.floor(Math.log10(bruto));
+  const redondo = [1, 2, 2.5, 5, 10].map((k) => k * mag).find((v) => v >= bruto - 1e-9);
+  const paso = Math.max(minPaso, Math.ceil(redondo / minPaso - 1e-9) * minPaso);
+  const divisiones = Math.max(1, Math.ceil(maximo / paso - 1e-9));
+  const max = divisiones * paso;
+  const marcas = Array.from({ length: divisiones + 1 }, (_, k) => k * paso);
+  const etiquetasY = marcas.map((v) => eje(Math.round(v * 100) / 100));
+  // Margen izquierdo según la etiqueta más larga (monoespaciada de 15px ≈ 9px por carácter).
+  const x0 = Math.max(...etiquetasY.map((t) => t.length)) * 9 + 8;
+  const ancho = W - x0;
   const n = datos.length;
-  const paso = W / Math.max(1, n - 1);
-  const pts = datos.map((d, i) => [i * paso, base - (d.n / max) * (base - arriba)]);
+  const pasoX = ancho / Math.max(1, n - 1);
+  const yDe = (v) => base - (v / max) * (base - arriba);
+  const pts = datos.map((d, i) => [x0 + i * pasoX, yDe(d.n)]);
   // Pendientes monótonas.
   const dx = pts.slice(1).map((p, i) => p[0] - pts[i][0]);
   const pend = pts.slice(1).map((p, i) => (p[1] - pts[i][1]) / dx[i]);
@@ -652,34 +667,39 @@ function lineas(titulo, datos, formato = (n) => String(n)) {
   const f = (v) => v.toFixed(1);
   let curva = `M${f(pts[0][0])},${f(pts[0][1])}`;
   for (let i = 0; i < n - 1; i++) {
-    const [x0, y0] = pts[i];
-    const [x1, y1] = pts[i + 1];
-    const d = (x1 - x0) / 3;
-    curva += `C${f(x0 + d)},${f(y0 + m[i] * d)} ${f(x1 - d)},${f(y1 - m[i + 1] * d)} ${f(x1)},${f(y1)}`;
+    const [xa, ya] = pts[i];
+    const [xb, yb] = pts[i + 1];
+    const d = (xb - xa) / 3;
+    curva += `C${f(xa + d)},${f(ya + m[i] * d)} ${f(xb - d)},${f(yb - m[i + 1] * d)} ${f(xb)},${f(yb)}`;
   }
   const area = `${curva}L${f(pts[n - 1][0])},${base}L${f(pts[0][0])},${base}Z`;
   const etiqueta = (dia) => dia.slice(8, 10) + '/' + dia.slice(5, 7);
   const puntos = datos
     .map((d, i) => {
       const [x, y] = pts[i];
-      return `<g class="punto"><rect x="${f(x - paso / 2)}" y="0" width="${f(paso)}" height="${base}" class="hit"/><circle cx="${f(x)}" cy="${f(y)}" r="3.5"/><title>${etiqueta(d.dia)}: ${formato(d.n, d.dia)}</title></g>`;
+      return `<g class="punto"><rect x="${f(x - pasoX / 2)}" y="0" width="${f(pasoX)}" height="${base}" class="hit"/><circle cx="${f(x)}" cy="${f(y)}" r="3.5"/><title>${etiqueta(d.dia)}: ${esc(formato(d.n, d.dia))}</title></g>`;
     })
     .join('');
-  const grilla = [0.5, 1]
-    .map((k) => `<line x1="0" x2="${W}" y1="${f(base - k * (base - arriba))}" y2="${f(base - k * (base - arriba))}" class="grilla"/>`)
+  // Grilla y valores del eje vertical (el 0 va sobre la línea de base, que se dibuja aparte).
+  const ejeY = marcas
+    .map((v, k) => {
+      const y = yDe(v);
+      const linea = k === 0 ? '' : `<line x1="${x0}" x2="${W}" y1="${f(y)}" y2="${f(y)}" class="grilla"/>`;
+      return `${linea}<text x="${x0 - 8}" y="${f(y + 5)}" text-anchor="end" class="eje-y">${esc(etiquetasY[k])}</text>`;
+    })
     .join('');
   const ejeX = datos
     .map((d, i) => {
       const ultimo = i === n - 1;
       if (!(i % 7 === 0 || ultimo) || (!ultimo && n - 1 - i < 4)) return '';
-      const [x, anclaje] = i === 0 ? [0, 'start'] : ultimo ? [W, 'end'] : [i * paso, 'middle'];
+      const [x, anclaje] = i === 0 ? [x0, 'start'] : ultimo ? [W, 'end'] : [x0 + i * pasoX, 'middle'];
       return `<text x="${f(x)}" y="${H - 4}" text-anchor="${anclaje}">${etiqueta(d.dia)}</text>`;
     })
     .join('');
   const hoy = datos[n - 1]?.n ?? 0;
   return html`<figure class="grafico">
-  <figcaption><strong>${titulo}</strong> <span class="ayuda">hoy ${formato(hoy)} · máximo ${formato(maximo)}</span></figcaption>
-  ${raw(`<svg viewBox="-4 0 ${W + 8} ${H}" role="img" aria-label="${esc(titulo)}, últimos ${n} días">${grilla}<line x1="0" y1="${base + 0.5}" x2="${W}" y2="${base + 0.5}" class="base"/><text x="0" y="12" class="tope">${esc(formato(maximo))}</text><path d="${area}" class="area"/><path d="${curva}" class="linea"/>${puntos}${ejeX}</svg>`)}
+  <figcaption><strong>${titulo}</strong> <span class="ayuda">hoy ${formato(hoy)} · máximo ${formato(maximo)}${resumen ? ` · ${resumen}` : ''}</span></figcaption>
+  ${raw(`<svg viewBox="-4 0 ${W + 8} ${H}" role="img" aria-label="${esc(titulo)}, últimos ${n} días">${ejeY}<line x1="${x0}" y1="${base + 0.5}" x2="${W}" y2="${base + 0.5}" class="base"/><path d="${area}" class="area"/><path d="${curva}" class="linea"/>${puntos}${ejeX}</svg>`)}
 </figure>`;
 }
 
@@ -701,10 +721,21 @@ export function estadisticas(ctx, { hoy, total, desdeVisitas, estimados = [], se
   const orden = ['vistas', 'visitantes', 'activos', 'publicaciones', 'respuestas', 'nuevas', 'costo'];
   const estimado = (n, dia) => (estimados.includes(dia) ? `~${n} (estimado)` : String(n));
   const formatos = { costo: usd, vistas: estimado, visitantes: estimado };
+  // Al lado del título: el acumulado de los 30 días. Visitantes únicos y usuarios activos no se suman
+  // (la misma persona contaría una vez por cada día que entró): para esos va el promedio por día.
+  const noSumables = ['visitantes', 'activos'];
+  const resumen = (k) => {
+    const datos = series[k];
+    const suma = datos.reduce((a, d) => a + d.n, 0);
+    const aprox = ['vistas', 'visitantes'].includes(k) && datos.some((d) => estimados.includes(d.dia)) ? '~' : '';
+    if (noSumables.includes(k)) return `promedio ${aprox}${Math.round(suma / datos.length).toLocaleString('es-AR')} por día`;
+    return `acumulado ${aprox}${k === 'costo' ? usd(suma) : suma.toLocaleString('es-AR')}`;
+  };
+  const opciones = (k) => ({ formato: formatos[k], resumen: resumen(k), ...(k === 'costo' ? { eje: usd, minPaso: 0.01 } : {}) });
   return html`<h1>Estadísticas</h1>
 <p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas${estimados.length ? `, salvo ${estimados.join(', ')}, estimado con los requests que registró Railway (marcado con ~)` : ''}. "Usuarios activos" = cuentas que entraron al sitio ese día; los días anteriores se reconstruyeron con inicios de sesión, mensajes y reportes. "Costo de moderación" = Claude + Jev, estimado a precio de lista con los tokens de cada mensaje (no incluye pruebas del filtro).</p>
 <div class="tiles">${tiles.map(([k, v]) => html`<div class="tile"><span class="tile-n">${v.toLocaleString('es-AR')}</span><span class="tile-k">${k}</span></div>`)}</div>
-<div class="graficos">${orden.map((k) => lineas(nombres[k], series[k], formatos[k]))}</div>
+<div class="graficos">${orden.map((k) => lineas(nombres[k], series[k], opciones(k)))}</div>
 <details class="tabla-datos"><summary>Ver los números</summary>
 <table class="cruce"><tr><th>Día</th>${orden.map((k) => html`<th>${nombres[k]}</th>`)}</tr>
 ${series.vistas

@@ -1179,6 +1179,10 @@ test('estadísticas: cuenta visitas sin bots ni estáticos, activos, y solo la v
   const html = await r.text();
   assert.ok(html.includes('Publicaciones hoy') && html.includes('<svg viewBox'));
   assert.match(html, /US\$2\.04<\/span><span class="tile-k">Costo de moderación hoy/);
+  // Eje vertical con valores y, junto al título, el acumulado (o el promedio en lo que no se suma).
+  assert.match(html, /class="eje-y">0<\/text>/);
+  assert.match(html, /class="eje-y">US\$3\.00<\/text>/);
+  assert.ok(html.includes('acumulado 2') && html.includes('acumulado US$2.04') && html.includes('promedio 0 por día'));
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM actividad_dia').get().n >= 1, true);
   assert.equal((await s.pedir('/mod/estadisticas', { sesion: ana })).status, 404);
   // No queda ninguna IP guardada: solo hashes del día.
