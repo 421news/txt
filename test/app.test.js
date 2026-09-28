@@ -1153,3 +1153,101 @@ test('la sección Música existe, se puede publicar y está en la barra', async 
   assert.equal(r.status, 303);
   assert.ok((await s.texto('/')).includes('href="/b/musica"'));
 });
+
+test('borrar un mensaje propio: queda "Eliminado por su autor", sale de la búsqueda y baja el contador', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'respuesta de Zanahoria' } });
+  assert.equal(s.db.prepare('SELECT reply_count FROM threads WHERE id = 1').get().reply_count, 1);
+
+  // En tus mensajes aparece "Borrar" en lugar de "Reportar".
+  const hilo = await s.texto('/h/1', bea);
+  assert.ok(hilo.includes('<a class="reportar" href="/p/2/borrar" rel="nofollow">Borrar</a>'));
+  assert.ok(!hilo.includes('href="/p/2/reportar"') && !hilo.includes('href="/p/1/borrar"'));
+  const pagina = await s.texto('/p/2/borrar', bea);
+  assert.ok(pagina.includes('action="/p/2/borrar"') && pagina.includes('Zanahoria') && pagina.includes('noindex'));
+
+  // Solo el autor, con sesión y con CSRF.
+  assert.equal((await s.pedir('/p/2/borrar')).headers.get('location'), '/entrar');
+  assert.equal((await s.pedir('/p/2/borrar', { sesion: ana })).status, 404, 'ajeno');
+  assert.equal((await s.pedir('/p/2/borrar', { sesion: ana, datos: {} })).status, 404, 'ajeno');
+  assert.equal((await s.pedir('/p/2/borrar', { cookie: bea.cookie, datos: {} })).status, 403, 'sin CSRF');
+  assert.ok((await s.texto('/buscar?q=Zanahoria')).includes('Zanahoria</mark>'));
+
+  const r = await s.pedir('/p/2/borrar', { sesion: bea, datos: {} });
+  assert.equal(r.headers.get('location'), '/h/1?aviso=mensaje-borrado#p2');
+  const despues = await s.texto('/h/1');
+  assert.ok(!despues.includes('Zanahoria') && despues.includes('Eliminado por su autor'));
+  assert.equal(s.db.prepare('SELECT reply_count FROM threads WHERE id = 1').get().reply_count, 0);
+  assert.ok(!(await s.texto('/buscar?q=Zanahoria')).includes('Zanahoria</mark>'));
+  assert.equal((await s.pedir('/p/2/borrar', { sesion: bea, datos: {} })).status, 404, 'ya borrado');
+
+  // En /mod no cuenta como eliminado por moderación.
+  s.filtro.decision = 'queue';
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'otra' } });
+  const mod = await s.entrar('mod');
+  assert.ok((await s.texto('/mod', mod)).includes('0 eliminados antes'));
+});
+
+test('borrar el mensaje que abre la publicación: con respuestas de otros queda "(eliminada)"; sin ellas se oculta', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Asunto Berenjena', cuerpo: 'texto-uno' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'respuesta-de-bea' } });
+  s.avanzar(601);
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Asunto-dos', cuerpo: 'texto-dos' } });
+  s.avanzar(31);
+  await s.pedir('/h/2/responder', { sesion: ana, datos: { cuerpo: 'me-respondo' } });
+
+  assert.ok((await s.texto('/p/1/borrar', ana)).includes('(eliminada)'), 'la confirmación lo avisa');
+  await s.pedir('/p/1/borrar', { sesion: ana, datos: {} });
+  const uno = await s.texto('/h/1');
+  assert.ok(uno.includes('(eliminada)') && !uno.includes('Berenjena') && !uno.includes('texto-uno'));
+  assert.ok(uno.includes('respuesta-de-bea'));
+  assert.ok((await s.texto('/buscar?q=texto')).includes('texto</mark>-dos'), 'la otra sigue en la búsqueda');
+  assert.deepEqual(s.db.prepare('SELECT asunto, cuerpo FROM busqueda WHERE rowid = 1').get(), { asunto: '', cuerpo: '' });
+
+  await s.pedir('/p/3/borrar', { sesion: ana, datos: {} });
+  assert.equal((await s.pedir('/h/2')).status, 404, 'solo tenía respuestas propias');
+  assert.ok(!(await s.texto('/b/cultura')).includes('Asunto-dos'));
+});
+
+test('lo que está en revisión o con reportes abiertos no se borra hasta que lo resuelva un mod', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'reportada' } });
+  s.filtro.decision = 'queue';
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'en-revision' } });
+
+  // En revisión: sin botón, y la página explica por qué.
+  assert.ok(!(await s.texto('/h/1', bea)).includes('href="/p/3/borrar"'));
+  assert.ok((await s.texto('/p/3/borrar', bea)).includes('lo resuelva un moderador'));
+  assert.equal((await s.pedir('/p/3/borrar', { sesion: bea, datos: {} })).headers.get('location'), '/p/3/borrar');
+  assert.equal(s.db.prepare('SELECT status FROM posts WHERE id = 3').get().status, 'queued');
+
+  // Con un reporte abierto tampoco.
+  await s.pedir('/p/2/reportar', { sesion: ana, datos: { motivo: 'respeto' } });
+  const pagina = await s.texto('/p/2/borrar', bea);
+  assert.ok(pagina.includes('lo resuelva un moderador') && !pagina.includes('action="/p/2/borrar"'));
+  await s.pedir('/p/2/borrar', { sesion: bea, datos: {} });
+  assert.ok((await s.texto('/h/1')).includes('reportada'));
+
+  // Cuando el mod descarta el reporte, se puede.
+  const mod = await s.entrar('mod');
+  await s.pedir('/mod/p/2/descartar', { sesion: mod, datos: {} });
+  await s.pedir('/p/2/borrar', { sesion: bea, datos: {} });
+  assert.ok(!(await s.texto('/h/1')).includes('reportada'));
+});

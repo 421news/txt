@@ -145,12 +145,12 @@ export function createApp({
     crearSesion: db.prepare('INSERT INTO sessions (id_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'),
     borrarSesion: db.prepare('DELETE FROM sessions WHERE id_hash = ?'),
     colaMod: db.prepare(`SELECT p.*, t.board, t.subject, u.created_at AS user_created,
-        (SELECT COUNT(*) FROM posts x WHERE x.user_id = p.user_id AND x.status = 'removed') AS eliminados,
+        (SELECT COUNT(*) FROM posts x WHERE x.user_id = p.user_id AND x.status = 'removed' AND x.body != '') AS eliminados,
         (SELECT group_concat(r.motivo, ', ') FROM reports r WHERE r.post_id = p.id AND r.resolved = 0) AS reportes
       FROM posts p JOIN threads t ON t.id = p.thread_id JOIN users u ON u.id = p.user_id
       WHERE p.status = 'queued' ORDER BY p.created_at`),
     reportadosMod: db.prepare(`SELECT p.*, t.board, t.subject, u.created_at AS user_created,
-        (SELECT COUNT(*) FROM posts x WHERE x.user_id = p.user_id AND x.status = 'removed') AS eliminados,
+        (SELECT COUNT(*) FROM posts x WHERE x.user_id = p.user_id AND x.status = 'removed' AND x.body != '') AS eliminados,
         (SELECT group_concat(r.motivo, ', ') FROM reports r WHERE r.post_id = p.id AND r.resolved = 0) AS reportes
       FROM posts p JOIN threads t ON t.id = p.thread_id JOIN users u ON u.id = p.user_id
       WHERE p.status = 'published' AND EXISTS (SELECT 1 FROM reports r WHERE r.post_id = p.id AND r.resolved = 0)
@@ -1096,6 +1096,59 @@ export function createApp({
       }
     })();
     res.redirect(303, `/h/${post.thread_id}?aviso=reportado#p${post.id}`);
+  });
+
+  // Borrar un mensaje propio: queda como al borrar la cuenta. En revisión o con reportes abiertos
+  // no se puede hasta que lo resuelva un mod; si no, se borraría antes de que alguien lo vea.
+  function motivoParaNoBorrar(post, user) {
+    if (suspendido(user)) return 'Mientras dure la suspensión no se pueden borrar mensajes.';
+    if (post.status !== 'published' || q.contarReportes.get(post.id).n > 0) {
+      return 'Este mensaje está en revisión. Se va a poder borrar cuando lo resuelva un moderador.';
+    }
+    return null;
+  }
+
+  const borrarMensaje = db.transaction((p) => {
+    const t = q.hilo.get(p.thread_id);
+    if (t.op_post_id === p.id) {
+      const deOtros = db
+        .prepare("SELECT COUNT(*) AS n FROM posts WHERE thread_id = ? AND id != ? AND user_id != ? AND status = 'published'")
+        .get(t.id, p.id, p.user_id).n;
+      db.prepare("UPDATE threads SET subject = '(eliminada)', visible = ? WHERE id = ?").run(deOtros > 0 ? t.visible : 0, t.id);
+    } else {
+      alRetirar(p);
+    }
+    db.prepare(`UPDATE posts SET body = '', status = 'removed', mod_reason = NULL WHERE id = ?`).run(p.id);
+    db.prepare(`UPDATE busqueda SET asunto = '', cuerpo = '' WHERE rowid = ?`).run(p.id);
+    db.prepare('DELETE FROM notificaciones WHERE post_id = ?').run(p.id);
+    q.log.run(null, 'borrar-mensaje', p.id, p.user_id, null, now());
+  });
+
+  // Mensaje propio y no borrado, o null (para los demás, como si no existiera).
+  function mensajePropio(req) {
+    const post = q.post.get(Number(req.params.id));
+    if (!post || post.status === 'removed' || post.user_id !== req.user.id) return null;
+    return post;
+  }
+
+  app.get('/p/:id/borrar', (req, res) => {
+    if (!req.user) return res.redirect(303, '/entrar');
+    const post = mensajePropio(req);
+    const thread = post && hiloVisible(req, post.thread_id);
+    if (!thread) return noEncontrado(res);
+    const autorOp = q.post.get(thread.op_post_id)?.user_id;
+    const p = { ...post, anon: anonId(post.user_id, thread.id), esAutorOp: post.user_id === autorOp, esMio: true };
+    const cuerpo = V.borrar(res.locals.ctx, { post: p, thread, volver: `/h/${thread.id}#p${post.id}`, motivo: motivoParaNoBorrar(post, req.user) });
+    enviar(res, { titulo: 'Borrar', indexar: false, cuerpo });
+  });
+
+  app.post('/p/:id/borrar', (req, res) => {
+    if (!exigirUsuario(req, res)) return;
+    const post = mensajePropio(req);
+    if (!post) return noEncontrado(res);
+    if (motivoParaNoBorrar(post, req.user)) return res.redirect(303, `/p/${post.id}/borrar`);
+    borrarMensaje(post);
+    res.redirect(303, `/h/${post.thread_id}?aviso=mensaje-borrado#p${post.id}`);
   });
 
   // Guardar una publicación para leer después, o sacarla de guardados (el mismo botón).
