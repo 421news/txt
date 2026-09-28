@@ -1340,3 +1340,12 @@ test('largo: un mensaje de 8.000 caracteres entra aunque sean de 3 bytes, y uno 
   assert.ok((await largo.text()).includes('hasta 8000 caracteres'));
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM posts').get().n, 1);
 });
+
+test('publicar y responder: el navegador no rellena el formulario con lo ya enviado al volver atrás', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  assert.ok((await s.texto('/b/cultura', ana)).includes('<form class="form-post" method="post" autocomplete="off" action="/b/cultura/hilo">'));
+  assert.ok((await s.texto('/h/1', ana)).includes('<form class="form-post" method="post" autocomplete="off" action="/h/1/responder" id="responder">'));
+});

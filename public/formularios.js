@@ -8,7 +8,10 @@
 // - "Responder" en un mensaje agrega >>N a lo que ya está escrito, sin recargar la página. Sin
 //   JavaScript es un link a ?cita=N; si se llega así, el >>N se suma al borrador en vez de pisarlo.
 (() => {
-  const PREFIJO = 'borrador:';
+  // Los formularios llevan autocomplete="off": si no, al volver atrás después de publicar el navegador
+  // rellenaba el campo con lo ya enviado, sincronizar() lo guardaba como borrador y reaparecía en cada
+  // visita. El borrador lo maneja solo este script. "2": descarta los borradores que quedaron pegados así.
+  const PREFIJO = 'borrador2:';
   const VALIDEZ = 86_400_000; // un borrador vencido no se vuelve a ofrecer.
 
   // Un borrador por formulario, no por URL: el mismo "publicar" se dibuja en la portada y en cada
