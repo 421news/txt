@@ -1164,6 +1164,9 @@ test('estadísticas: cuenta visitas sin bots ni estáticos, activos, y solo la v
   await fetch(s.base + '/', { headers: { 'user-agent': 'Googlebot/2.1' } });
   await fetch(s.base + '/static/style.css', { headers: nav });
   await fetch(s.base + '/index.txt', { headers: nav });
+  // Cambiar el tema o la vista es un paso de ida y vuelta, no una página vista.
+  await fetch(s.base + '/tema?t=claro&volver=%2F', { headers: nav, redirect: 'manual' });
+  await fetch(s.base + '/vista?v=lista&volver=%2F', { headers: nav, redirect: 'manual' });
   const v = s.db.prepare('SELECT vistas, visitantes FROM visitas_dia').get();
   assert.deepEqual(v, { vistas: 2, visitantes: 1 });
   const ana = await s.entrar('ana');
@@ -1322,4 +1325,18 @@ test('lo que está en revisión o con reportes abiertos no se borra hasta que lo
   await s.pedir('/mod/p/2/descartar', { sesion: mod, datos: {} });
   await s.pedir('/p/2/borrar', { sesion: bea, datos: {} });
   assert.ok(!(await s.texto('/h/1')).includes('reportada'));
+});
+
+test('largo: un mensaje de 8.000 caracteres entra aunque sean de 3 bytes, y uno más no', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  // "語" ocupa 9 bytes en el formulario (%E8%AA%9E): 8.000 pasan los 64 KB del tope viejo.
+  const r = await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Largo', cuerpo: '語'.repeat(8000) } });
+  assert.equal(r.status, 303);
+  assert.equal(s.db.prepare('SELECT length(body) AS n FROM posts').get().n, 8000);
+  s.avanzar(31);
+  const largo = await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'a'.repeat(8001) } });
+  assert.ok((await largo.text()).includes('hasta 8000 caracteres'));
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM posts').get().n, 1);
 });

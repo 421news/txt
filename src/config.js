@@ -10,7 +10,7 @@ export const boardBySlug = (slug) => BOARDS.find((b) => b.slug === slug);
 
 export const LIMITS = {
   asunto: 120,
-  cuerpo: 4000,
+  cuerpo: 8000,
   hilosPorPagina: 10,
   // El catálogo (vista por defecto) muestra fichas chicas: entran muchas más por página.
   hilosPorPaginaCatalogo: 60,

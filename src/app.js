@@ -352,7 +352,7 @@ export function createApp({
     if (req.method !== 'GET') return;
     const ua = req.get('user-agent') ?? '';
     if (!ua || BOT.test(ua)) return;
-    if (/^\/(static|auth)\/|\.(txt|xml)$|\/nuevos$|^\/(robots\.txt|favicon)/.test(req.path)) return;
+    if (/^\/(static|auth)\/|\.(txt|xml)$|\/nuevos$|^\/(robots\.txt|favicon|tema|vista)/.test(req.path)) return;
     try {
       const dia = diaDe(now());
       if (sal.dia !== dia) {
@@ -393,7 +393,7 @@ export function createApp({
         res.set('Cache-Control', !production ? 'public, max-age=0' : res.req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=86400'),
     }),
   );
-  app.use(express.urlencoded({ extended: false, limit: '64kb' }));
+  app.use(express.urlencoded({ extended: false, limit: '128kb' }));
 
   // Desde la terminal (curl, wget, httpie) las páginas de lectura se sirven en texto plano en la
   // misma dirección: `curl txt.421.news` muestra la portada. Se reescribe a la ruta .txt.
