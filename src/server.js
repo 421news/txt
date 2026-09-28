@@ -58,7 +58,15 @@ const app = createApp({
     .filter(Boolean),
 });
 
-setInterval(() => limpiarVencidos(db), 3_600_000).unref();
+setInterval(() => {
+  limpiarVencidos(db);
+  // Estadísticas de la base al día (SQLite solo las recalcula si hace falta). Si falla, queda en el log.
+  try {
+    db.pragma('optimize');
+  } catch (err) {
+    console.error('[estadísticas] No se pudieron poner al día:', err);
+  }
+}, 3_600_000).unref();
 const server = app.listen(port, () => console.log(`${siteName} escuchando en ${baseUrl}`));
 
 // Cápsula Gemini: arranca si hay certificado. En Railway sale por un proxy TCP
