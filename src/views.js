@@ -627,10 +627,6 @@ ${desacuerdos.length ? html`<ul class="resultados">${desacuerdos.map(fila)}</ul>
 // Eje vertical en números redondos (0, intermedios y tope), con su valor en un margen a la izquierda.
 // `resumen` = lo que va al lado del título después de "hoy" y "máximo" (el acumulado o el promedio).
 function lineas(titulo, datos, { formato = (n) => String(n), eje = (n) => n.toLocaleString('es-AR'), resumen = '', minPaso = 1 } = {}) {
-  const W = 600;
-  const H = 170;
-  const arriba = 18;
-  const base = H - 26;
   const maximo = Math.max(0, ...datos.map((d) => d.n));
   // Paso redondo (1, 2, 2,5 o 5 por potencia de 10) para unas 3 divisiones, nunca menor que `minPaso`
   // (1 en los conteos, que no tienen medios; 0,01 en dólares).
@@ -642,64 +638,72 @@ function lineas(titulo, datos, { formato = (n) => String(n), eje = (n) => n.toLo
   const max = divisiones * paso;
   const marcas = Array.from({ length: divisiones + 1 }, (_, k) => k * paso);
   const etiquetasY = marcas.map((v) => eje(Math.round(v * 100) / 100));
-  // Margen izquierdo según la etiqueta más larga (monoespaciada de 15px ≈ 9px por carácter).
-  const x0 = Math.max(...etiquetasY.map((t) => t.length)) * 9 + 8;
-  const ancho = W - x0;
   const n = datos.length;
-  const pasoX = ancho / Math.max(1, n - 1);
-  const yDe = (v) => base - (v / max) * (base - arriba);
-  const pts = datos.map((d, i) => [x0 + i * pasoX, yDe(d.n)]);
-  // Pendientes monótonas.
-  const dx = pts.slice(1).map((p, i) => p[0] - pts[i][0]);
-  const pend = pts.slice(1).map((p, i) => (p[1] - pts[i][1]) / dx[i]);
-  const m = pts.map((_, i) => {
-    if (i === 0) return pend[0] ?? 0;
-    if (i === n - 1) return pend[n - 2] ?? 0;
-    return pend[i - 1] * pend[i] <= 0 ? 0 : (pend[i - 1] + pend[i]) / 2;
-  });
-  for (let i = 0; i < n - 1; i++) {
-    if (pend[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
-    const a = m[i] / pend[i];
-    const b = m[i + 1] / pend[i];
-    const h = a * a + b * b;
-    if (h > 9) { const t = 3 / Math.sqrt(h); m[i] = t * a * pend[i]; m[i + 1] = t * b * pend[i]; }
-  }
-  const f = (v) => v.toFixed(1);
-  let curva = `M${f(pts[0][0])},${f(pts[0][1])}`;
-  for (let i = 0; i < n - 1; i++) {
-    const [xa, ya] = pts[i];
-    const [xb, yb] = pts[i + 1];
-    const d = (xb - xa) / 3;
-    curva += `C${f(xa + d)},${f(ya + m[i] * d)} ${f(xb - d)},${f(yb - m[i + 1] * d)} ${f(xb)},${f(yb)}`;
-  }
-  const area = `${curva}L${f(pts[n - 1][0])},${base}L${f(pts[0][0])},${base}Z`;
   const etiqueta = (dia) => dia.slice(8, 10) + '/' + dia.slice(5, 7);
-  const puntos = datos
-    .map((d, i) => {
-      const [x, y] = pts[i];
-      return `<g class="punto"><rect x="${f(x - pasoX / 2)}" y="0" width="${f(pasoX)}" height="${base}" class="hit"/><circle cx="${f(x)}" cy="${f(y)}" r="3.5"/><title>${etiqueta(d.dia)}: ${esc(formato(d.n, d.dia))}</title></g>`;
-    })
-    .join('');
-  // Grilla y valores del eje vertical (el 0 va sobre la línea de base, que se dibuja aparte).
-  const ejeY = marcas
-    .map((v, k) => {
-      const y = yDe(v);
-      const linea = k === 0 ? '' : `<line x1="${x0}" x2="${W}" y1="${f(y)}" y2="${f(y)}" class="grilla"/>`;
-      return `${linea}<text x="${x0 - 8}" y="${f(y + 5)}" text-anchor="end" class="eje-y">${esc(etiquetasY[k])}</text>`;
-    })
-    .join('');
-  const ejeX = datos
-    .map((d, i) => {
-      const ultimo = i === n - 1;
-      if (!(i % 7 === 0 || ultimo) || (!ultimo && n - 1 - i < 4)) return '';
-      const [x, anclaje] = i === 0 ? [x0, 'start'] : ultimo ? [W, 'end'] : [x0 + i * pasoX, 'middle'];
-      return `<text x="${f(x)}" y="${H - 4}" text-anchor="${anclaje}">${etiqueta(d.dia)}</text>`;
-    })
-    .join('');
+  // Dos dibujos del mismo gráfico: ancho para escritorio (una columna) y el de siempre para el celular.
+  // El SVG escala entero, texto incluido: con una sola proporción, los números quedaban enormes en una
+  // columna ancha o ilegibles en el celular. El CSS muestra uno u otro.
+  const dibujar = (W, H, clase) => {
+    const arriba = 18;
+    const base = H - 26;
+    // Margen izquierdo según la etiqueta más larga (monoespaciada de 15px ≈ 9px por carácter).
+    const x0 = Math.max(...etiquetasY.map((t) => t.length)) * 9 + 8;
+    const ancho = W - x0;
+    const pasoX = ancho / Math.max(1, n - 1);
+    const yDe = (v) => base - (v / max) * (base - arriba);
+    const pts = datos.map((d, i) => [x0 + i * pasoX, yDe(d.n)]);
+    // Pendientes monótonas.
+    const dx = pts.slice(1).map((p, i) => p[0] - pts[i][0]);
+    const pend = pts.slice(1).map((p, i) => (p[1] - pts[i][1]) / dx[i]);
+    const m = pts.map((_, i) => {
+      if (i === 0) return pend[0] ?? 0;
+      if (i === n - 1) return pend[n - 2] ?? 0;
+      return pend[i - 1] * pend[i] <= 0 ? 0 : (pend[i - 1] + pend[i]) / 2;
+    });
+    for (let i = 0; i < n - 1; i++) {
+      if (pend[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+      const a = m[i] / pend[i];
+      const b = m[i + 1] / pend[i];
+      const h = a * a + b * b;
+      if (h > 9) { const t = 3 / Math.sqrt(h); m[i] = t * a * pend[i]; m[i + 1] = t * b * pend[i]; }
+    }
+    const f = (v) => v.toFixed(1);
+    let curva = `M${f(pts[0][0])},${f(pts[0][1])}`;
+    for (let i = 0; i < n - 1; i++) {
+      const [xa, ya] = pts[i];
+      const [xb, yb] = pts[i + 1];
+      const d = (xb - xa) / 3;
+      curva += `C${f(xa + d)},${f(ya + m[i] * d)} ${f(xb - d)},${f(yb - m[i + 1] * d)} ${f(xb)},${f(yb)}`;
+    }
+    const area = `${curva}L${f(pts[n - 1][0])},${base}L${f(pts[0][0])},${base}Z`;
+    const puntos = datos
+      .map((d, i) => {
+        const [x, y] = pts[i];
+        return `<g class="punto"><rect x="${f(x - pasoX / 2)}" y="0" width="${f(pasoX)}" height="${base}" class="hit"/><circle cx="${f(x)}" cy="${f(y)}" r="3.5"/><title>${etiqueta(d.dia)}: ${esc(formato(d.n, d.dia))}</title></g>`;
+      })
+      .join('');
+    // Grilla y valores del eje vertical (el 0 va sobre la línea de base, que se dibuja aparte).
+    const ejeY = marcas
+      .map((v, k) => {
+        const y = yDe(v);
+        const linea = k === 0 ? '' : `<line x1="${x0}" x2="${W}" y1="${f(y)}" y2="${f(y)}" class="grilla"/>`;
+        return `${linea}<text x="${x0 - 8}" y="${f(y + 5)}" text-anchor="end" class="eje-y">${esc(etiquetasY[k])}</text>`;
+      })
+      .join('');
+    const ejeX = datos
+      .map((d, i) => {
+        const ultimo = i === n - 1;
+        if (!(i % 7 === 0 || ultimo) || (!ultimo && n - 1 - i < 4)) return '';
+        const [x, anclaje] = i === 0 ? [x0, 'start'] : ultimo ? [W, 'end'] : [x0 + i * pasoX, 'middle'];
+        return `<text x="${f(x)}" y="${H - 4}" text-anchor="${anclaje}">${etiqueta(d.dia)}</text>`;
+      })
+      .join('');
+    return `<svg class="${clase}" viewBox="-4 0 ${W + 8} ${H}" role="img" aria-label="${esc(titulo)}, últimos ${n} días">${ejeY}<line x1="${x0}" y1="${base + 0.5}" x2="${W}" y2="${base + 0.5}" class="base"/><path d="${area}" class="area"/><path d="${curva}" class="linea"/>${puntos}${ejeX}</svg>`;
+  };
   const hoy = datos[n - 1]?.n ?? 0;
   return html`<figure class="grafico">
   <figcaption><strong>${titulo}</strong> <span class="ayuda">hoy ${formato(hoy)} · máximo ${formato(maximo)}${resumen ? ` · ${resumen}` : ''}</span></figcaption>
-  ${raw(`<svg viewBox="-4 0 ${W + 8} ${H}" role="img" aria-label="${esc(titulo)}, últimos ${n} días">${ejeY}<line x1="${x0}" y1="${base + 0.5}" x2="${W}" y2="${base + 0.5}" class="base"/><path d="${area}" class="area"/><path d="${curva}" class="linea"/>${puntos}${ejeX}</svg>`)}
+  ${raw(dibujar(1000, 200, 'ancho') + dibujar(600, 170, 'angosto'))}
 </figure>`;
 }
 
