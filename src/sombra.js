@@ -14,8 +14,8 @@ export const PRECIO_JEV_POR_MTOK = 0.042; // USD por millón de tokens de entrad
 // Una pregunta por norma. `criteria.false` lleva lo que está permitido a propósito en txt.
 const PREGUNTAS_NORMAS = {
   respeto: {
-    instructions: 'Does the `message` harass a specific person: stalking them across posts, telling them to kill themselves, or urging others to attack them?',
-    criteria: { true: 'Targeted harassment of a specific person', false: 'No harassment. Swearing and one-off insults, even aimed at another user, are allowed.' },
+    instructions: 'Does the `message` harass a specific person: stalking them across posts, telling them to kill themselves, urging others to attack them, wishing them rape, sexual abuse or beatings, or degrading them sexually or for being a woman, e.g. calling a female user a whore (even in a single message, even with misspelled words like "6orda uta")?',
+    criteria: { true: 'Targeted harassment, misogynistic abuse, or wishing sexual or physical violence on a specific person', false: 'No harassment. Swearing and one-off insults, even aimed at another user, are allowed, as long as they do not wish sexual or physical violence on them.' },
   },
   odio: {
     instructions: 'Does the `message` demean or dehumanize people for their origin, ethnicity, religion, gender, sexual orientation or disability?',

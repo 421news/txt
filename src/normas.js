@@ -2,7 +2,7 @@
 // El texto es corto a propósito (pedido del usuario, 2026-09-25): los matices van en los criterios
 // del prompt (moderation.js). Los id no se cambian: quedan guardados en posts, rechazos y reportes.
 export const NORMAS = [
-  { id: 'respeto', titulo: 'Sin acoso', texto: 'Se puede putear y discutir fuerte. Ensañarse con alguien, no.' },
+  { id: 'respeto', titulo: 'Sin acoso', texto: 'Se puede putear y discutir fuerte. Ensañarse con alguien o desearle que lo violen o lo golpeen, no.' },
   { id: 'odio', titulo: 'Sin odio', texto: 'Nada que desprecie a personas por su origen, religión, género, orientación o discapacidad.' },
   { id: 'sexual', titulo: 'Sin contenido sexual', texto: 'Nada explícito. Sexualizar a menores es suspensión inmediata.' },
   { id: 'violencia', titulo: 'Sin amenazas', texto: 'Nada de amenazar ni incitar a lastimar a alguien concreto.' },

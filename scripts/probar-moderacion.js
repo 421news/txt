@@ -117,6 +117,45 @@ const CASOS = [
     esHilo: true,
   },
   {
+    // Reportado el 2026-09-28 (No.11701): desearle violencia sexual a otro usuario, con insultos deformados.
+    esperado: 'reject',
+    tablon: 'Vida real',
+    asunto: 'Incels',
+    cuerpo: '>>11699\nAnda a hacerte coger por un villero turrito golpeadoe 6orda uta',
+  },
+  {
+    esperado: 'reject',
+    tablon: 'Vida real',
+    asunto: 'Incels',
+    cuerpo: '>>11699\nojalá te viole un negro de mierda, gorda puta, a ver si aprendés',
+  },
+  {
+    esperado: 'reject',
+    tablon: 'Cultura',
+    asunto: 'Feminismo',
+    cuerpo: '>>11650\ncallate puta, nadie te preguntó',
+  },
+  {
+    // Controles: la puteada sin blanco y la discusión fuerte sobre género siguen pasando.
+    esperado: 'approve',
+    tablon: 'Vida real',
+    asunto: 'Calor',
+    cuerpo: 'puta madre, 38 grados y se cortó la luz otra vez',
+  },
+  {
+    esperado: 'approve',
+    tablon: 'Cultura',
+    asunto: 'Feminismo',
+    cuerpo: '>>11650\nme parece una boludez lo que decís del feminismo, está lleno de contradicciones y lo sabés',
+  },
+  {
+    // Control: la puteada sola sigue pasando.
+    esperado: 'approve',
+    tablon: 'Vida real',
+    asunto: 'Incels',
+    cuerpo: '>>11699\nqué pelotudez dijiste, andá a cagar gordo',
+  },
+  {
     esperado: 'approve',
     tablon: 'Cultura',
     asunto: 'Libros sobre la dictadura',
