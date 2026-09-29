@@ -127,6 +127,9 @@ export function createApp({
       'INSERT INTO mod_log (mod_id, accion, post_id, target_user_id, nota, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     ),
     usuarioPorIdentidad: db.prepare('SELECT * FROM users WHERE identidad = ?'),
+    // Lo que espera a un mod: mensajes en revisión y publicados con reportes abiertos (lo mismo que lista /mod).
+    contarPendientesMod: db.prepare(`SELECT (SELECT COUNT(*) FROM posts WHERE status = 'queued')
+      + (SELECT COUNT(DISTINCT r.post_id) FROM reports r JOIN posts p ON p.id = r.post_id WHERE r.resolved = 0 AND p.status = 'published') AS n`),
     contarNovedades: db.prepare(`SELECT COUNT(*) AS n FROM notificaciones x JOIN posts p ON p.id = x.post_id
       JOIN threads t ON t.id = p.thread_id
       WHERE x.user_id = ? AND x.leida = 0 AND p.status = 'published' AND t.visible = 1`),
@@ -424,9 +427,10 @@ export function createApp({
     // Las páginas con sesión llevan el token CSRF y datos propios: que ninguna caché intermedia las guarde.
     if (req.user) res.set('Cache-Control', 'private, no-store');
     const novedades = req.user ? q.contarNovedades.get(req.user.id).n : 0;
+    const pendientesMod = esMod(req.user) && !suspendido(req.user) ? q.contarPendientesMod.get().n : 0;
     const cookies = leerCookies(req.headers.cookie);
     const tema = TEMAS.includes(cookies.tema) ? cookies.tema : null;
-    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, tema, vista: vistaDe(req), ruta: req.originalUrl, codigoUrl, sombraActiva: !!sombra, jevActivo };
+    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, pendientesMod, tema, vista: vistaDe(req), ruta: req.originalUrl, codigoUrl, sombraActiva: !!sombra, jevActivo };
     if (req.method === 'POST') {
       const origen = req.get('origin');
       if (origen && origen !== `${req.protocol}://${req.get('host')}`) return res.status(403).send('Origen no permitido');

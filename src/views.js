@@ -47,6 +47,7 @@ const ICONOS = {
   correo: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 7l9 6 9-6"/>'),
   menu: svg('<path d="M4 6h16M4 12h16M4 18h16"/>'),
   lupa: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
+  escudo: svg('<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M12 8v4M12 16h.01"/>'),
 };
 
 function botonTema(ruta) {
@@ -69,11 +70,11 @@ function barraAbajo(ctx) {
   <a href="${publicar}"><b>+</b>Publicar</a>
   ${user
     ? html`<a href="/respuestas"${activa(camino === '/respuestas')}><b>✉${novedades ? html`<span class="badge">${novedades}</span>` : ''}</b>Respuestas</a>
-  <details class="abajo-menu derecha"><summary${activa(camino === '/cuenta' || camino === '/guardados' || camino === '/mod')}><b>☺</b>Cuenta</summary>
+  <details class="abajo-menu derecha"><summary${activa(camino === '/cuenta' || camino === '/guardados' || camino === '/mod')}><b>☺${ctx.pendientesMod ? html`<span class="badge" title="Para moderar">${ctx.pendientesMod}</span>` : ''}</b>Cuenta</summary>
     <div class="menu-abajo">
       <a href="/guardados">Guardados</a>
       <a href="/cuenta">Mi cuenta</a>
-      ${esMod(user) ? html`<a href="/mod">Moderación</a><a href="/mod/estadisticas">Estadísticas</a>` : ''}
+      ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas</a>` : ''}
       <a href="/normas">Normas</a>
       <a href="/formato">Formato</a>
       <form method="post" action="/salir"><input type="hidden" name="_csrf" value="${csrf}"><button class="enlace">Salir</button></form>
@@ -148,6 +149,9 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
     <div class="cab-der">
       <a class="icono lupa" href="/buscar" title="Buscar" aria-label="Buscar">${ICONOS.lupa}</a>
       ${botonTema(ruta)}
+      ${ctx.pendientesMod
+        ? html`<a class="icono mod-pendientes" href="/mod" title="Moderación: ${ctx.pendientesMod} para revisar" aria-label="Moderación (${ctx.pendientesMod} para revisar)">${ICONOS.escudo}<span class="badge">${ctx.pendientesMod}</span></a>`
+        : ''}
       ${user
         ? html`<a class="icono correo${ctx.novedades ? ' hay-novedades' : ''}" href="/respuestas" title="Respuestas" aria-label="Respuestas${ctx.novedades ? ` (${ctx.novedades} nuevas)` : ''}">${ICONOS.correo}${ctx.novedades ? html`<span class="badge">${ctx.novedades}</span>` : ''}</a>`
         : html`<a class="icono" href="/entrar">Entrar</a>`}
@@ -155,7 +159,7 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
         <summary class="icono" aria-label="Menú">${ICONOS.menu}<span>Menú</span></summary>
         <div class="menu-desplegable">
           ${user ? html`<a href="/respuestas">Respuestas${ctx.novedades ? ` (${ctx.novedades})` : ''}</a><a href="/guardados">Guardados</a><a href="/cuenta">Mi cuenta</a>` : html`<a href="/entrar">Entrar</a>`}
-          ${esMod(user) ? html`<a href="/mod">Moderación</a><a href="/mod/estadisticas">Estadísticas</a>` : ''}
+          ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas</a>` : ''}
           <a href="/normas">Normas</a>
           <a href="/formato">Formato</a>
           ${user ? html`<form method="post" action="/salir"><input type="hidden" name="_csrf" value="${csrf}"><button class="enlace">Salir</button></form>` : ''}

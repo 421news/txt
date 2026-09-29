@@ -464,6 +464,8 @@ button.enlace::before, button.enlace::after { content: none; }
 .icono svg { display: block; }
 .icono:hover { background: var(--fosforo); color: var(--fondo); }
 .correo.hay-novedades { border-color: var(--aviso); color: var(--aviso); }
+/* Solo para mods y solo si hay algo en /mod: mensajes en revisión o reportados. */
+.mod-pendientes { border-color: var(--aviso); color: var(--aviso); }
 .menu-cab { position: relative; }
 .menu-cab > summary { list-style: none; }
 .menu-cab > summary::-webkit-details-marker { display: none; }

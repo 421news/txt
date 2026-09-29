@@ -1365,3 +1365,24 @@ test('donde participaste: está en Respuestas y ya no en Mi cuenta', async (t) =
   assert.ok(!cuenta.includes('Donde participaste') && !cuenta.includes('Asunto Remolacha'));
   assert.ok(cuenta.includes('<h2>Preferencias</h2>') && cuenta.includes('Borrar la cuenta'));
 });
+
+test('aviso de moderación: los mods ven cuántos mensajes esperan en /mod, y nadie más', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  const mod = await s.entrar('mod');
+  assert.ok(!(await s.texto('/', mod)).includes('mod-pendientes'), 'sin nada pendiente no aparece');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  s.filtro.decision = 'queue';
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'en revisión' } });
+  // Un reporte abierto sobre el mensaje publicado suma otro.
+  await s.pedir('/p/1/reportar', { sesion: bea, datos: { motivo: 'respeto' } });
+  const pagina = await s.texto('/', mod);
+  assert.ok(pagina.includes('<a class="icono mod-pendientes" href="/mod"') && pagina.includes('<span class="badge">2</span></a>'));
+  assert.ok(pagina.includes('Moderación (2)'));
+  assert.ok(!(await s.texto('/', ana)).includes('mod-pendientes'), 'un usuario común no lo ve');
+  await s.pedir('/mod/p/1/descartar', { sesion: mod, datos: {} });
+  assert.ok((await s.texto('/', mod)).includes('Moderación (1)'));
+});
