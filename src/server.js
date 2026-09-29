@@ -8,6 +8,7 @@ import { crearModerador } from './moderation.js';
 import { crearGoogle } from './google.js';
 import { crearCapsula } from './gemini.js';
 import { crearSombra, crearFiltroMixto } from './sombra.js';
+import { crearUltimaNota } from './nota421.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
 const production = process.env.NODE_ENV === 'production';
@@ -40,6 +41,7 @@ const db = openDb(path.resolve(raiz, process.env.DB_PATH || 'data/textboard.db')
 const jev = process.env.TYPESAFE_API_KEY ? crearSombra({ apiKey: process.env.TYPESAFE_API_KEY }) : null;
 const app = createApp({
   db,
+  ultimaNota421: crearUltimaNota(),
   secret,
   baseUrl,
   siteName,

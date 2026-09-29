@@ -496,6 +496,9 @@ button.enlace::before, button.enlace::after { content: none; }
 .secciones a { text-decoration: none; color: var(--tenue); padding-bottom: 0.15rem; }
 .secciones a:hover { background: transparent; color: var(--fosforo); }
 .secciones a.activa { color: var(--fosforo); border-bottom: 2px solid var(--fosforo); }
+.secciones .sep-421 { color: var(--borde); }
+.secciones a.leer-421, .menu-abajo a.leer-421 { color: var(--fosforo); }
+.menu-abajo a.leer-421 { border-top: 1px solid var(--borde); margin-top: 0.3rem; padding-top: 0.5rem; }
 
 /* --- Botón de tema ---------------------------------------------------------------------- */
 /* Se dibujan sol y luna; se ve el que lleva al tema contrario del que se está mostrando. */

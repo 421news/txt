@@ -3,6 +3,7 @@ import { estatico } from './estaticos.js';
 import { BOARDS, LIMITS, boardBySlug } from './config.js';
 import { NORMAS } from './normas.js';
 import { formatear, extracto, textoPlano } from './format.js';
+import { URL_421 } from './nota421.js';
 
 const formatoFecha = new Intl.DateTimeFormat('es-AR', {
   dateStyle: 'short',
@@ -55,6 +56,11 @@ function botonTema(ruta) {
   return html`<span class="boton-tema"><a class="icono a-claro" href="/tema?t=claro&amp;volver=${volver}" rel="nofollow" title="Pasar a modo claro" aria-label="Pasar a modo claro">${ICONOS.sol}</a><a class="icono a-oscuro" href="/tema?t=oscuro&amp;volver=${volver}" rel="nofollow" title="Pasar a modo oscuro" aria-label="Pasar a modo oscuro">${ICONOS.luna}</a></span>`;
 }
 
+// "Leé 421 ↗": al final de las secciones (y del menú Secciones en el celular). txt es de 421; el
+// title muestra la última nota. Marcado con utm_source=txt para medirlo en GA4 de 421.
+const leer421 = (ctx) =>
+  html`<a class="leer-421" href="${URL_421}"${ctx.nota421 ? html` title="Última nota: ${ctx.nota421}"` : ''}>Leé 421 ↗</a>`;
+
 // Barra inferior para celular (en escritorio se oculta por CSS y queda la barra de arriba).
 function barraAbajo(ctx) {
   const { user, csrf, ruta = '/', novedades } = ctx;
@@ -65,7 +71,7 @@ function barraAbajo(ctx) {
   return html`<nav class="abajo" aria-label="Navegación">
   <a href="/"${activa(camino === '/')}><b>⌂</b>Inicio</a>
   <details class="abajo-menu"><summary${activa(!!seccion)}><b>☰</b>Secciones</summary>
-    <div class="menu-abajo">${BOARDS.map((b) => html`<a href="/b/${b.slug}">${b.nombre}</a>`)}</div>
+    <div class="menu-abajo">${BOARDS.map((b) => html`<a href="/b/${b.slug}">${b.nombre}</a>`)}${leer421(ctx)}</div>
   </details>
   <a href="${publicar}"><b>+</b>Publicar</a>
   ${user
@@ -167,7 +173,7 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
       </details>
     </div>
   </div>
-  <nav class="secciones">${BOARDS.map((b) => html` <a href="/b/${b.slug}"${(ruta.split('?')[0].match(/^\/b\/([^/]+)/)?.[1] === b.slug) ? raw(' class="activa"') : ''}>${b.nombre}</a>`)}</nav>
+  <nav class="secciones">${BOARDS.map((b) => html` <a href="/b/${b.slug}"${(ruta.split('?')[0].match(/^\/b\/([^/]+)/)?.[1] === b.slug) ? raw(' class="activa"') : ''}>${b.nombre}</a>`)}<span class="sep-421" aria-hidden="true">|</span>${leer421(ctx)}</nav>
 </header>
 <main>
 ${aviso && Object.hasOwn(AVISOS, aviso) ? html`<p class="aviso">${AVISOS[aviso]}</p>` : ''}

@@ -64,6 +64,8 @@ export function createApp({
   sombra = null,
   alcanceKey = null,
   jevActivo = false,
+  // Título de la última nota de 421 para el link de la barra (src/nota421.js); null = sin título.
+  ultimaNota421 = () => null,
 }) {
   const app = express();
   app.disable('x-powered-by');
@@ -430,7 +432,7 @@ export function createApp({
     const pendientesMod = esMod(req.user) && !suspendido(req.user) ? q.contarPendientesMod.get().n : 0;
     const cookies = leerCookies(req.headers.cookie);
     const tema = TEMAS.includes(cookies.tema) ? cookies.tema : null;
-    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, pendientesMod, tema, vista: vistaDe(req), ruta: req.originalUrl, codigoUrl, sombraActiva: !!sombra, jevActivo };
+    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, pendientesMod, tema, vista: vistaDe(req), ruta: req.originalUrl, codigoUrl, nota421: ultimaNota421(), sombraActiva: !!sombra, jevActivo };
     if (req.method === 'POST') {
       const origen = req.get('origin');
       if (origen && origen !== `${req.protocol}://${req.get('host')}`) return res.status(403).send('Origen no permitido');
