@@ -546,6 +546,27 @@ test('notificaciones: comentario al OP, respuesta por cita, nunca a uno mismo, s
   assert.ok(!(await s.texto('/', bea)).includes('class="badge"'));
 });
 
+test('el título de la pestaña muestra cuántas respuestas quedan sin leer', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  assert.ok((await s.texto('/', ana)).includes('<title>prueba · foro de texto de 421</title>'));
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'primera' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'segunda' } });
+
+  const portada = await s.texto('/', ana);
+  assert.ok(portada.includes('<title>(2) prueba · foro de texto de 421</title>'));
+  assert.ok(portada.includes('<meta property="og:title" content="prueba · foro de texto de 421">'));
+  assert.ok((await s.texto('/h/1', ana)).includes('<title>(2) Tema · prueba</title>'));
+  await s.texto('/respuestas', ana);
+  assert.ok((await s.texto('/', ana)).includes('<title>prueba · foro de texto de 421</title>'));
+  assert.ok(!(await s.texto('/', bea)).includes('<title>(2)'));
+});
+
 test('actualización en vivo: /h/:id/nuevos trae solo lo posterior y respeta la visibilidad', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
