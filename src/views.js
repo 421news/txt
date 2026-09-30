@@ -110,6 +110,7 @@ export const DESCRIPCION_SITIO =
 export function pagina(ctx, { titulo, cuerpo, aviso, descripcion = DESCRIPCION_SITIO, canonical, indexar = true, tipo = 'website', jsonLd }) {
   const { user, csrf, siteName, baseUrl, tema, ruta = '/' } = ctx;
   const tituloCompleto = titulo ? `${titulo} · ${siteName}` : `${siteName} · foro de texto de 421`;
+  const tituloPestana = ctx.novedades ? `(${ctx.novedades}) ${tituloCompleto}` : tituloCompleto;
   const url = canonical ? `${baseUrl}${canonical}` : null;
   // Un "</" dentro del JSON cerraría el <script>: se escapa.
   const ld = jsonLd ? raw(`<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, '\\u003c')}</script>`) : '';
@@ -117,7 +118,7 @@ export function pagina(ctx, { titulo, cuerpo, aviso, descripcion = DESCRIPCION_S
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${tituloCompleto}</title>
+<title>${tituloPestana}</title>
 <meta name="description" content="${descripcion}">
 ${indexar ? '' : raw('<meta name="robots" content="noindex, follow">')}
 ${url ? html`<link rel="canonical" href="${url}">` : ''}
