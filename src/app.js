@@ -856,7 +856,7 @@ export function createApp({
     const urls = [
       { loc: '/', lastmod: hilos[0] ? fecha(hilos[0].bumped_at) : null },
       ...BOARDS.map((b) => ({ loc: `/b/${b.slug}` })),
-      ...['/normas', '/formato', '/texto', '/terminos', '/privacidad'].map((loc) => ({ loc })),
+      ...['/normas', '/formato', '/texto', '/estadisticas', '/terminos', '/privacidad'].map((loc) => ({ loc })),
       ...hilos.map((t) => ({ loc: `/h/${t.id}`, lastmod: fecha(t.bumped_at) })),
     ];
     const xml = urls
@@ -1239,8 +1239,9 @@ export function createApp({
     res.json({ dias: db.prepare('SELECT dia, vistas, visitantes, estimado FROM visitas_dia ORDER BY dia').all().map((d) => ({ ...d, estimado: d.estimado === 1 })) });
   });
 
-  app.get('/mod/estadisticas', (req, res) => {
-    if (!esMod(req.user)) return noEncontrado(res);
+  // Estadísticas de los últimos 30 días. Los mods las ven con el costo de moderación; la página pública
+  // (/estadisticas) muestra lo mismo sin el costo.
+  function datosEstadisticas(conCosto) {
     const hoy = diaDe(now());
     const dias = Array.from({ length: 30 }, (_, i) => diaDe(now() - (29 - i) * DIA));
     const desde = now() - 31 * DIA;
@@ -1254,41 +1255,47 @@ export function createApp({
     const respuestas = porDia(`SELECT ${diaSql.replace('created_at', 'p.created_at')} AS dia, COUNT(*) AS n FROM posts p JOIN threads t ON t.id = p.thread_id
       WHERE t.op_post_id != p.id AND p.created_at >= ? AND p.status != 'removed' GROUP BY 1`, desde);
     const nuevas = porDia(`SELECT ${diaSql} AS dia, COUNT(*) AS n FROM users WHERE created_at >= ? AND identidad NOT LIKE 'borrada:%' GROUP BY 1`, desde);
-    // Costo de moderación por día (US$ a precio de lista): Claude por los tokens guardados en posts y
-    // rechazos (sin contar lo que Jev aprobó solo), más todas las consultas a Jev.
-    const usdClaude = `(COALESCE(SUM(i), 0) * ${PRECIO_CLAUDE.entrada} + COALESCE(SUM(o), 0) * ${PRECIO_CLAUDE.salida}
-      + COALESCE(SUM(cr), 0) * ${PRECIO_CLAUDE.cacheLectura} + COALESCE(SUM(cw), 0) * ${PRECIO_CLAUDE.cacheEscritura}) / 1e6`;
-    const claude = porDia(`SELECT ${diaSql} AS dia, ${usdClaude} AS n FROM (
-        SELECT created_at, mod_input_tokens i, mod_output_tokens o, mod_cache_read_tokens cr, mod_cache_write_tokens cw
-          FROM posts WHERE created_at >= ? AND mod_model LIKE 'claude%'
-        UNION ALL SELECT created_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
-          FROM rechazos WHERE created_at >= ? AND model LIKE 'claude%') GROUP BY 1`, desde, desde);
-    const jev = porDia(`SELECT ${diaSql} AS dia, COALESCE(SUM(tokens), 0) * ${PRECIO_JEV_POR_MTOK} / 1e6 AS n FROM sombra_jev WHERE created_at >= ? GROUP BY 1`, desde);
-    const costo = Object.fromEntries(dias.map((d) => [d, Math.round(((claude[d] ?? 0) + (jev[d] ?? 0)) * 100) / 100]));
+    let costo = {};
+    if (conCosto) {
+      // Costo de moderación por día (US$ a precio de lista): Claude por los tokens guardados en posts y
+      // rechazos (sin contar lo que Jev aprobó solo), más todas las consultas a Jev.
+      const usdClaude = `(COALESCE(SUM(i), 0) * ${PRECIO_CLAUDE.entrada} + COALESCE(SUM(o), 0) * ${PRECIO_CLAUDE.salida}
+        + COALESCE(SUM(cr), 0) * ${PRECIO_CLAUDE.cacheLectura} + COALESCE(SUM(cw), 0) * ${PRECIO_CLAUDE.cacheEscritura}) / 1e6`;
+      const claude = porDia(`SELECT ${diaSql} AS dia, ${usdClaude} AS n FROM (
+          SELECT created_at, mod_input_tokens i, mod_output_tokens o, mod_cache_read_tokens cr, mod_cache_write_tokens cw
+            FROM posts WHERE created_at >= ? AND mod_model LIKE 'claude%'
+          UNION ALL SELECT created_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+            FROM rechazos WHERE created_at >= ? AND model LIKE 'claude%') GROUP BY 1`, desde, desde);
+      const jev = porDia(`SELECT ${diaSql} AS dia, COALESCE(SUM(tokens), 0) * ${PRECIO_JEV_POR_MTOK} / 1e6 AS n FROM sombra_jev WHERE created_at >= ? GROUP BY 1`, desde);
+      costo = Object.fromEntries(dias.map((d) => [d, Math.round(((claude[d] ?? 0) + (jev[d] ?? 0)) * 100) / 100]));
+    }
     const serie = (m) => dias.map((dia) => ({ dia, n: m[dia] ?? 0 }));
     const total = db.prepare("SELECT COUNT(*) AS n FROM users WHERE identidad NOT LIKE 'borrada:%'").get().n;
     const desdeVisitas = db.prepare('SELECT MIN(dia) AS d FROM visitas_dia WHERE estimado IS NOT 1').get().d;
     const estimados = db.prepare('SELECT dia FROM visitas_dia WHERE estimado = 1').all().map((r) => r.dia);
-    enviar(res, {
-      titulo: 'Estadísticas',
-      indexar: false,
-      cuerpo: V.estadisticas(res.locals.ctx, {
-        hoy,
-        total,
-        desdeVisitas,
-        estimados,
-        series: {
-          vistas: serie(vistas),
-          visitantes: serie(visitantes),
-          activos: serie(activos),
-          publicaciones: serie(publicaciones),
-          respuestas: serie(respuestas),
-          nuevas: serie(nuevas),
-          costo: serie(costo),
-        },
-      }),
-    });
+    return {
+      hoy, total, desdeVisitas, estimados,
+      series: {
+        vistas: serie(vistas), visitantes: serie(visitantes), activos: serie(activos),
+        publicaciones: serie(publicaciones), respuestas: serie(respuestas), nuevas: serie(nuevas),
+        ...(conCosto ? { costo: serie(costo) } : {}),
+      },
+    };
+  }
+
+  app.get('/mod/estadisticas', (req, res) => {
+    if (!esMod(req.user)) return noEncontrado(res);
+    enviar(res, { titulo: 'Estadísticas', indexar: false, cuerpo: V.estadisticas(res.locals.ctx, datosEstadisticas(true)) });
   });
+
+  // Pública: sin el costo de moderación.
+  app.get('/estadisticas', (req, res) =>
+    enviar(res, {
+      titulo: 'Estadísticas', canonical: '/estadisticas',
+      descripcion: 'Cuánta gente lee y escribe en txt: visitas, usuarios activos, publicaciones y respuestas de los últimos 30 días.',
+      cuerpo: V.estadisticas(res.locals.ctx, datosEstadisticas(false)),
+    }),
+  );
 
   // Panel de la prueba en sombra: cuánto coincide Jev con Claude, qué graves se le escaparon, costo.
   app.get('/mod/sombra', (req, res) => {

@@ -1480,3 +1480,23 @@ test('versión texto: /texto.txt existe y cualquier otra .txt da un 404 en texto
   assert.ok((await terminal.text()).includes('Versión texto'));
   assert.equal((await s.pedir('/normas.txt')).status, 200);
 });
+
+test('estadísticas públicas: cualquiera las ve, sin nada del costo de moderación; los mods siguen viendo el costo', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Hola', cuerpo: 'algo' } });
+  s.db.prepare("UPDATE posts SET mod_model = 'claude-sonnet-5', mod_input_tokens = 1000000, mod_output_tokens = 0").run();
+
+  const publica = await s.pedir('/estadisticas');
+  assert.equal(publica.status, 200);
+  const html = await publica.text();
+  assert.ok(html.includes('Publicaciones hoy') && html.includes('Usuarios activos') && html.includes('<svg viewBox'));
+  assert.ok(!/costo|US\$/i.test(html.replace(/<head>[\s\S]*?<\/head>/, '')), 'nada del costo');
+  assert.ok(html.includes('href="/estadisticas"'), 'acceso en la barra y el pie');
+
+  const mod = await s.entrar('mod');
+  const privada = await s.texto('/mod/estadisticas', mod);
+  assert.ok(privada.includes('Costo de moderación hoy') && privada.includes('US$2.00'));
+  assert.ok((await s.texto('/sitemap.xml')).includes('/estadisticas'));
+});

@@ -48,6 +48,7 @@ const ICONOS = {
   correo: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 7l9 6 9-6"/>'),
   menu: svg('<path d="M4 6h16M4 12h16M4 18h16"/>'),
   lupa: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
+  grafico: svg('<path d="M4 20V4M4 20h16"/><path d="M8 16l4-5 3 3 5-7"/>'),
   escudo: svg('<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M12 8v4M12 16h.01"/>'),
 };
 
@@ -80,7 +81,7 @@ function barraAbajo(ctx) {
     <div class="menu-abajo">
       <a href="/guardados">Guardados</a>
       <a href="/cuenta">Mi cuenta</a>
-      ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas</a>` : ''}
+      ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas y costos</a>` : ''}
       <a href="/normas">Normas</a>
       <a href="/formato">Formato</a>
       <form method="post" action="/salir"><input type="hidden" name="_csrf" value="${csrf}"><button class="enlace">Salir</button></form>
@@ -154,6 +155,7 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
     <a class="marca" href="/">${siteName}</a>
     <div class="cab-der">
       <a class="icono lupa" href="/buscar" title="Buscar" aria-label="Buscar">${ICONOS.lupa}</a>
+      <a class="icono stats" href="/estadisticas" title="Estadísticas" aria-label="Estadísticas">${ICONOS.grafico}</a>
       ${botonTema(ruta)}
       ${ctx.pendientesMod
         ? html`<a class="icono mod-pendientes" href="/mod" title="Moderación: ${ctx.pendientesMod} para revisar" aria-label="Moderación (${ctx.pendientesMod} para revisar)">${ICONOS.escudo}<span class="badge">${ctx.pendientesMod}</span></a>`
@@ -165,7 +167,7 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
         <summary class="icono" aria-label="Menú">${ICONOS.menu}<span>Menú</span></summary>
         <div class="menu-desplegable">
           ${user ? html`<a href="/respuestas">Respuestas${ctx.novedades ? ` (${ctx.novedades})` : ''}</a><a href="/guardados">Guardados</a><a href="/cuenta">Mi cuenta</a>` : html`<a href="/entrar">Entrar</a>`}
-          ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas</a>` : ''}
+          ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas y costos</a>` : ''}
           <a href="/normas">Normas</a>
           <a href="/formato">Formato</a>
           ${user ? html`<form method="post" action="/salir"><input type="hidden" name="_csrf" value="${csrf}"><button class="enlace">Salir</button></form>` : ''}
@@ -180,7 +182,7 @@ ${aviso && Object.hasOwn(AVISOS, aviso) ? html`<p class="aviso">${AVISOS[aviso]}
 ${cuerpo}
 </main>
 ${barraAbajo(ctx)}
-<footer class="pie"><a href="/normas">Normas</a> · <a href="/formato">Formato</a> · <a href="/texto">Versión texto</a> · <a href="/terminos">Términos</a> · <a href="/privacidad">Privacidad</a>${ctx.codigoUrl ? html` · <a href="${ctx.codigoUrl}">Código fuente</a> (AGPLv3)` : ''}</footer>
+<footer class="pie"><a href="/normas">Normas</a> · <a href="/formato">Formato</a> · <a href="/texto">Versión texto</a> · <a href="/estadisticas">Estadísticas</a> · <a href="/terminos">Términos</a> · <a href="/privacidad">Privacidad</a>${ctx.codigoUrl ? html` · <a href="${ctx.codigoUrl}">Código fuente</a> (AGPLv3)` : ''}</footer>
 </body>
 </html>`}`;
 }
@@ -733,6 +735,8 @@ function lineas(titulo, datos, { formato = (n) => String(n), eje = (n) => n.toLo
 const usd = (n) => `US$${n.toFixed(2)}`;
 
 export function estadisticas(ctx, { hoy, total, desdeVisitas, estimados = [], series }) {
+  // Sin serie de costo = la página pública (/estadisticas): no se muestra nada del costo de moderación.
+  const conCosto = 'costo' in series;
   const ultimo = (k) => series[k][series[k].length - 1]?.n ?? 0;
   const tiles = [
     ['Usuarios registrados', total],
@@ -742,10 +746,10 @@ export function estadisticas(ctx, { hoy, total, desdeVisitas, estimados = [], se
     ['Visitantes hoy', ultimo('visitantes')],
     ['Publicaciones hoy', ultimo('publicaciones')],
     ['Respuestas hoy', ultimo('respuestas')],
-    ['Costo de moderación hoy', usd(ultimo('costo'))],
+    ...(conCosto ? [['Costo de moderación hoy', usd(ultimo('costo'))]] : []),
   ];
   const nombres = { vistas: 'Visitas', visitantes: 'Visitantes únicos', activos: 'Usuarios activos', publicaciones: 'Publicaciones', respuestas: 'Respuestas', nuevas: 'Cuentas nuevas', costo: 'Costo de moderación (US$)' };
-  const orden = ['vistas', 'visitantes', 'activos', 'publicaciones', 'respuestas', 'nuevas', 'costo'];
+  const orden = ['vistas', 'visitantes', 'activos', 'publicaciones', 'respuestas', 'nuevas', ...(conCosto ? ['costo'] : [])];
   const estimado = (n, dia) => (estimados.includes(dia) ? `~${n} (estimado)` : String(n));
   const formatos = { costo: usd, vistas: estimado, visitantes: estimado };
   // Al lado del título: el acumulado de los 30 días. Visitantes únicos y usuarios activos no se suman
@@ -760,7 +764,7 @@ export function estadisticas(ctx, { hoy, total, desdeVisitas, estimados = [], se
   };
   const opciones = (k) => ({ formato: formatos[k], resumen: resumen(k), ...(k === 'costo' ? { eje: usd, minPaso: 0.01 } : {}) });
   return html`<h1>Estadísticas</h1>
-<p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas${estimados.length ? `, salvo ${estimados.join(', ')}, estimado con los requests que registró Railway (marcado con ~)` : ''}. "Usuarios activos" = cuentas que entraron al sitio ese día; los días anteriores se reconstruyeron con inicios de sesión, mensajes y reportes. "Costo de moderación" = Claude + Jev, estimado a precio de lista con los tokens de cada mensaje (no incluye pruebas del filtro).</p>
+<p class="ayuda">Últimos 30 días. Visitas contadas en el servidor, sin cookies ni IPs guardadas${desdeVisitas ? `, desde el ${desdeVisitas}` : ''}: antes de esa fecha no hay datos de visitas${estimados.length ? `, salvo ${estimados.join(', ')}, estimado con los requests que registró Railway (marcado con ~)` : ''}. "Usuarios activos" = cuentas que entraron al sitio ese día; los días anteriores se reconstruyeron con inicios de sesión, mensajes y reportes.${conCosto ? ' "Costo de moderación" = Claude + Jev, estimado a precio de lista con los tokens de cada mensaje (no incluye pruebas del filtro).' : ''}</p>
 <div class="tiles">${tiles.map(([k, v]) => html`<div class="tile"><span class="tile-n">${v.toLocaleString('es-AR')}</span><span class="tile-k">${k}</span></div>`)}</div>
 <div class="graficos">${orden.map((k) => lineas(nombres[k], series[k], opciones(k)))}</div>
 <details class="tabla-datos"><summary>Ver los números</summary>

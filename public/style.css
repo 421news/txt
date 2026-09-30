@@ -523,7 +523,7 @@ button.enlace::before, button.enlace::after { content: none; }
 @media (max-width: 40rem) {
   html { scroll-padding-top: 4.5rem; }
   /* Arriba queda solo la marca y el tema; lo demás baja a la barra inferior. */
-  .cabecera .secciones, .cabecera .correo, .cabecera .menu-cab, .cab-der > a.icono:not(.a-claro):not(.a-oscuro):not(.lupa) { display: none; }
+  .cabecera .secciones, .cabecera .correo, .cabecera .menu-cab, .cab-der > a.icono:not(.a-claro):not(.a-oscuro):not(.lupa):not(.stats) { display: none; }
   body { padding-bottom: 4.2rem; }
 
   .abajo {
