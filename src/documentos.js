@@ -36,7 +36,7 @@ function encabezado(siteName) {
 function listaHilos(hilos, { conTablon }) {
   if (!hilos.length) return [p('No hay publicaciones todavía.')];
   return hilos.flatMap((h) => [
-    link(`/h/${h.id}`, `${conTablon ? `[${boardBySlug(h.board)?.nombre ?? h.board}] ` : ''}${h.subject} (${h.reply_count} ${h.reply_count === 1 ? 'respuesta' : 'respuestas'})`),
+    link(`/h/${h.id}`, `${h.fijado ? '[Fijada] ' : ''}${conTablon ? `[${boardBySlug(h.board)?.nombre ?? h.board}] ` : ''}${h.subject} (${h.reply_count} ${h.reply_count === 1 ? 'respuesta' : 'respuestas'})`),
     { tipo: 'detalle', texto: `${fecha(h.bumped_at)} · ${extracto(textoPlano(h.op_body), 160)}` },
   ]);
 }

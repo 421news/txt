@@ -1411,3 +1411,37 @@ test('Leé 421: la última nota se pide a Ghost y va escapada en el title; si Gh
   t.after(s.cerrar);
   assert.ok((await s.texto('/')).includes('title="Última nota: Nota &lt;con&gt; &quot;comillas&quot;">Leé 421 ↗</a>'));
 });
+
+test('fijar: un mod fija una publicación y queda primera en la portada y en su sección; nadie más puede', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Vieja Anuncio', cuerpo: 'reglas' } });
+  s.avanzar(601);
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Nueva Charla', cuerpo: 'hola' } });
+  const orden = (html) => html.indexOf('Vieja Anuncio') < html.indexOf('Nueva Charla');
+  assert.ok(!orden(await s.texto('/')), 'sin fijar, la más nueva va primero');
+
+  // Un usuario común no ve el botón ni puede fijar.
+  assert.ok(!(await s.texto('/h/1', ana)).includes('form="fijar"'));
+  assert.equal((await s.pedir('/mod/h/1/fijar', { sesion: ana, datos: {} })).status, 404);
+
+  const mod = await s.entrar('mod');
+  assert.ok((await s.texto('/h/1', mod)).includes('<button class="enlace" form="fijar">Fijar</button>'));
+  assert.equal((await s.pedir('/mod/h/1/fijar', { cookie: mod.cookie, datos: {} })).status, 403, 'sin CSRF');
+  const r = await s.pedir('/mod/h/1/fijar', { sesion: mod, datos: {} });
+  assert.equal(r.headers.get('location'), '/h/1');
+  for (const ruta of ['/', '/b/cultura', '/?vista=lista']) {
+    const html = await s.texto(ruta);
+    assert.ok(orden(html), `${ruta}: la fijada va primero`);
+    assert.ok(html.includes('<span class="marca-fijada">Fijada</span>'), `${ruta}: con la marca`);
+  }
+  assert.ok((await s.texto('/index.txt')).includes('[Fijada]'), 'también en la versión texto');
+  assert.ok((await s.texto('/h/1', mod)).includes('>Desfijar</button>'));
+  assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM mod_log WHERE accion = 'fijar'").get().n, 1);
+
+  // Desfijar la devuelve a su lugar.
+  await s.pedir('/mod/h/1/fijar', { sesion: mod, datos: {} });
+  const despues = await s.texto('/');
+  assert.ok(!orden(despues) && !despues.includes('marca-fijada'));
+});

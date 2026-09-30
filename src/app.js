@@ -90,11 +90,11 @@ export function createApp({
     contarPortada: db.prepare('SELECT COUNT(*) AS n FROM threads WHERE visible = 1 AND archived = 0'),
     hilosPortada: db.prepare(`SELECT t.*, p.body AS op_body, p.user_id AS op_user_id, p.created_at AS op_created_at
       FROM threads t JOIN posts p ON p.id = t.op_post_id
-      WHERE t.visible = 1 AND t.archived = 0 ORDER BY t.bumped_at DESC LIMIT ? OFFSET ?`),
+      WHERE t.visible = 1 AND t.archived = 0 ORDER BY COALESCE(t.fijado, 0) DESC, t.bumped_at DESC LIMIT ? OFFSET ?`),
     contarTablon: db.prepare('SELECT COUNT(*) AS n FROM threads WHERE board = ? AND visible = 1 AND archived = ?'),
     hilosTablon: db.prepare(`SELECT t.*, p.body AS op_body, p.user_id AS op_user_id, p.created_at AS op_created_at
       FROM threads t JOIN posts p ON p.id = t.op_post_id
-      WHERE t.board = ? AND t.visible = 1 AND t.archived = ? ORDER BY t.bumped_at DESC LIMIT ? OFFSET ?`),
+      WHERE t.board = ? AND t.visible = 1 AND t.archived = ? ORDER BY COALESCE(t.fijado, 0) DESC, t.bumped_at DESC LIMIT ? OFFSET ?`),
     // Las últimas N respuestas publicadas de cada hilo de la lista (ids en JSON), sin el mensaje inicial.
     ultimasRespuestas: db.prepare(`SELECT * FROM (
         SELECT p.*, ROW_NUMBER() OVER (PARTITION BY p.thread_id ORDER BY p.id DESC) AS rn
@@ -168,7 +168,7 @@ export function createApp({
   function archivarExcedentes(board) {
     db.prepare(`UPDATE threads SET archived = 1
       WHERE board = ? AND archived = 0 AND visible = 1 AND id NOT IN (
-        SELECT id FROM threads WHERE board = ? AND archived = 0 AND visible = 1 ORDER BY bumped_at DESC LIMIT ?
+        SELECT id FROM threads WHERE board = ? AND archived = 0 AND visible = 1 ORDER BY COALESCE(fijado, 0) DESC, bumped_at DESC LIMIT ?
       )`).run(board, board, LIMITS.hilosActivosPorTablon);
   }
 
@@ -1308,6 +1308,18 @@ export function createApp({
       indexar: false,
       cuerpo: V.sombra(res.locals.ctx, { activa: !!sombra || jevActivo, mixto: jevActivo, total, cruce, gravesEscapados, desacuerdos, costo }),
     });
+  });
+
+  // Fijar o desfijar una publicación: queda primera en la portada y en su sección (solo mods).
+  // Una fijada no pasa al archivo por quedar vieja. El mismo botón hace las dos cosas.
+  app.post('/mod/h/:id/fijar', (req, res) => {
+    if (!exigirMod(req, res)) return;
+    const thread = q.hilo.get(Number(req.params.id));
+    if (!thread || !thread.visible || thread.archived) return noEncontrado(res);
+    const fijar = !thread.fijado;
+    db.prepare('UPDATE threads SET fijado = ? WHERE id = ?').run(fijar ? now() : null, thread.id);
+    q.log.run(req.user.id, fijar ? 'fijar' : 'desfijar', thread.op_post_id, null, null, now());
+    res.redirect(303, `/h/${thread.id}`);
   });
 
   // Levantar una suspensión (por ejemplo, una automática que fue un error del filtro).

@@ -192,7 +192,7 @@ function listaHilos(ctx, hilos, { conTablon = false } = {}) {
   if (!hilos.length) return html`<p class="ayuda">No hay publicaciones todavía.</p>`;
   return hilos.map(
     (t) => html`<section class="hilo-resumen">
-  <h2><a href="/h/${t.id}">${t.subject}</a>${marcaNovedad(t)}${conTablon
+  <h2><a href="/h/${t.id}">${t.subject}</a>${marcaFijada(t)}${marcaNovedad(t)}${conTablon
     ? html` <a class="etiqueta" href="/b/${t.board}">${boardBySlug(t.board)?.nombre}</a>`
     : ''}</h2>
   ${vistaPost(ctx, t.op, { esOp: true, resumen: true })}
@@ -217,7 +217,7 @@ function catalogo(hilos, { conTablon = false } = {}) {
   if (!hilos.length) return html`<p class="ayuda">No hay publicaciones todavía.</p>`;
   return html`<div class="catalogo">${hilos.map(
     (t) => html`<article class="ficha">
-    <div class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span class="solo-eww"> · </span><span>${marcaNovedad(t)} R: ${t.reply_count}</span></div>
+    <div class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span class="solo-eww"> · </span><span>${marcaFijada(t)}${marcaNovedad(t)} R: ${t.reply_count}</span></div>
     <h2 class="ficha-titulo"><a class="ficha-asunto" href="/h/${t.id}"><strong>${t.subject}</strong></a></h2>
     <div class="ficha-texto">${extracto(textoPlano(t.op_body), 180)}</div>
     <div class="ficha-pie">${fecha(t.bumped_at)}${t.locked ? ' · cerrada' : ''}</div>
@@ -443,6 +443,19 @@ function botonGuardar(ctx, thread, guardado) {
   return html` · <button class="enlace" form="guardar">${guardado ? 'Sacar de guardados' : 'Guardar'}</button>`;
 }
 
+// Fijar (solo mods): mismo patrón que Guardar, un formulario suelto asociado con form="fijar".
+function botonFijar(ctx, thread) {
+  if (!esMod(ctx.user) || !thread.visible || thread.archived) return '';
+  return html` · <button class="enlace" form="fijar">${thread.fijado ? 'Desfijar' : 'Fijar'}</button>`;
+}
+
+function formFijar(ctx, thread) {
+  if (!esMod(ctx.user) || !thread.visible || thread.archived) return '';
+  return html`<form id="fijar" method="post" action="/mod/h/${thread.id}/fijar"><input type="hidden" name="_csrf" value="${ctx.csrf}"></form>`;
+}
+
+const marcaFijada = (t) => (t.fijado ? html` <span class="marca-fijada">Fijada</span>` : '');
+
 function formGuardar(ctx, thread, guardado) {
   if (!ctx.user || !thread.visible) return '';
   return html`<form id="guardar" method="post" action="/h/${thread.id}/guardar"><input type="hidden" name="_csrf" value="${ctx.csrf}">${guardado ? raw('<input type="hidden" name="quitar" value="1">') : ''}</form>`;
@@ -458,7 +471,7 @@ export function hilo(ctx, { thread, board, posts, ids, form, guardado = false })
   // página funciona igual que siempre.
   // En las publicaciones largas, links para ir al final y volver arriba (sin JavaScript).
   const larga = posts.length > 8;
-  return html`${formGuardar(ctx, thread, guardado)}<p class="ayuda" id="arriba"><a href="/b/${board.slug}">← ${board.nombre}</a>${botonGuardar(ctx, thread, guardado)}${larga ? html` · <a href="#fin">↓ Ir al final</a>` : ''}</p>
+  return html`${formGuardar(ctx, thread, guardado)}${formFijar(ctx, thread)}<p class="ayuda" id="arriba"><a href="/b/${board.slug}">← ${board.nombre}</a>${marcaFijada(thread)}${botonGuardar(ctx, thread, guardado)}${botonFijar(ctx, thread)}${larga ? html` · <a href="#fin">↓ Ir al final</a>` : ''}</p>
 <h1>${thread.subject}</h1>
 ${estado}
 <div id="posts"${abierto ? raw(` data-hilo="${thread.id}" data-ultimo="${ultimo}"`) : ''}>

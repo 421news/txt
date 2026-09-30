@@ -143,6 +143,8 @@ export function openDb(archivo) {
   const agregar = (tabla, col) => {
     if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${col} INTEGER`);
   };
+  // Fijada por un mod: momento en que se fijó (null = no fijada). Va primero en portada y sección.
+  agregar('threads', 'fijado');
   agregar('posts', 'mod_cache_read_tokens');
   agregar('posts', 'mod_cache_write_tokens');
   agregar('rechazos', 'cache_read_tokens');
