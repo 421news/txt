@@ -191,7 +191,7 @@ export const mensaje = (titulo, texto) => html`<h1>${titulo}</h1><p>${texto}</p>
 function listaHilos(ctx, hilos, { conTablon = false } = {}) {
   if (!hilos.length) return html`<p class="ayuda">No hay publicaciones todavía.</p>`;
   return hilos.map(
-    (t) => html`<section class="hilo-resumen">
+    (t) => html`<section class="hilo-resumen${t.fijado ? ' fijada' : ''}">
   <h2><a href="/h/${t.id}">${t.subject}</a>${marcaFijada(t)}${marcaNovedad(t)}${conTablon
     ? html` <a class="etiqueta" href="/b/${t.board}">${boardBySlug(t.board)?.nombre}</a>`
     : ''}</h2>
@@ -216,7 +216,7 @@ function marcaNovedad(t) {
 function catalogo(hilos, { conTablon = false } = {}) {
   if (!hilos.length) return html`<p class="ayuda">No hay publicaciones todavía.</p>`;
   return html`<div class="catalogo">${hilos.map(
-    (t) => html`<article class="ficha">
+    (t) => html`<article class="ficha${t.fijado ? ' fijada' : ''}">
     <div class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span class="solo-eww"> · </span><span>${marcaFijada(t)}${marcaNovedad(t)} R: ${t.reply_count}</span></div>
     <h2 class="ficha-titulo"><a class="ficha-asunto" href="/h/${t.id}"><strong>${t.subject}</strong></a></h2>
     <div class="ficha-texto">${extracto(textoPlano(t.op_body), 180)}</div>

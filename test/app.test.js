@@ -1445,3 +1445,14 @@ test('fijar: un mod fija una publicación y queda primera en la portada y en su 
   const despues = await s.texto('/');
   assert.ok(!orden(despues) && !despues.includes('marca-fijada'));
 });
+
+test('fijar: la ficha y el resumen de la fijada llevan la clase que la destaca', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Anuncio', cuerpo: 'reglas' } });
+  const mod = await s.entrar('mod');
+  await s.pedir('/mod/h/1/fijar', { sesion: mod, datos: {} });
+  assert.ok((await s.texto('/')).includes('<article class="ficha fijada">'));
+  assert.ok((await s.texto('/?vista=lista')).includes('<section class="hilo-resumen fijada">'));
+});

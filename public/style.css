@@ -429,8 +429,12 @@ button.enlace::before, button.enlace::after { content: none; }
 .normas strong { color: var(--fosforo); }
 .marca-vos { opacity: 0.8; }
 .marca-nuevo { color: var(--fosforo); font-weight: bold; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.05em; }
-/* Fijada por un mod: recuadro, para que no se confunda con "nuevo". */
-.marca-fijada { color: var(--fosforo); border: 1px solid var(--fosforo); padding: 0 0.3em; font-weight: bold; text-transform: uppercase; font-size: 0.75em; letter-spacing: 0.05em; }
+/* Fijada por un mod: va en --aviso, el color de aviso de cada tema (ámbar, ocre, dorado), así no se
+   confunde con "nuevo", que va en el acento, y cambia solo con el tema elegido. */
+.marca-fijada { background: var(--aviso); color: var(--fondo); padding: 0 0.35em; font-weight: bold; text-transform: uppercase; font-size: 0.75em; letter-spacing: 0.05em; }
+.ficha.fijada { border: 2px solid var(--aviso); background: color-mix(in srgb, var(--aviso) 7%, var(--caja)); }
+.ficha.fijada .ficha-barra { border-bottom-color: var(--aviso); }
+.hilo-resumen.fijada { border-left: 3px solid var(--aviso); padding-left: 0.9rem; background: color-mix(in srgb, var(--aviso) 5%, transparent); }
 .post-meta .citar { text-decoration: none; }
 .respuestas { font-size: 0.85em; opacity: 0.85; margin: 0.4rem 0 0; }
 .respuestas a { margin-right: 0.3em; }
