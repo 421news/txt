@@ -103,6 +103,37 @@ export function docNormas({ siteName }) {
   ];
 }
 
+// Cómo leer txt sin HTML (/texto). Es la página que explica la versión texto: tiene que tener la suya.
+export function docTexto({ siteName, baseUrl, gemini }) {
+  return [
+    ...encabezado(siteName),
+    t(2, 'Versión texto'),
+    p('Todo txt se puede leer como texto puro, sin diseño: sirve para la terminal, conexiones lentas, lectores de pantalla o simplemente para leer tranquilo.'),
+    t(3, 'En el navegador'),
+    p('Agregá .txt al final de la dirección:'),
+    link('/', 'Portada'),
+    link('/b/cultura', 'Una sección'),
+    p(`Una publicación: ${baseUrl}/h/NÚMERO.txt`),
+    link('/normas', 'Normas'),
+    t(3, 'En la terminal'),
+    p('Con curl, wget o httpie, las direcciones de siempre responden en texto:'),
+    ...[`curl ${baseUrl}`, `curl ${baseUrl}/b/juegos`, `curl ${baseUrl}/h/1 | less`].map((c) => ({ tipo: 'cita', texto: c })),
+    p('Poné la dirección con https:// adelante (o usá curl -L): sin eso, curl se queda en la redirección a https y no muestra nada.'),
+    ...(gemini ? [t(3, 'En Gemini'), p(`txt también es una cápsula de Gemini: ${gemini}. Desde ahí también se puede publicar y responder con un certificado vinculado a tu cuenta.`)] : []),
+    p('La versión texto es para leer. Para publicar o responder se usa la web. Los spoilers aparecen como [spoiler: leelo en la web].'),
+  ];
+}
+
+// Una dirección .txt que no existe: en texto, y con lo que sí se puede leer así.
+export function docSinTexto({ siteName }) {
+  return [
+    ...encabezado(siteName),
+    t(2, 'Esta página no tiene versión texto'),
+    p('La versión texto está para las páginas de lectura: la portada, cada sección y su archivo, cada publicación, las normas y esta explicación.'),
+    link('/texto', 'Cómo leer txt en texto'),
+  ];
+}
+
 // --- Traductores --------------------------------------------------------------------------
 
 // Corta en líneas de hasta `ancho` columnas sin partir palabras (las muy largas, como una URL,

@@ -1456,3 +1456,27 @@ test('fijar: la ficha y el resumen de la fijada llevan la clase que la destaca',
   assert.ok((await s.texto('/')).includes('<article class="ficha fijada">'));
   assert.ok((await s.texto('/?vista=lista')).includes('<section class="hilo-resumen fijada">'));
 });
+
+test('versión texto: /texto.txt existe y cualquier otra .txt da un 404 en texto que explica qué se puede leer así (issue #30)', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const r = await s.pedir('/texto.txt');
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /text\/plain/);
+  const cuerpo = await r.text();
+  assert.ok(cuerpo.includes('Versión texto') && cuerpo.includes('curl http://prueba/b/juegos') && !cuerpo.includes('<'));
+  assert.ok((await s.texto('/texto')).includes('<link rel="alternate" type="text/plain" href="http://prueba/texto.txt">'));
+
+  for (const ruta of ['/privacidad.txt', '/formato.txt', '/cualquier-cosa.txt']) {
+    const x = await s.pedir(ruta);
+    assert.equal(x.status, 404, ruta);
+    assert.match(x.headers.get('content-type'), /text\/plain/, ruta);
+    const txt = await x.text();
+    assert.ok(txt.includes('no tiene versión texto') && txt.includes('http://prueba/texto.txt'), ruta);
+  }
+  assert.equal((await s.pedir('/robots.txt')).status, 200, 'robots.txt sigue andando');
+  const terminal = await fetch(s.base + '/texto', { headers: { 'user-agent': 'curl/8.5.0' } });
+  assert.match(terminal.headers.get('content-type'), /text\/plain/, 'curl /texto responde en texto');
+  assert.ok((await terminal.text()).includes('Versión texto'));
+  assert.equal((await s.pedir('/normas.txt')).status, 200);
+});

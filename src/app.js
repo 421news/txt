@@ -407,7 +407,7 @@ export function createApp({
     res.vary('User-Agent');
     if (req.method !== 'GET' || !TERMINAL.test(req.get('user-agent') ?? '')) return next();
     const [camino, query] = req.url.split('?');
-    if (/^\/(|b\/[a-z-]+|b\/[a-z-]+\/archivo|h\/\d+|normas)$/.test(camino)) {
+    if (/^\/(|b\/[a-z-]+|b\/[a-z-]+\/archivo|h\/\d+|normas|texto)$/.test(camino)) {
       req.url = D.rutaTxt(camino) + (query ? `?${query}` : '');
     }
     next();
@@ -668,6 +668,7 @@ export function createApp({
       return D.docHilo({ siteName, thread, board: boardBySlug(thread.board), posts });
     }
     if (ruta === '/normas') return D.docNormas({ siteName });
+    if (ruta === '/texto') return D.docTexto({ siteName, baseUrl, gemini: geminiUrl });
     return null;
   }
   app.locals.documento = (ruta, query = {}) => documento({ user: null, query }, ruta);
@@ -774,7 +775,7 @@ export function createApp({
     res.redirect(303, '/cuenta#gemini');
   });
 
-  app.get(['/index.txt', '/b/:board.txt', '/b/:board/archivo.txt', '/h/:id.txt', '/normas.txt'], (req, res) => {
+  app.get(['/index.txt', '/b/:board.txt', '/b/:board/archivo.txt', '/h/:id.txt', '/normas.txt', '/texto.txt'], (req, res) => {
     const ruta = req.path === '/index.txt' ? '/' : req.path.replace(/\.txt$/, '');
     const bloques = documento(req, ruta);
     if (!bloques) return res.status(404).type('text/plain').send('No encontrado.\n');
@@ -1503,6 +1504,9 @@ export function createApp({
   });
 
   // --- Errores -------------------------------------------------------------------------------
+
+  // Cualquier otra dirección terminada en .txt: un 404 en texto que dice qué se puede leer así (issue #30).
+  app.get(/\.txt$/, (req, res) => res.status(404).type('text/plain; charset=utf-8').send(D.aTexto(D.docSinTexto({ siteName }), { baseUrl })));
 
   app.use((req, res) => noEncontrado(res));
 

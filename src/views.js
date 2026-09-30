@@ -120,7 +120,7 @@ export function pagina(ctx, { titulo, cuerpo, aviso, descripcion = DESCRIPCION_S
 <meta name="description" content="${descripcion}">
 ${indexar ? '' : raw('<meta name="robots" content="noindex, follow">')}
 ${url ? html`<link rel="canonical" href="${url}">` : ''}
-${canonical && /^\/($|b\/|h\/|normas$)/.test(canonical) ? html`<link rel="alternate" type="text/plain" href="${baseUrl}${versionTexto(canonical)}">` : ''}
+${canonical && /^\/($|b\/|h\/|normas$|texto$)/.test(canonical) ? html`<link rel="alternate" type="text/plain" href="${baseUrl}${versionTexto(canonical)}">` : ''}
 <meta property="og:site_name" content="${siteName}">
 <meta property="og:locale" content="es_AR">
 <meta property="og:type" content="${tipo}">
