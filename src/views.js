@@ -47,6 +47,8 @@ const ICONOS = {
   luna: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
   correo: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 7l9 6 9-6"/>'),
   menu: svg('<path d="M4 6h16M4 12h16M4 18h16"/>'),
+  catalogo: svg('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>'),
+  lista: svg('<path d="M9 5h12M9 12h12M9 19h12M3 5h1M3 12h1M3 19h1"/>'),
   lupa: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
   grafico: svg('<path d="M4 20V4M4 20h16"/><path d="M8 16l4-5 3 3 5-7"/>'),
   escudo: svg('<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M12 8v4M12 16h.01"/>'),
@@ -232,8 +234,8 @@ function catalogo(hilos, { conTablon = false } = {}) {
 function selectorVista(vista, ruta = '/') {
   const volver = encodeURIComponent(ruta.split('?')[0]);
   const opcion = (v, nombre) =>
-    vista === v ? html`<strong>${nombre}</strong>` : html`<a href="/vista?v=${v}&amp;volver=${volver}" rel="nofollow">${nombre}</a>`;
-  return html`<nav class="vistas">Vista: ${opcion('catalogo', 'catálogo')} ${opcion('lista', 'lista')}</nav>`;
+    html`<a class="icono" href="/vista?v=${v}&amp;volver=${volver}" rel="nofollow" title="Vista de ${nombre}"${vista === v ? raw(' aria-current="true"') : ''}>${ICONOS[v]}<span class="solo-lector">Vista de ${nombre}</span></a>`;
+  return html`<nav class="vistas" aria-label="Vista de las publicaciones">${opcion('catalogo', 'catálogo')}${opcion('lista', 'lista')}</nav>`;
 }
 
 const listado = (ctx, hilos, vista, opciones) =>
