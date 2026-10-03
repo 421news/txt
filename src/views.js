@@ -377,6 +377,14 @@ ${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}`;
 // resumen: versión para listados (texto recortado, sin reportar, sin ancla propia).
 const abiertoPara = (p) => p.abierto !== false;
 
+// Solo el admin: eliminar un mensaje desde la publicación, sin pasar por /mod. Dos pasos sin JavaScript
+// (<details>): "Eliminar" abre la confirmación. Queda como "Eliminado por moderación" y en mod_log.
+function eliminarAdmin(ctx, p) {
+  return html`<details class="eliminar-admin"><summary>Eliminar</summary><form method="post" action="/mod/p/${p.id}/eliminar">
+    <input type="hidden" name="_csrf" value="${ctx.csrf}"><input type="hidden" name="volver" value="/h/${p.thread_id}">
+    <button class="enlace">Sí, eliminar No.${p.id}</button></form></details>`;
+}
+
 function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
   if (p.status === 'removed') {
     // Cuerpo vacío = lo borró su autor, solo o al borrar la cuenta (ver borrarMensaje y borrarCuenta en app.js).
@@ -399,6 +407,7 @@ function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
         ? html`<a class="reportar" href="/p/${p.id}/borrar" rel="nofollow">Borrar</a>`
         : html`<a class="reportar" href="/p/${p.id}/reportar" rel="nofollow">Reportar</a>`
       : ''}
+    ${!resumen && ctx.user?.role === 'admin' && !p.esMio && p.status !== 'removed' ? eliminarAdmin(ctx, p) : ''}
   </header>
   ${p.status === 'queued' ? html`<p class="nota">En revisión: por ahora solo lo ves vos.</p>` : ''}
   <div class="texto">${raw(formatear(resumen ? extracto(p.body, 800) : p.body, { idsLocales: ids }))}</div>

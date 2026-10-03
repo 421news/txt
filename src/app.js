@@ -1371,7 +1371,9 @@ export function createApp({
       default:
         return noEncontrado(res);
     }
-    res.redirect(303, '/mod');
+    // Desde la publicación (botón del admin) se vuelve ahí; desde /mod, a /mod.
+    const volver = String(req.body.volver ?? '');
+    res.redirect(303, /^\/h\/\d+$/.test(volver) ? `${volver}#p${post.id}` : '/mod');
   });
 
   // --- Cuenta --------------------------------------------------------------------------------

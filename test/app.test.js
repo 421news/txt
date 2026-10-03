@@ -1500,3 +1500,27 @@ test('estadísticas públicas: cualquiera las ve, sin nada del costo de moderaci
   assert.ok(privada.includes('Costo de moderación hoy') && privada.includes('US$2.00'));
   assert.ok((await s.texto('/sitemap.xml')).includes('/estadisticas'));
 });
+
+test('eliminar desde la publicación: solo el admin ve el botón y el mensaje queda retirado sin pasar por /mod', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'mensaje-a-borrar' } });
+  assert.ok(!(await s.texto('/h/1', ana)).includes('eliminar-admin'), 'un usuario común no lo ve');
+
+  const mod = await s.entrar('mod'); // mod@gmail.com está en adminEmails: entra como admin
+  const hilo = await s.texto('/h/1', mod);
+  assert.ok(hilo.includes('<form method="post" action="/mod/p/2/eliminar">') && hilo.includes('name="volver" value="/h/1"'));
+  const r = await s.pedir('/mod/p/2/eliminar', { sesion: mod, datos: { volver: '/h/1' } });
+  assert.equal(r.headers.get('location'), '/h/1#p2');
+  const despues = await s.texto('/h/1');
+  assert.ok(!despues.includes('mensaje-a-borrar') && despues.includes('Eliminado por moderación'));
+  assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM mod_log WHERE accion = 'eliminar'").get().n, 1);
+  // Un volver que no es una publicación lleva a /mod (sin open redirect).
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'otro' } });
+  assert.equal((await s.pedir('/mod/p/3/eliminar', { sesion: mod, datos: { volver: '//evil.com' } })).headers.get('location'), '/mod');
+});

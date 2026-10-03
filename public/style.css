@@ -428,6 +428,16 @@ button.enlace::before, button.enlace::after { content: none; }
 .normas li::marker { color: var(--fosforo); }
 .normas strong { color: var(--fosforo); }
 .marca-vos { opacity: 0.8; }
+/* Eliminar (solo admin): en la línea del mensaje; al abrirlo muestra la confirmación. */
+.eliminar-admin { display: inline-flex; align-items: baseline; gap: 0.5em; margin-left: auto; white-space: nowrap; }
+.eliminar-admin summary { display: inline; }
+.eliminar-admin summary { list-style: none; cursor: pointer; color: var(--error); font-size: 0.85em; }
+.eliminar-admin summary::-webkit-details-marker { display: none; }
+.eliminar-admin[open] summary { text-decoration: underline; }
+.eliminar-admin form { display: inline; }
+/* Sobre la barra llena del mensaje inicial, el rojo no se lee: va en el color del texto de la barra. */
+.post.op .eliminar-admin summary, .post.op .eliminar-admin button.enlace { color: var(--sobre-borde); }
+.eliminar-admin button.enlace { color: var(--error); font-weight: bold; }
 .marca-nuevo { color: var(--fosforo); font-weight: bold; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.05em; }
 /* Fijada por un mod: va en --aviso, el color de aviso de cada tema (ámbar, ocre, dorado), así no se
    confunde con "nuevo", que va en el acento, y cambia solo con el tema elegido. */
