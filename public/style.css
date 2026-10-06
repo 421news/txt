@@ -284,6 +284,29 @@ code { color: var(--cita); }
   .post.respuesta, .omitidas { margin-left: 0.6rem; }
 }
 
+/* Ignorado (/p/:id/ignorar): colapsado en --tenue, al final. Se despliega tocando la cabecera (<details>,
+   sin JavaScript); el + / - avisa que se puede. */
+.ignorado { color: var(--tenue); }
+.post.ignorado, .ficha.ignorado { border-color: var(--borde); border-style: dashed; background: transparent; }
+.post.ignorado .post-meta, .post.op.ignorado .post-meta { background: transparent; color: var(--tenue); border-bottom: 0; }
+.post.op.ignorado .post-meta :is(a, .num) { color: var(--tenue); }
+.post.ignorado .texto, .post.ignorado .respuestas { color: var(--tenue); }
+.ignorado summary { cursor: pointer; list-style: none; }
+.ignorado summary::-webkit-details-marker { display: none; }
+.ignorado summary::before { content: '+ '; color: var(--tenue); }
+.ignorado details[open] > summary::before { content: '- '; }
+.ignorado summary h2, .ignorado summary .ficha-titulo { display: inline; }
+.ignorado h2 a, .ignorado .ficha-asunto, .ignorado .res-asunto { color: var(--tenue); }
+.ficha.ignorado { min-height: 0; }
+.ficha.ignorado .ficha-asunto::after { content: none; } /* la ficha no es un link: se despliega */
+.marca-ignorado { font-size: 0.72em; text-transform: uppercase; color: var(--tenue); border: 1px dashed var(--borde); padding: 0 0.35em; }
+.dejar-de-ignorar { font-size: 0.72rem; font-weight: 400; color: var(--tenue); }
+.separador-ignorados { margin: 1.4rem 0 0.8rem; padding-top: 0.4rem; border-top: 1px solid var(--error); color: var(--error); font-size: 0.78rem; }
+.catalogo .separador-ignorados { grid-column: 1 / -1; margin: 0.6rem 0 0; }
+li.separador { list-style: none; }
+.form-reportar .opcion { text-transform: none; font-size: 0.9rem; color: var(--texto); }
+.form-reportar .opcion .ayuda { display: block; margin-left: 1.6rem; font-size: 0.8rem; }
+
 /* Catálogo: grilla de fichas. La ficha entera es un link. */
 .vistas { margin: 0.25rem 0 1rem; font-size: 0.78rem; color: var(--tenue); text-transform: uppercase; }
 .vistas a, .vistas strong { padding: 0 0.35rem; }

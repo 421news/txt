@@ -26,6 +26,7 @@ const esMod = (u) => !!u && (u.role === 'mod' || u.role === 'admin');
 const AVISOS = {
   cola: 'Tu mensaje quedó en revisión. Mientras tanto solo lo ves vos.',
   reportado: 'Gracias por el reporte. Lo va a revisar un moderador.',
+  ignorado: 'Listo. Lo ignorado se ve colapsado y al final; lo podés desplegar o dejar de ignorar cuando quieras.',
   'cuenta-borrada': 'Tu cuenta y tus mensajes quedaron borrados.',
   'mensaje-borrado': 'Tu mensaje quedó borrado.',
   'gemini-ok': 'Listo: ya podés escribir desde Gemini con ese certificado.',
@@ -192,20 +193,29 @@ export const mensaje = (titulo, texto) => html`<h1>${titulo}</h1><p>${texto}</p>
 // Un hilo en un listado: mensaje inicial, "N respuestas omitidas" y las últimas respuestas.
 function listaHilos(ctx, hilos, { conTablon = false } = {}) {
   if (!hilos.length) return html`<p class="ayuda">No hay publicaciones todavía.</p>`;
-  return hilos.map(
-    (t) => html`<section class="hilo-resumen${t.fijado ? ' fijada' : ''}">
-  <h2><a href="/h/${t.id}">${t.subject}</a>${marcaFijada(t)}${marcaNovedad(t)}${conTablon
-    ? html` <a class="etiqueta" href="/b/${t.board}">${boardBySlug(t.board)?.nombre}</a>`
-    : ''}</h2>
-  ${vistaPost(ctx, t.op, { esOp: true, resumen: true })}
+  const ignoradas = hilos.filter((t) => t.ignorado);
+  return hilos.map((t) => {
+    const titulo = html`<h2><a href="/h/${t.id}">${t.subject}</a>${marcaFijada(t)}${marcaNovedad(t)}${conTablon
+      ? html` <a class="etiqueta" href="/b/${t.board}">${boardBySlug(t.board)?.nombre}</a>`
+      : ''}${t.ignorado ? marcaIgnorada(t) : ''}</h2>`;
+    const resto = html`${vistaPost(ctx, t.op, { esOp: true, resumen: true })}
   ${t.omitidas
     ? html`<p class="omitidas">${t.omitidas === 1 ? '1 respuesta omitida' : `${t.omitidas} respuestas omitidas`}. <a href="/h/${t.id}">Ver la publicación completa</a></p>`
     : ''}
   ${t.respuestas.map((p) => vistaPost(ctx, p, { resumen: true }))}
-  <p class="ayuda"><a href="/h/${t.id}#responder">Responder</a> · ${t.reply_count} respuestas${t.locked ? ' · cerrada' : ''}</p>
-</section>`,
-  );
+  <p class="ayuda"><a href="/h/${t.id}#responder">Responder</a> · ${t.reply_count} respuestas${t.locked ? ' · cerrada' : ''}</p>`;
+    const separador = t === ignoradas[0] ? separadorIgnorados(ignoradas.length, PUBLICACIONES_IGNORADAS) : '';
+    if (t.ignorado) {
+      return html`${separador}<section class="hilo-resumen ignorado"><details><summary>${titulo}</summary>${resto}</details></section>`;
+    }
+    return html`<section class="hilo-resumen${t.fijado ? ' fijada' : ''}">${titulo}${resto}</section>`;
+  });
 }
+
+const PUBLICACIONES_IGNORADAS = { singular: 'publicación ignorada', plural: 'publicaciones ignoradas' };
+// En el título de una publicación ignorada (colapsada): la marca y cómo dejar de ignorarla.
+const marcaIgnorada = (t) =>
+  html` <span class="marca-ignorado">ignorada</span> <a class="dejar-de-ignorar" href="/p/${t.op_post_id}/ignorar" rel="nofollow">Dejar de ignorar</a>`;
 
 // "nuevo" si se abrió desde tu visita anterior, o "N nuevas" si tiene respuestas desde entonces.
 function marcaNovedad(t) {
@@ -217,14 +227,17 @@ function marcaNovedad(t) {
 // Catálogo: una ficha por hilo (asunto, comienzo del mensaje, respuestas).
 function catalogo(hilos, { conTablon = false } = {}) {
   if (!hilos.length) return html`<p class="ayuda">No hay publicaciones todavía.</p>`;
-  return html`<div class="catalogo">${hilos.map(
-    (t) => html`<article class="ficha${t.fijado ? ' fijada' : ''}">
-    <div class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span class="solo-eww"> · </span><span>${marcaFijada(t)}${marcaNovedad(t)} R: ${t.reply_count}</span></div>
-    <h2 class="ficha-titulo"><a class="ficha-asunto" href="/h/${t.id}"><strong>${t.subject}</strong></a></h2>
-    <div class="ficha-texto">${extracto(textoPlano(t.op_body), 180)}</div>
-    <div class="ficha-pie">${fecha(t.bumped_at)}${t.locked ? ' · cerrada' : ''}</div>
-  </article>`,
-  )}</div>`;
+  const ignoradas = hilos.filter((t) => t.ignorado);
+  return html`<div class="catalogo">${hilos.map((t) => {
+    const barra = html`<div class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span class="solo-eww"> · </span><span>${marcaFijada(t)}${marcaNovedad(t)} R: ${t.reply_count}</span></div>`;
+    const titulo = html`<h2 class="ficha-titulo"><a class="ficha-asunto" href="/h/${t.id}"><strong>${t.subject}</strong></a>${t.ignorado ? marcaIgnorada(t) : ''}</h2>`;
+    const resto = html`<div class="ficha-texto">${extracto(textoPlano(t.op_body), 180)}</div>
+    <div class="ficha-pie">${fecha(t.bumped_at)}${t.locked ? ' · cerrada' : ''}</div>`;
+    if (t.ignorado) {
+      return html`${t === ignoradas[0] ? separadorIgnorados(ignoradas.length, PUBLICACIONES_IGNORADAS) : ''}<article class="ficha ignorado"><details><summary>${titulo}</summary>${barra}${resto}</details></article>`;
+    }
+    return html`<article class="ficha${t.fijado ? ' fijada' : ''}">${barra}${titulo}${resto}</article>`;
+  })}</div>`;
 }
 
 // Los links pasan por /vista, que guarda la elección en una cookie y vuelve acá. El `volver` va sin
@@ -389,35 +402,67 @@ function vistaPost(ctx, p, { ids = new Set(), esOp = false, resumen = false }) {
   if (p.status === 'removed') {
     // Cuerpo vacío = lo borró su autor, solo o al borrar la cuenta (ver borrarMensaje y borrarCuenta en app.js).
     const quien = p.body === '' ? 'su autor' : 'moderación';
-    return html`<article class="post respuesta retirado" id="p${p.id}"><p>No.${p.id} · Eliminado por ${quien}.</p></article>`;
+    return html`<article class="post respuesta retirado${p.ignorado ? ' ignorado' : ''}" id="p${p.id}"><p>No.${p.id} · Eliminado por ${quien}.</p></article>`;
   }
-  const clases = ['post', esOp ? 'op' : 'respuesta', p.status === 'queued' ? 'en-revision' : ''].filter(Boolean).join(' ');
-  return html`<article class="${clases}" id="p${p.id}">
-  <header class="post-meta">
-    <span class="anon">Pseudoanónimo</span>
-    <span class="id" title="Identifica a la misma persona dentro de esta publicación">ID ${p.anon}</span>
+  const clases = ['post', esOp ? 'op' : 'respuesta', p.status === 'queued' ? 'en-revision' : '', p.ignorado ? 'ignorado' : '']
+    .filter(Boolean)
+    .join(' ');
+  const meta = html`<span class="anon">Pseudoanónimo</span>
+    <span class="id" title="Identifica a la misma persona dentro de esta publicación">ID ${p.author_id}</span>
     ${p.esAutorOp ? html`<span class="marca-op">OP</span>` : ''}
     ${p.esMio ? html`<span class="marca-vos" title="Solo lo ves vos">(vos)</span>` : ''}
     ${p.esNuevo && !resumen ? html`<span class="marca-nuevo" title="Desde tu visita anterior">nuevo</span>` : ''}
     ${hora(p.created_at)}
     <a class="num" href="#p${p.id}">No.${p.id}</a>
     ${p.sage ? html`<span class="sage">sage</span>` : ''}
+    ${p.ignorado ? html`<span class="marca-ignorado">ignorado</span>` : ''}
     ${!resumen && ctx.user && p.status === 'published'
       ? p.esMio
         ? html`<a class="reportar" href="/p/${p.id}/borrar" rel="nofollow">Borrar</a>`
-        : html`<a class="reportar" href="/p/${p.id}/reportar" rel="nofollow">Reportar</a>`
+        : html`<a class="reportar" href="/p/${p.id}/reportar" rel="nofollow">Reportar</a><a class="reportar" href="/p/${p.id}/ignorar" rel="nofollow">${p.ignorado ? 'Dejar de ignorar' : 'Ignorar'}</a>`
       : ''}
-    ${!resumen && ctx.user?.role === 'admin' && !p.esMio && p.status !== 'removed' ? eliminarAdmin(ctx, p) : ''}
-  </header>
-  ${p.status === 'queued' ? html`<p class="nota">En revisión: por ahora solo lo ves vos.</p>` : ''}
+    ${!resumen && ctx.user?.role === 'admin' && !p.esMio && p.status !== 'removed' ? eliminarAdmin(ctx, p) : ''}`;
+  const cuerpo = html`${p.status === 'queued' ? html`<p class="nota">En revisión: por ahora solo lo ves vos.</p>` : ''}
   <div class="texto">${raw(formatear(resumen ? extracto(p.body, 800) : p.body, { idsLocales: ids }))}</div>
   ${!resumen && p.respuestas?.length
     ? html`<p class="respuestas">Respuestas: ${p.respuestas.map((n) => html`<a href="#p${n}">&gt;&gt;${n}</a> `)}</p>`
     : ''}
   ${!resumen && ctx.user && p.status === 'published' && abiertoPara(p)
     ? html`<p class="acciones-post"><a class="citar" href="?cita=${p.id}#responder">Responder</a></p>`
-    : ''}
+    : ''}`;
+  // Ignorado: colapsado, solo la cabecera. Se despliega sin JavaScript (<details>).
+  if (p.ignorado) {
+    return html`<article class="${clases}" id="p${p.id}"><details><summary class="post-meta">${meta}</summary>${cuerpo}</details></article>`;
+  }
+  return html`<article class="${clases}" id="p${p.id}">
+  <header class="post-meta">${meta}</header>
+  ${cuerpo}
 </article>`;
+}
+
+// Antes de lo ignorado, al final de un listado o de una publicación: cuántos hay y cómo se despliegan.
+function separadorIgnorados(n, { singular, plural }) {
+  if (!n) return '';
+  return html`<p class="separador-ignorados" role="separator">${n === 1 ? `1 ${singular}` : `${n} ${plural}`}. Se ${n === 1 ? 'despliega' : 'despliegan'} tocando la cabecera.</p>`;
+}
+
+// Ignorar (/p/:id/ignorar): el mensaje y qué ignorar. El mensaje inicial ofrece al autor y a la
+// publicación; una respuesta, al autor y a ese mensaje. Se puede elegir una cosa o las dos, y
+// destildar lo que ya estaba ignorado para dejar de ignorarlo.
+export function ignorar(ctx, { post, thread, volver, esOp, marcado }) {
+  const opcion = (nombre, titulo, ayuda) =>
+    html`<label class="opcion"><input type="checkbox" name="${nombre}" value="1"${marcado[nombre] ? raw(' checked') : ''}> <strong>${titulo}</strong> <span class="ayuda">${ayuda}</span></label>`;
+  return html`<h1>Ignorar</h1>
+<p class="ayuda">En <a href="${volver}">${thread.subject}</a>. Solo para vos: nadie más se entera y no se oculta para otros. Lo ignorado se ve colapsado y va al final.</p>
+${vistaPost(ctx, post, { esOp, resumen: true })}
+<form class="form-reportar" method="post" action="/p/${post.id}/ignorar">
+  <input type="hidden" name="_csrf" value="${ctx.csrf}">
+  ${opcion('autor', 'Ignorar autor', `Todos los mensajes de ID ${post.author_id} en esta publicación (en otras tiene otro ID).`)}
+  ${esOp
+    ? opcion('hilo', 'Ignorar hilo', 'La publicación: en la portada y en su sección va al final, colapsada, y no sube cuando le responden.')
+    : opcion('mensaje', 'Ignorar mensaje', `Solo No.${post.id}.`)}
+  <p class="botones"><button>Guardar</button> <a href="${volver}">Cancelar</a></p>
+</form>`;
 }
 
 // Reportar un mensaje (/p/:id/reportar): el mensaje, como en los listados, y el motivo.
@@ -477,7 +522,7 @@ export function hilo(ctx, { thread, board, posts, ids, form, guardado = false })
   if (thread.archived) estado = html`<p class="aviso">Publicación archivada: se puede leer pero ya no acepta respuestas.</p>`;
   else if (thread.locked) estado = html`<p class="aviso">Publicación cerrada: llegó al límite de respuestas.</p>`;
   const abierto = thread.visible && !thread.archived && !thread.locked;
-  const ultimo = posts.length ? posts[posts.length - 1].id : 0;
+  const ultimo = Math.max(0, ...posts.map((p) => p.id)); // lo ignorado va al final: el último no siempre es el más nuevo
   // data-hilo/data-ultimo los usa /static/vivo.js para traer lo nuevo sin recargar. Sin JS, la
   // página funciona igual que siempre.
   // En las publicaciones largas, links para ir al final y volver arriba (sin JavaScript).
@@ -486,7 +531,7 @@ export function hilo(ctx, { thread, board, posts, ids, form, guardado = false })
 <h1>${thread.subject}</h1>
 ${estado}
 <div id="posts"${abierto ? raw(` data-hilo="${thread.id}" data-ultimo="${ultimo}"`) : ''}>
-${postsSueltos(ctx, { thread, posts, ids })}
+${postsSueltos(ctx, { thread, posts, ids, separador: true })}
 </div>
 <p id="vivo-aviso" class="ayuda" hidden></p>
 ${larga ? html`<p class="ayuda" id="fin"><a href="#arriba">↑ Volver arriba</a></p>` : html`<span id="fin"></span>`}
@@ -495,9 +540,14 @@ ${abierto ? html`<script src="${estatico('vivo.js')}" defer></script>` : ''}
 <script src="${estatico('citas.js')}" defer></script>`;
 }
 
-export function postsSueltos(ctx, { thread, posts, ids }) {
+// separador: antes de la primera respuesta ignorada (van al final). /h/:id/nuevos no lo lleva: agrega
+// mensajes sueltos al final de la página.
+export function postsSueltos(ctx, { thread, posts, ids, separador = false }) {
   const abierto = thread.visible && !thread.archived && !thread.locked;
-  return html`${posts.map((p) => vistaPost(ctx, { ...p, abierto }, { ids, esOp: p.id === thread.op_post_id }))}`;
+  const ignoradas = posts.filter((p) => p.ignorado && p.id !== thread.op_post_id);
+  return html`${posts.map(
+    (p) => html`${separador && p === ignoradas[0] ? separadorIgnorados(ignoradas.length, { singular: 'mensaje ignorado', plural: 'mensajes ignorados' }) : ''}${vistaPost(ctx, { ...p, abierto }, { ids, esOp: p.id === thread.op_post_id })}`,
+  )}`;
 }
 
 export function normas() {
@@ -520,6 +570,7 @@ export function privacidad(ctx) {
   <li><strong>Los mensajes que el filtro rechazó</strong>, con el motivo, para detectar abusos.</li>
   <li><strong>Los reportes que hacés</strong> y las decisiones de moderación sobre tus mensajes o tu cuenta.</li>
   <li><strong>Las publicaciones que guardás</strong>, para que las encuentres en Guardados. Solo las ves vos.</li>
+  <li><strong>Lo que ignorás</strong> (una publicación, un mensaje o un autor dentro de una publicación), con la fecha, para mostrártelo colapsado y al final. Solo lo ves vos: a quien ignorás no le llega nada. De un autor se guarda el código con el que aparece en esa publicación, no su cuenta. Se borra al borrar la tuya.</li>
   <li><strong>Si escribís desde Gemini</strong>, la huella del certificado de tu programa de Gemini, vinculada a tu cuenta, y la fecha en que lo usaste por última vez. Podés desvincularlo en Mi cuenta.</li>
   <li><strong>Estadísticas de uso, sin rastreo.</strong> Contamos cuántas páginas se ven por día y cuántas personas distintas, sin cookies ni IP guardadas: para no contar dos veces a la misma persona usamos un código anónimo que se descarta al día siguiente. Si tenés cuenta, registramos qué días entraste, solo para saber cuántos usuarios activos hay.</li>
   <li><strong>Una cookie de sesión</strong> (dura 30 días o hasta que salgas) otra de un solo uso durante el ingreso con Google y otra con la hora de tu última visita, que queda en tu navegador y sirve solo para marcar lo nuevo. Si elegís un tema o una vista de los listados, se guardan en dos cookies más (<code>tema</code> y <code>vista</code>). No usamos cookies de publicidad ni de analítica.</li>
@@ -606,13 +657,20 @@ export function buscar(ctx, { texto, resultados, pagina, paginas }) {
 ${texto && !resultados.length ? html`<p class="ayuda">No encontré nada con eso.</p>` : ''}
 ${resultados.length
   ? html`<p class="ayuda">${resultados.total} ${resultados.total === 1 ? 'resultado' : 'resultados'}, incluido el archivo.</p>
-<ol class="resultados">${resultados.map(
-      (r) => html`<li>
-  <a class="res-asunto" href="/h/${r.thread_id}#p${r.id}">${r.subject}</a>
-  <span class="ayuda">${boardBySlug(r.board)?.nombre ?? r.board} · No.${r.id}${r.es_op ? ' · mensaje inicial' : ''} · ${fecha(r.created_at)}${r.archived ? ' · archivada' : ''}</span>
-  ${r.fragmento ? html`<p class="res-fragmento">${resaltar(r.fragmento)}</p>` : ''}
-</li>`,
-    )}</ol>
+<ol class="resultados">${resultados.map((r) => {
+      const cabecera = html`<a class="res-asunto" href="/h/${r.thread_id}#p${r.id}">${r.subject}</a>
+  <span class="ayuda">${boardBySlug(r.board)?.nombre ?? r.board} · No.${r.id}${r.es_op ? ' · mensaje inicial' : ''} · ${fecha(r.created_at)}${r.archived ? ' · archivada' : ''}</span>`;
+      const fragmento = r.fragmento ? html`<p class="res-fragmento">${resaltar(r.fragmento)}</p>` : '';
+      // De algo ignorado (la publicación, el mensaje o su autor): al final y plegado.
+      if (r.ignorado) {
+        const primero = r === resultados.find((x) => x.ignorado);
+        return html`${primero ? html`<li class="separador">${separadorIgnorados(resultados.filter((x) => x.ignorado).length, { singular: 'resultado ignorado', plural: 'resultados ignorados' })}</li>` : ''}<li class="ignorado"><details><summary>${cabecera} <span class="marca-ignorado">ignorado</span></summary>${fragmento}</details></li>`;
+      }
+      return html`<li>
+  ${cabecera}
+  ${fragmento}
+</li>`;
+    })}</ol>
 ${paginacion(pagina, paginas, { q: texto })}`
   : ''}`;
 }
@@ -852,25 +910,37 @@ export function respuestas(ctx, { lista, mias = [] }) {
   return html`<h1>Respuestas</h1>
 <p class="ayuda">Comentarios en las publicaciones que abriste o guardaste, y mensajes que te citan con &gt;&gt;. Solo dentro del sitio: no mandamos mails ni notificaciones.</p>
 ${lista.length
-  ? html`<ul class="avisos">${lista.map(
-      (n) => html`<li${n.leida ? '' : raw(' class="nueva"')}>
+  ? html`<ul class="avisos">${lista.map((n) => {
+      // De algo ignorado: al final, sin contar como nueva y con el texto plegado.
+      if (n.ignorado) {
+        return html`${n === lista.find((x) => x.ignorado) ? html`<li class="separador">${separadorIgnorados(lista.filter((x) => x.ignorado).length, { singular: 'respuesta de algo que ignorás', plural: 'respuestas de cosas que ignorás' })}</li>` : ''}<li class="ignorado"><details><summary><a href="/h/${n.thread_id}#p${n.post_id}">${n.subject}</a> <span class="ayuda">· alguien ${tipo[n.tipo]} · ${fecha(n.created_at)} · <span class="marca-ignorado">ignorado</span></span></summary>
+    <div class="extracto">${extracto(textoPlano(n.body), 200)}</div></details>
+  </li>`;
+      }
+      return html`<li${n.leida ? '' : raw(' class="nueva"')}>
     <a href="/h/${n.thread_id}#p${n.post_id}">${n.subject}</a> <span class="ayuda">· alguien ${tipo[n.tipo]} · ${fecha(n.created_at)}${n.leida ? '' : ' · nueva'}</span>
     <div class="extracto">${extracto(textoPlano(n.body), 200)}</div>
-  </li>`,
-    )}</ul>`
+  </li>`;
+    })}</ul>`
   : html`<p>Todavía no hay respuestas.</p>`}
 <h2>Donde participaste</h2>
 ${mias.length
-  ? html`<ul class="mias">${mias.map((t) => html`<li><a href="/h/${t.id}">${t.subject}</a> <span class="ayuda">· ${boardBySlug(t.board)?.nombre ?? t.board} · ${t.reply_count} respuestas · tu último mensaje: ${fecha(t.ultima)}</span></li>`)}</ul>`
+  ? html`<ul class="mias">${mias.map((t) => html`${filaIgnorada(t, mias)}<li${t.ignorado ? raw(' class="ignorado"') : ''}><a href="/h/${t.id}">${t.subject}</a> <span class="ayuda">· ${boardBySlug(t.board)?.nombre ?? t.board} · ${t.reply_count} respuestas · tu último mensaje: ${fecha(t.ultima)}</span>${t.ignorado ? marcaIgnorada(t) : ''}</li>`)}</ul>`
   : html`<p class="ayuda">Todavía no publicaste nada.</p>`}
 <p class="ayuda">Solo lo ves vos. En cada publicación, tus mensajes aparecen marcados con "(vos)".</p>`;
 }
+
+// En una lista de publicaciones (<ul>): el separador antes de la primera ignorada.
+const filaIgnorada = (t, lista) =>
+  t.ignorado && t === lista.find((x) => x.ignorado)
+    ? html`<li class="separador">${separadorIgnorados(lista.filter((x) => x.ignorado).length, PUBLICACIONES_IGNORADAS)}</li>`
+    : '';
 
 export function guardados(ctx, { lista }) {
   return html`<h1>Guardados</h1>
 <p class="ayuda">Publicaciones que guardaste para leer después. Solo las ves vos. Cuando alguien comenta en una, te avisa en Respuestas. Se guardan o se sacan con el botón "Guardar" de cada publicación.</p>
 ${lista.length
-  ? html`<ul class="mias">${lista.map((t) => html`<li><a href="/h/${t.id}">${t.subject}</a> <span class="ayuda">· ${boardBySlug(t.board)?.nombre ?? t.board} · ${t.reply_count} respuestas · ${fecha(t.bumped_at)}${t.archived ? ' · archivada' : ''}</span></li>`)}</ul>`
+  ? html`<ul class="mias">${lista.map((t) => html`${filaIgnorada(t, lista)}<li${t.ignorado ? raw(' class="ignorado"') : ''}><a href="/h/${t.id}">${t.subject}</a> <span class="ayuda">· ${boardBySlug(t.board)?.nombre ?? t.board} · ${t.reply_count} respuestas · ${fecha(t.bumped_at)}${t.archived ? ' · archivada' : ''}</span>${t.ignorado ? marcaIgnorada(t) : ''}</li>`)}</ul>`
   : html`<p>Todavía no guardaste nada.</p>`}`;
 }
 
