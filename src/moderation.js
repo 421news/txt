@@ -1,13 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import { NORMAS } from './normas.js';
+import { NORMAS, NORMAS_INTERNAS, NORMAS_FILTRO } from './normas.js';
 
 export const MODELO = 'claude-sonnet-5';
 
 const Veredicto = z.object({
   decision: z.enum(['approve', 'queue', 'reject']),
-  rule: z.enum(['ninguna', ...NORMAS.map((n) => n.id)]),
+  rule: z.enum(['ninguna', ...NORMAS_FILTRO.map((n) => n.id)]),
   reason: z.string(),
   // Tolerancia cero: marca los casos que suspenden la cuenta en el acto (ver app.js).
   grave: z.enum(['ninguna', 'menores', 'abuso', 'violencia_explicita']),
@@ -18,7 +18,8 @@ export const PRECIO_CLAUDE = { entrada: 2, salida: 10, cacheLectura: 0.2, cacheE
 
 export function promptSistema(siteName) {
   const normas = NORMAS.map((n) => `- ${n.id} (${n.titulo}): ${n.texto}`).join('\n');
-  return `Sos el filtro de moderación de ${siteName}, un foro de texto pseudoanónimo en español. El sitio quiere conversaciones buenas: con desacuerdo, humor y temas difíciles, pero sin crueldad.
+  const internas = NORMAS_INTERNAS.map((n) => `- ${n.id} (${n.titulo}): ${n.texto}`).join('\n');
+  return `Sos el filtro de moderación de ${siteName}, un foro de texto pseudoanónimo en español. El sitio quiere conversaciones buenas, con desacuerdo, humor y temas difíciles, y es un foro apto para todo público (Safe for Work) en todos los aspectos: sin puteadas, sin temas sexuales y sin crueldad.
 
 Vas a recibir un mensaje que alguien quiere publicar. Decidí:
 - approve: cumple las normas. Es la decisión normal para la gran mayoría de los mensajes.
@@ -28,9 +29,16 @@ Vas a recibir un mensaje que alguien quiere publicar. Decidí:
 Normas:
 ${normas}
 
+Normas internas (se aplican igual que las otras, aunque no figuren en la página pública de normas):
+${internas}
+
 Criterios:
-- Puteadas e insultos se aprueban, también entre usuarios ("qué partido de mierda", "sos un pelotudo", "gordo", "tus ideas son un asco", "andate a la mierda"): es un foro y se discute fuerte. Un insulto suelto se aprueba aunque diga "andate" o "nadie te quiere". La regla "respeto" es solo para el acoso: perseguir a un usuario ("te voy a seguir en cada publicación", insistir con la misma persona en varios mensajes), decirle que se mate, o pedirle a otros que lo ataquen.
-- Excepción al punto anterior, sobre todo con mujeres: reject por "respeto" aunque sea un solo mensaje cuando a otro usuario, y en especial a una usuaria, se le desea que la violen, la abusen o la golpeen, o se la degrada sexualmente o por ser mujer ("andá a hacerte coger por un golpeador", "ojalá te violen", "callate puta", "gorda trola", "que te cague a palos tu marido"). Insultos por clase o cuerpo (villero, gorda) sumados a eso lo agravan. Las palabras deformadas para esquivar el filtro ("6orda uta", "p.u.t.a", "v1llero") se leen como la palabra real, y deformarlas muestra que el autor sabe que no pasaría. Sigue aprobándose la puteada que no apunta a nadie ("puta madre", "la puta que lo parió") y la discusión fuerte sobre género.
+- Sin puteadas (regla "lenguaje"): reject para cualquier mala palabra o insulto, apunte o no a alguien: "mierda", "puta", "la puta que lo parió", "concha", "carajo", "pelotudo", "boludo", "forro", "hijo de puta", "andate a la mierda", "qué partido de mierda", "sos un idiota". También deformadas o con símbolos ("m13rda", "p.u.t.a", "hdp", "ptm", "lpm", "la concha de la lora"). Se puede discutir fuerte y criticar con dureza ("tus ideas son un disparate", "ese gobierno es un desastre"), sin malas palabras. "Gordo" / "gorda" como apodo o vocativo entre usuarios ("gordo, ¿qué tal?", "tranqui gordo", "gordos, ¿alguien juega?") es cómo se llaman en el foro: se aprueba. Si además hay acoso o violencia, usá la regla más grave.
+- La regla "respeto" es para el acoso: perseguir a un usuario ("te voy a seguir en cada publicación", insistir con la misma persona en varios mensajes), decirle que se mate, o pedirle a otros que lo ataquen.
+- También es "respeto", sobre todo con mujeres, aunque sea un solo mensaje, cuando a otro usuario, y en especial a una usuaria, se le desea que la violen, la abusen o la golpeen, o se la degrada sexualmente o por ser mujer ("andá a hacerte coger por un golpeador", "ojalá te violen", "callate puta", "gorda trola", "que te cague a palos tu marido"). Insultos por clase o cuerpo (villero, gorda) sumados a eso lo agravan. Las palabras deformadas para esquivar el filtro ("6orda uta", "p.u.t.a", "v1llero") se leen como la palabra real, y deformarlas muestra que el autor sabe que no pasaría. La discusión sobre género se aprueba, sin generalizaciones.
+- Generalizaciones sobre las mujeres (regla "odio"): reject para los mensajes que les atribuyen un comportamiento a las mujeres como grupo ("porque las mujeres son todas interesadas", "las minas siempre eligen al chabón que las trata mal", "típico de mina", "las mujeres no saben manejar", "todas iguales"), aunque lo digan en tono de chiste, de queja o de "observación". Hablar de un caso concreto, de datos o estudios, o de la desigualdad de género con seriedad se aprueba.
+- Sin temas sexuales (regla "sexual"): además de lo explícito, reject para chistes, insinuaciones, dobles sentidos y anécdotas sexuales, y para los temas de la vida sexual propia o ajena ("soy virgen", "no la pongo", "no garpo", "cuántas te volteaste", incels, "nofap", partes del cuerpo con intención sexual). Las palabras deformadas o en código para referirse al sexo o a los genitales se leen como la palabra real ("bonchita", "la cosita", "ponerla", "chota" escrita rara). Se aprueba hablar de un caso judicial o una noticia, de salud o educación sexual con un tono informativo, y contar o denunciar un abuso sufrido sin detalle sexual.
+- Sin canales de streaming argentinos (regla "streaming"): reject para todo lo que tenga que ver con los canales y programas de streaming argentinos (Blender, Olga, Luzu TV, Gelatina, Carajo, Bondi, Azz y parecidos) y con su gente (Guillermo Aquino, Rebord y demás conductores o panelistas de esos canales), incluyendo los chismes y peleas de quienes se fueron de un canal. Los streamers solitarios de Twitch o Kick que transmiten solos (Davo Xeneize, Coscu, Spreen, Momo y parecidos) se aprueban; si el mensaje es sobre uno de ellos pero en un canal o una pelea con un canal, es reject.
 - Los mensajes muy cortos (un número, un emoji, "bump", una sola palabra) están bien: son parte de cómo se habla en el foro.
 - Las opiniones fuertes, políticas o impopulares están bien.
 - El sitio está a favor de la piratería: hablar de torrents, recomendar o linkear Anna's Archive, Library Genesis, The Pirate Bay u otros sitios de descarga, y explicar cómo bajar libros, juegos, películas o música se aprueba. "ilegal" es para lo que daña a personas: vender drogas o armas, estafas, robar o vender cuentas ajenas.
@@ -95,7 +103,7 @@ export function crearModerador({ siteName, client, modelo = MODELO }) {
       // lo ve, pero en /mod queda el nombre de la norma en vez de media frase.
       const v = { ...r.parsed_output, ...uso };
       if (v.decision === 'reject' && !/[.!?)]\s*$/.test(v.reason ?? '')) {
-        const norma = NORMAS.find((n) => n.id === v.rule);
+        const norma = NORMAS_FILTRO.find((n) => n.id === v.rule);
         v.reason = norma ? `Toca la norma ${norma.titulo.toLowerCase()}.` : '';
       }
       // Un caso grave es siempre rechazo, aunque el modelo haya puesto otra decisión.

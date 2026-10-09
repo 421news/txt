@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { crearFiltroMixto, limpioParaJev } from '../src/sombra.js';
-import { NORMAS } from '../src/normas.js';
+import { NORMAS_FILTRO as NORMAS } from '../src/normas.js';
 
 const respuestas = (valores = {}, grave = 'ninguna') => ({
   grave: { choice: grave, probabilities: { [grave]: 0.9 } },

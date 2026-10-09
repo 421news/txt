@@ -5,7 +5,7 @@
 // Se activa solo con TYPESAFE_API_KEY. Las preguntas van en inglés (su idioma más fuerte según su
 // documentación) con los mismos matices que el prompt de Claude; el mensaje va tal cual.
 
-import { NORMAS } from './normas.js';
+import { NORMAS_FILTRO } from './normas.js';
 
 const URL_API = 'https://api.typesafe.ai/v1/systemone';
 export const MODELO_JEV = 'jev-latest';
@@ -15,15 +15,15 @@ export const PRECIO_JEV_POR_MTOK = 0.042; // USD por millón de tokens de entrad
 const PREGUNTAS_NORMAS = {
   respeto: {
     instructions: 'Does the `message` harass a specific person: stalking them across posts, telling them to kill themselves, urging others to attack them, wishing them rape, sexual abuse or beatings, or degrading them sexually or for being a woman, e.g. calling a female user a whore (even in a single message, even with misspelled words like "6orda uta")?',
-    criteria: { true: 'Targeted harassment, misogynistic abuse, or wishing sexual or physical violence on a specific person', false: 'No harassment. Swearing and one-off insults, even aimed at another user, are allowed, as long as they do not wish sexual or physical violence on them.' },
+    criteria: { true: 'Targeted harassment, misogynistic abuse, or wishing sexual or physical violence on a specific person', false: 'No harassment. (Swearing is judged by a separate question.)' },
   },
   odio: {
-    instructions: 'Does the `message` demean or dehumanize people for their origin, ethnicity, religion, gender, sexual orientation or disability?',
-    criteria: { true: 'Hate against a protected group', false: 'No hate against a protected group. Criticizing ideas, politicians or public figures is allowed.' },
+    instructions: 'Does the `message` demean or dehumanize people for their origin, ethnicity, religion, gender, sexual orientation or disability, or generalize about women as a group, attributing a behavior to all women ("women are all gold diggers", "typical of women", "because women always..."), even as a joke or an "observation"?',
+    criteria: { true: 'Hate against a protected group, or a generalization about women', false: 'No hate and no generalization about women. Criticizing ideas, politicians or public figures, or discussing gender inequality seriously, is allowed.' },
   },
   sexual: {
-    instructions: 'Does the `message` contain explicit sexual content, or any sexualization of minors?',
-    criteria: { true: 'Explicit sexual content or sexualization of minors', false: 'No explicit sexual content' },
+    instructions: 'Does the `message` contain anything sexual: explicit content, sexual jokes, innuendo or double meanings, talk about one\'s own or others\' sex life ("I\'m a virgin", "I never get laid"), or coded or misspelled words for sex or genitals (e.g. "bonchita")? Or any sexualization of minors? This is a strictly safe-for-work forum.',
+    criteria: { true: 'Sexual content, jokes, innuendo or sex-life talk, or sexualization of minors', false: 'Nothing sexual. Informative talk about news, court cases, health or sex education is allowed.' },
   },
   violencia: {
     instructions: 'Does the `message` threaten or incite harm against a concrete, identifiable person (another user, or someone named), or describe violence in graphic detail to enjoy it?',
@@ -40,6 +40,14 @@ const PREGUNTAS_NORMAS = {
   ilegal: {
     instructions: 'Does the `message` facilitate a crime that harms people: selling drugs or weapons, scams, or stealing or selling other people\'s accounts?',
     criteria: { true: 'Facilitates a harmful crime', false: 'No harmful crime. Piracy (torrents, download sites, how to download books, games or films) is allowed on this site.' },
+  },
+  lenguaje: {
+    instructions: 'Does the `message` contain any swear word, profanity or insult, in Argentine Spanish or otherwise (e.g. "mierda", "puta", "concha", "carajo", "boludo", "pelotudo", "forro", "hdp", "lpm"), even if not aimed at anyone, or disguised with symbols or misspellings? The word "gordo"/"gorda" used as a nickname between users does not count.',
+    criteria: { true: 'Contains swearing, profanity or an insult', false: 'Clean language. Harsh criticism without swear words, and "gordo" as a friendly nickname, are allowed.' },
+  },
+  streaming: {
+    instructions: 'Is the `message` about the Argentine streaming channels and their shows (Blender, Olga, Luzu TV, Gelatina, Carajo, Bondi, Azz and similar), their hosts and panelists (e.g. Guillermo Aquino, Rebord), or the gossip and fights around them? Solo Twitch or Kick streamers who stream on their own (e.g. Davo Xeneize, Coscu, Spreen) do not count.',
+    criteria: { true: 'About Argentine streaming channels, their people or their drama', false: 'Not about Argentine streaming channels (solo streamers are allowed)' },
   },
   spam: {
     instructions: 'Is the `message` advertising, referral links, gambling promotion or investment schemes?',
@@ -60,7 +68,7 @@ const PREGUNTA_GRAVE = {
 
 export function preguntas() {
   const q = { grave: PREGUNTA_GRAVE };
-  for (const n of NORMAS) {
+  for (const n of NORMAS_FILTRO) {
     const p = PREGUNTAS_NORMAS[n.id];
     if (p) q[n.id] = { type: 'noul', ...p };
   }
@@ -76,7 +84,7 @@ export function decisionJev(respuestas) {
     return { decision: 'reject', rule: 'grave', grave: grave.choice };
   }
   let peor = null;
-  for (const n of NORMAS) {
+  for (const n of NORMAS_FILTRO) {
     const v = respuestas?.[n.id]?.noul;
     if (typeof v === 'number' && (!peor || v > peor.v)) peor = { id: n.id, v };
   }
@@ -115,7 +123,7 @@ export const UMBRAL_LIMPIO = 0.2;
 
 export function limpioParaJev(respuestas, umbral = UMBRAL_LIMPIO) {
   if (respuestas?.grave?.choice !== 'ninguna') return false;
-  const valores = NORMAS.map((n) => respuestas?.[n.id]?.noul);
+  const valores = NORMAS_FILTRO.map((n) => respuestas?.[n.id]?.noul);
   if (valores.some((v) => typeof v !== 'number')) return false;
   return Math.max(...valores) < umbral;
 }
