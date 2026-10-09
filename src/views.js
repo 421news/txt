@@ -555,7 +555,7 @@ export function postsSueltos(ctx, { thread, posts, ids, separador = false }) {
 
 export function normas() {
   return html`<h1>Normas</h1>
-<p>Un filtro automático revisa cada mensaje antes de publicarlo; si rechaza el tuyo, te dice por qué. Los mensajes reportados por varias personas se ocultan hasta que los mire un moderador.</p>
+<p>Un filtro automático revisa cada mensaje antes de publicarlo. Los mensajes reportados por varias personas se ocultan hasta que los mire un moderador.</p>
 <ol class="normas">${NORMAS.map((n) => html`<li><strong>${n.titulo}.</strong> ${n.texto}</li>`)}</ol>
 <p>Quien no las respete puede ser suspendido. Abuso infantil, abuso sexual y violencia explícita: suspensión inmediata.</p>`;
 }

@@ -22,7 +22,7 @@ const PREGUNTAS_NORMAS = {
     criteria: { true: 'Hate against a protected group, or a generalization about women', false: 'No hate and no generalization about women. Criticizing ideas, politicians or public figures, or discussing gender inequality seriously, is allowed.' },
   },
   sexual: {
-    instructions: 'Does the `message` contain anything sexual: explicit content, sexual jokes, innuendo or double meanings, talk about one\'s own or others\' sex life ("I\'m a virgin", "I never get laid"), or coded or misspelled words for sex or genitals (e.g. "bonchita")? Or any sexualization of minors? This is a strictly safe-for-work forum.',
+    instructions: 'Does the `message` contain anything sexual: explicit content, sexual jokes, innuendo or double meanings, talk about one\'s own or others\' sex life ("I\'m a virgin", "I never get laid"), anything about being an incel (blackpill, "women ignore me for being ugly", chads, "foids", the "sexual market"), even as a joke, or coded or misspelled words for sex or genitals (e.g. "bonchita")? Or any sexualization of minors? This is a strictly safe-for-work forum.',
     criteria: { true: 'Sexual content, jokes, innuendo or sex-life talk, or sexualization of minors', false: 'Nothing sexual. Informative talk about news, court cases, health or sex education is allowed.' },
   },
   violencia: {
@@ -42,8 +42,8 @@ const PREGUNTAS_NORMAS = {
     criteria: { true: 'Facilitates a harmful crime', false: 'No harmful crime. Piracy (torrents, download sites, how to download books, games or films) is allowed on this site.' },
   },
   lenguaje: {
-    instructions: 'Does the `message` contain any swear word, profanity or insult, in Argentine Spanish or otherwise (e.g. "mierda", "puta", "concha", "carajo", "boludo", "pelotudo", "forro", "hdp", "lpm"), even if not aimed at anyone, or disguised with symbols or misspellings? The word "gordo"/"gorda" used as a nickname between users does not count.',
-    criteria: { true: 'Contains swearing, profanity or an insult', false: 'Clean language. Harsh criticism without swear words, and "gordo" as a friendly nickname, are allowed.' },
+    instructions: 'Does the `message` contain any swear word, profanity or insult, in Argentine Spanish or otherwise (e.g. "mierda", "puta", "concha", "carajo", "pelotudo", "forro", "hdp", "lpm"), even if not aimed at anyone, or disguised with symbols or misspellings? The word "gordo"/"gorda" used as a nickname between users, and "boludo"/"boluda" used as a friendly filler or vocative ("che boludo"), do not count; "boludo" as an insult ("sos un boludo") does.',
+    criteria: { true: 'Contains swearing, profanity or an insult', false: 'Clean language. Harsh criticism without swear words, "gordo" as a friendly nickname and "che boludo" as a friendly filler, are allowed.' },
   },
   streaming: {
     instructions: 'Is the `message` about the Argentine streaming channels and their shows (Blender, Olga, Luzu TV, Gelatina, Carajo, Bondi, Azz and similar), their hosts and panelists (e.g. Guillermo Aquino, Rebord), or the gossip and fights around them? Solo Twitch or Kick streamers who stream on their own (e.g. Davo Xeneize, Coscu, Spreen) do not count.',

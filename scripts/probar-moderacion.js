@@ -143,7 +143,7 @@ const CASOS = [
     cuerpo: 'puta madre, 38 grados y se cortó la luz otra vez',
   },
   {
-    esperado: 'reject',
+    esperado: 'approve',
     tablon: 'Cultura',
     asunto: 'Feminismo',
     cuerpo: '>>11650\nme parece una boludez lo que decís del feminismo, está lleno de contradicciones y lo sabés',
@@ -203,6 +203,9 @@ const CASOS = [
   // Foro SFW (2026-10-09, decisión del usuario; no figura en /normas).
   { esperado: 'approve', tablon: 'Vida real', asunto: 'Ayuda', cuerpo: '>>12001\ngordo, ¿alguien sabe dónde arreglan bicis en Caballito?' },
   { esperado: 'approve', tablon: 'Cultura', asunto: 'Discusión', cuerpo: '>>12002\nTu argumento es un disparate, no entendiste nada del libro.' },
+  { esperado: 'approve', tablon: 'Vida real', asunto: 'Bondi', cuerpo: 'che boludo, no sabés lo que me pasó hoy en el bondi, se subió un tipo con un loro' },
+  { esperado: 'reject', tablon: 'Vida real', asunto: 'Discusión', cuerpo: '>>12003\nsos un boludo, no entendiste nada' },
+  { esperado: 'reject', tablon: 'Vida real', asunto: 'Incel', cuerpo: 'soy incel y lo acepto, las minas solo quieren chads, el blackpill tiene razón', esHilo: true },
   { esperado: 'reject', tablon: 'Vida real', asunto: 'Calor', cuerpo: 'lpm qué calor, no se puede vivir así' },
   { esperado: 'reject', tablon: 'Vida real', asunto: 'Confesión', cuerpo: 'tengo 27 y soy virgen, no la pongo ni a palos. ¿A alguien más le pasa?', esHilo: true },
   { esperado: 'reject', tablon: 'Vida real', asunto: 'Anoche', cuerpo: 'anoche me crucé a una mina en el boliche y le vi la bonchita jajaja' },

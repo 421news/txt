@@ -248,7 +248,7 @@ test('un rechazo no publica, no explica el motivo y devuelve el texto', async (t
   const r = await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Asunto rechazado', cuerpo: 'texto original' } });
   assert.equal(r.status, 422);
   const pagina = await r.text();
-  assert.ok(pagina.includes('No se publicó: el mensaje no cumple las normas.'));
+  assert.ok(pagina.includes('Tu mensaje fue a moderación.'));
   assert.ok(!pagina.includes('Tu mensaje ataca a otra persona.'));
   assert.ok(pagina.includes('>texto original</textarea>'));
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM threads').get().n, 0);
@@ -1004,7 +1004,7 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
   assert.ok((await pedir('gemini://localhost/publicar/musica/mensaje')).startsWith('10 Discos nuevos'));
   s.filtro.decision = 'reject';
   const rechazo = await pedir('gemini://localhost/publicar/musica/mensaje?malo');
-  assert.ok(rechazo.includes('no cumple las normas') && !rechazo.includes('ataca'));
+  assert.ok(rechazo.includes('Tu mensaje fue a moderación.') && !rechazo.includes('ataca'));
   s.filtro.decision = 'approve';
   const hecho = await pedir('gemini://localhost/publicar/musica/mensaje?Recomienden%20algo');
   assert.match(hecho.trim(), /^30 gemini:\/\/localhost\/h\/\d+$/);

@@ -758,7 +758,7 @@ export function createApp({
       if (!cuentaVigente(user.id)) return { error: 'Tu cuenta no puede publicar.' };
       if (v.decision === 'reject') {
         registrarRechazo(user.id, tablon.slug, thread?.id ?? null, esHilo ? asunto : null, cuerpo, v);
-        return { error: 'No se publicó: el mensaje no cumple las normas.' };
+        return { error: 'Tu mensaje fue a moderación.' };
       }
       if (esHilo) {
         const threadId = crearHilo(board.slug, asunto, user.id, cuerpo, v);
@@ -1084,7 +1084,7 @@ export function createApp({
       if (!cuentaVigente(userId)) return { destino: '/' };
       if (v.decision === 'reject') {
         registrarRechazo(userId, board.slug, null, asunto, cuerpo, v);
-        return { error: 'No se publicó: el mensaje no cumple las normas.', status: 422 };
+        return { error: 'Tu mensaje fue a moderación.', status: 422 };
       }
       const threadId = crearHilo(board.slug, asunto, userId, cuerpo, v);
       return { destino: `/h/${threadId}${v.decision === 'queue' ? '?aviso=cola' : ''}` };
@@ -1135,7 +1135,7 @@ export function createApp({
       if (!cuentaVigente(userId)) return { destino: '/' };
       if (v.decision === 'reject') {
         registrarRechazo(userId, thread.board, thread.id, null, cuerpo, v);
-        return { error: 'No se publicó: el mensaje no cumple las normas.', status: 422 };
+        return { error: 'Tu mensaje fue a moderación.', status: 422 };
       }
       // El estado de la publicación se vuelve a leer: pudo cerrarse, archivarse u ocultarse mientras se moderaba.
       const ahora = q.hilo.get(thread.id);
