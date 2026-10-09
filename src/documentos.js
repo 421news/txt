@@ -33,12 +33,19 @@ function encabezado(siteName) {
   ];
 }
 
+// Lo que ignora quien lee (con sesión) va al final, después de este aviso, y sin el texto: solo el título
+// o la cabecera, como colapsado en la web.
+const avisoIgnorados = (n, singular, plural) => p(`${n === 1 ? `1 ${singular}` : `${n} ${plural}`}.`);
+
 function listaHilos(hilos, { conTablon }) {
   if (!hilos.length) return [p('No hay publicaciones todavía.')];
-  return hilos.flatMap((h) => [
-    link(`/h/${h.id}`, `${h.fijado ? '[Fijada] ' : ''}${conTablon ? `[${boardBySlug(h.board)?.nombre ?? h.board}] ` : ''}${h.subject} (${h.reply_count} ${h.reply_count === 1 ? 'respuesta' : 'respuestas'})`),
-    { tipo: 'detalle', texto: `${fecha(h.bumped_at)} · ${extracto(textoPlano(h.op_body), 160)}` },
-  ]);
+  const ignoradas = hilos.filter((h) => h.ignorado);
+  return hilos.flatMap((h) => {
+    const marca = h.ignorado ? '[Ignorada] ' : h.fijado ? '[Fijada] ' : '';
+    const titulo = link(`/h/${h.id}`, `${marca}${conTablon ? `[${boardBySlug(h.board)?.nombre ?? h.board}] ` : ''}${h.subject} (${h.reply_count} ${h.reply_count === 1 ? 'respuesta' : 'respuestas'})`);
+    if (h.ignorado) return [...(h === ignoradas[0] ? [avisoIgnorados(ignoradas.length, 'publicación ignorada', 'publicaciones ignoradas')] : []), titulo];
+    return [titulo, { tipo: 'detalle', texto: `${fecha(h.bumped_at)} · ${extracto(textoPlano(h.op_body), 160)}` }];
+  });
 }
 
 function paginacion(ruta, pagina, paginas) {
@@ -76,14 +83,17 @@ export function docHilo({ siteName, thread, board, posts }) {
   else if (thread.locked) bloques.push(p('Publicación cerrada: llegó al límite de respuestas.'));
   if (!thread.archived && !thread.locked) bloques.push({ ...link(`/h/${thread.id}/responder`, 'Responder'), solo: 'gemini' });
   bloques.push(link(`/h/${thread.id}`, 'Responder en la web', true));
+  const ignorados = posts.filter((x) => x.ignorado && x.id !== thread.op_post_id);
   for (const post of posts) {
+    if (post === ignorados[0]) bloques.push(sep(), avisoIgnorados(ignorados.length, 'mensaje ignorado', 'mensajes ignorados'));
     bloques.push(sep());
     if (post.status === 'removed') {
       bloques.push(p(`No.${post.id} · Eliminado por ${post.body === '' ? 'su autor' : 'moderación'}.`));
       continue;
     }
     const marcas = [post.esAutorOp ? 'OP' : null, post.sage ? 'sage' : null].filter(Boolean).join(' · ');
-    bloques.push(t(3, `No.${post.id} · ID ${post.anon}${marcas ? ` · ${marcas}` : ''} · ${fecha(post.created_at)}`));
+    bloques.push(t(3, `No.${post.id} · ID ${post.author_id}${marcas ? ` · ${marcas}` : ''} · ${fecha(post.created_at)}${post.ignorado ? ' · ignorado' : ''}`));
+    if (post.ignorado) continue;
     // Las líneas que empiezan con > (sin ser >>123) son citas, igual que en la web.
     for (const linea of sinSpoilers(post.body).replace(/\r\n?/g, '\n').split('\n')) {
       bloques.push(/^>(?!>\d)/.test(linea) ? { tipo: 'cita', texto: linea.replace(/^>\s?/, '') } : { tipo: 'usuario', texto: linea });

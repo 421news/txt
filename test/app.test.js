@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { openDb } from '../src/db.js';
+import { completarAutores, openDb } from '../src/db.js';
 import { createApp, limpiarTexto } from '../src/app.js';
 import { formatear } from '../src/format.js';
 import { crearModerador } from '../src/moderation.js';
@@ -1544,4 +1544,269 @@ test('eliminar desde la publicación: solo el admin ve el botón y el mensaje qu
   s.avanzar(31);
   await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'otro' } });
   assert.equal((await s.pedir('/mod/p/3/eliminar', { sesion: mod, datos: { volver: '//evil.com' } })).headers.get('location'), '/mod');
+});
+
+// --- Ignorar (issue #33) ------------------------------------------------------------------------
+
+const ignorar = (s, sesion, post, datos = {}) => s.pedir(`/p/${post}/ignorar`, { sesion, datos });
+const antes = (html, a, b) => {
+  assert.ok(html.includes(a) && html.includes(b), `falta ${html.includes(a) ? b : a}`);
+  return html.indexOf(a) < html.indexOf(b);
+};
+
+test('ignorar: un link al lado de Reportar y una página propia, con las opciones según el mensaje', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'una respuesta' } });
+
+  const hilo = await s.texto('/h/1', ana);
+  assert.ok(hilo.includes('<a class="reportar" href="/p/2/reportar" rel="nofollow">Reportar</a><a class="reportar" href="/p/2/ignorar" rel="nofollow">Ignorar</a>'));
+  assert.ok(!hilo.includes('href="/p/1/ignorar"'), 'el propio mensaje no se ignora');
+  assert.ok(!(await s.texto('/h/1')).includes('/ignorar"'), 'sin sesión no hay link');
+
+  // El mensaje inicial: autor y publicación. Una respuesta: autor y ese mensaje.
+  const op = await s.texto('/p/1/ignorar', bea);
+  assert.ok(op.includes('action="/p/1/ignorar"') && op.includes('name="autor"') && op.includes('name="hilo"') && !op.includes('name="mensaje"'));
+  assert.ok(op.includes('Ignorar autor') && op.includes('Ignorar hilo') && op.includes('arranque') && op.includes('noindex'));
+  const resp = await s.texto('/p/2/ignorar', ana);
+  assert.ok(resp.includes('name="autor"') && resp.includes('name="mensaje"') && !resp.includes('name="hilo"'));
+  assert.ok(resp.includes('Ignorar mensaje') && !resp.includes('checked'));
+
+  assert.equal((await s.pedir('/p/2/ignorar')).headers.get('location'), '/entrar');
+  assert.equal((await s.pedir('/p/2/ignorar', { sesion: bea })).headers.get('location'), '/h/1#p2', 'el propio mensaje vuelve a la publicación');
+  assert.equal((await ignorar(s, bea, 2, { mensaje: '1' })).headers.get('location'), '/h/1#p2');
+  assert.equal((await s.pedir('/p/99/ignorar', { sesion: ana })).status, 404);
+  const sinToken = await s.pedir('/p/2/ignorar', { cookie: ana.cookie, datos: { mensaje: '1' } });
+  assert.equal(sinToken.status, 403);
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 0);
+});
+
+test('ignorar un mensaje: colapsado y al final de la publicación, solo para quien ignora; destildar lo deshace', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  const cami = await s.entrar('cami');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'troleada-de-bea' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: cami, datos: { cuerpo: 'aporte-de-cami' } });
+
+  const r = await ignorar(s, ana, 2, { mensaje: '1' });
+  assert.equal(r.headers.get('location'), '/h/1?aviso=ignorado#p2');
+  assert.deepEqual(s.db.prepare('SELECT user_id, entity_type, entity_id, ignored_at FROM ignorados').all(), [
+    { user_id: 1, entity_type: 'mensaje', entity_id: '2', ignored_at: 1_800_000_062_000 },
+  ]);
+
+  const hilo = await s.texto('/h/1', ana);
+  assert.ok(antes(hilo, 'id="p1"', 'id="p3"') && antes(hilo, 'id="p3"', 'class="separador-ignorados"') && antes(hilo, 'class="separador-ignorados"', 'id="p2"'));
+  assert.match(hilo, /<article class="post respuesta ignorado" id="p2"><details><summary class="post-meta">/);
+  assert.ok(hilo.includes('troleada-de-bea'), 'colapsado, no desaparece: se puede desplegar');
+  assert.ok(hilo.includes('href="/p/2/ignorar" rel="nofollow">Dejar de ignorar</a>'));
+  assert.ok((await s.texto('/p/2/ignorar', ana)).includes('name="mensaje" value="1" checked'));
+
+  // Para el resto, igual que siempre.
+  const deCami = await s.texto('/h/1', cami);
+  assert.ok(antes(deCami, 'id="p2"', 'id="p3"') && !deCami.includes('ignorado'));
+
+  await ignorar(s, ana, 2, {});
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 0);
+  const otraVez = await s.texto('/h/1', ana);
+  assert.ok(antes(otraVez, 'id="p2"', 'id="p3"') && !otraVez.includes('separador-ignorados'));
+});
+
+test('ignorar autor: todos sus mensajes en esa publicación (por su ID ahí) y en ninguna otra', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Uno', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'primera-de-bea' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'respuesta-de-ana' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'segunda-de-bea' } });
+  s.avanzar(31);
+  await s.pedir('/b/cultura/hilo', { sesion: bea, datos: { asunto: 'Dos', cuerpo: 'hilo-de-bea' } });
+
+  await ignorar(s, ana, 2, { autor: '1' });
+  const fila = s.db.prepare('SELECT entity_type, entity_id FROM ignorados').get();
+  const id = s.db.prepare('SELECT author_id FROM posts WHERE id = 2').get().author_id;
+  assert.deepEqual(fila, { entity_type: 'autor', entity_id: id });
+  assert.match(id, /^[\w-]{8}$/);
+  const hilo = await s.texto('/h/1', ana);
+  assert.ok(hilo.includes(`ID ${id}`), 'es el ID que se ve en la publicación');
+  assert.match(hilo, /class="post respuesta ignorado" id="p2"/);
+  assert.match(hilo, /class="post respuesta ignorado" id="p4"/);
+  assert.ok(antes(hilo, 'id="p3"', 'id="p2"') && antes(hilo, 'id="p2"', 'id="p4"'), 'al final, en su orden');
+  assert.ok(hilo.includes('2 mensajes ignorados'));
+  // En otra publicación bea tiene otro ID: no se ignora.
+  const dos = await s.texto('/h/2', ana);
+  assert.ok(dos.includes('hilo-de-bea') && !dos.includes('ignorado'));
+  assert.notEqual(s.db.prepare('SELECT author_id FROM posts WHERE id = 5').get().author_id, id);
+});
+
+test('ignorar hilo: al final de la portada y la sección, colapsado y por creación (no sube por bump)', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  const cami = await s.entrar('cami');
+  await s.pedir('/b/cultura/hilo', { sesion: bea, datos: { asunto: 'Viejo', cuerpo: 'a' } }); // 1, post 1
+  s.avanzar(31);
+  await s.pedir('/b/cultura/hilo', { sesion: cami, datos: { asunto: 'Medio', cuerpo: 'b' } }); // 2, post 2
+  s.avanzar(31);
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Nuevo', cuerpo: 'c' } }); // 3, post 3
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: cami, datos: { cuerpo: 'bump' } }); // 1 queda primero
+  s.db.prepare('UPDATE threads SET fijado = 1 WHERE id = 2').run(); // fijado, y aun así ignorado va al final
+
+  await ignorar(s, ana, 1, { hilo: '1' });
+  await ignorar(s, ana, 2, { hilo: '1' });
+  for (const ruta of ['/', '/b/cultura', '/?vista=lista', '/b/cultura?vista=lista']) {
+    const pagina = await s.texto(ruta, ana);
+    // Nuevo; después las ignoradas por creación (Medio es más nueva que Viejo aunque Viejo tenga bump).
+    assert.ok(antes(pagina, 'href="/h/3"', 'class="separador-ignorados"'), ruta);
+    assert.ok(antes(pagina, 'class="separador-ignorados"', 'href="/h/2"') && antes(pagina, 'href="/h/2"', 'href="/h/1"'), ruta);
+    assert.ok(pagina.includes('2 publicaciones ignoradas') && pagina.includes('href="/p/1/ignorar" rel="nofollow">Dejar de ignorar</a>'), ruta);
+    assert.match(pagina, /class="(ficha|hilo-resumen) ignorado"><details><summary>/, ruta);
+  }
+  // Para los demás, el orden de siempre: fijado, bump.
+  const deBea = await s.texto('/', bea);
+  assert.ok(antes(deBea, 'href="/h/2"', 'href="/h/1"') && antes(deBea, 'href="/h/1"', 'href="/h/3"') && !deBea.includes('ignorad'));
+  // En la publicación, el mensaje inicial queda primero y colapsado.
+  assert.match(await s.texto('/h/1', ana), /<article class="post op ignorado" id="p1"><details>/);
+});
+
+test('lo que viene de algo ignorado no cuenta como nuevo en Respuestas y va al final', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  const cami = await s.entrar('cami');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'troleo-de-bea' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: cami, datos: { cuerpo: 'aporte-de-cami' } });
+  assert.ok((await s.texto('/', ana)).includes('aria-label="Respuestas (2 nuevas)"'));
+
+  await ignorar(s, ana, 2, { autor: '1' });
+  assert.ok((await s.texto('/', ana)).includes('aria-label="Respuestas (1 nuevas)"'));
+  const respuestas = await s.texto('/respuestas', ana);
+  assert.ok(antes(respuestas, 'aporte-de-cami', 'class="separador-ignorados"') && antes(respuestas, 'class="separador-ignorados"', 'troleo-de-bea'));
+  assert.match(respuestas, /<li class="ignorado"><details><summary><a href="\/h\/1#p2">/);
+});
+
+test('búsqueda, Guardados y Donde participaste: lo ignorado al final', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: bea, datos: { asunto: 'Primera', cuerpo: 'palabraclave uno' } });
+  s.avanzar(601);
+  await s.pedir('/b/cultura/hilo', { sesion: bea, datos: { asunto: 'Segunda', cuerpo: 'palabraclave dos' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'palabraclave de ana' } });
+  s.avanzar(31);
+  await s.pedir('/h/2/responder', { sesion: ana, datos: { cuerpo: 'otra de ana' } });
+  await s.pedir('/h/2/guardar', { sesion: ana, datos: {} });
+  s.avanzar(1);
+  await s.pedir('/h/1/guardar', { sesion: ana, datos: {} });
+
+  // Sin ignorar: lo último guardado y donde escribió último, primero.
+  assert.ok(antes(await s.texto('/guardados', ana), 'href="/h/1"', 'href="/h/2"'));
+  assert.ok(antes(await s.texto('/respuestas', ana), 'href="/h/2"', 'href="/h/1"'));
+
+  await ignorar(s, ana, 1, { hilo: '1' });
+  const guardados = await s.texto('/guardados', ana);
+  assert.ok(antes(guardados, 'href="/h/2"', 'class="separador-ignorados"') && antes(guardados, 'class="separador-ignorados"', 'href="/h/1"'));
+  assert.match(guardados, /<li class="ignorado"><a href="\/h\/1">/);
+  assert.ok(antes(await s.texto('/respuestas', ana), 'href="/h/2"', 'href="/h/1"'));
+
+  const buscar = await s.texto('/buscar?q=palabraclave', ana);
+  assert.ok(antes(buscar, 'href="/h/2#p2"', 'class="separador-ignorados"'));
+  assert.ok(antes(buscar, 'class="separador-ignorados"', 'href="/h/1#p1"') && antes(buscar, 'class="separador-ignorados"', 'href="/h/1#p3"'));
+  assert.ok(!(await s.texto('/buscar?q=palabraclave', bea)).includes('ignorado'));
+});
+
+test('versión texto con sesión: lo ignorado al final, solo el título o la cabecera', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: bea, datos: { asunto: 'Ignorable', cuerpo: 'texto-ignorable' } });
+  s.avanzar(601);
+  await s.pedir('/b/cultura/hilo', { sesion: bea, datos: { asunto: 'Normal', cuerpo: 'texto-normal' } });
+  s.avanzar(31);
+  await s.pedir('/h/2/responder', { sesion: ana, datos: { cuerpo: 'de-ana' } });
+  s.avanzar(31);
+  await s.pedir('/h/2/responder', { sesion: bea, datos: { cuerpo: 'respuesta-ignorada' } });
+  await ignorar(s, ana, 1, { hilo: '1' });
+  await ignorar(s, ana, 4, { mensaje: '1' });
+
+  const portada = await s.texto('/index.txt', ana);
+  assert.ok(antes(portada, '[Cultura] Normal', '1 publicación ignorada.'));
+  assert.ok(antes(portada, '1 publicación ignorada', '[Ignorada] [Cultura] Ignorable'));
+  assert.ok(!portada.includes('texto-ignorable'));
+  const hilo = await s.texto('/h/2.txt', ana);
+  assert.ok(antes(hilo, 'de-ana', '1 mensaje ignorado.'));
+  assert.match(hilo, /No\.4 · ID [\w-]{8} · .* · ignorado/);
+  assert.ok(!hilo.includes('respuesta-ignorada'));
+  // Sin sesión, como siempre.
+  assert.ok((await s.texto('/h/2.txt')).includes('respuesta-ignorada'));
+});
+
+test('lo nuevo en vivo: el último es el más nuevo aunque lo ignorado vaya al final', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'dos' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'tres' } });
+  await ignorar(s, ana, 3, { mensaje: '1' });
+  assert.ok((await s.texto('/h/1', ana)).includes('data-ultimo="3"'));
+  const r = await (await s.pedir('/h/1/nuevos?desde=1', { sesion: ana })).json();
+  assert.equal(r.ultimo, 3);
+});
+
+test('author_id: los mensajes nuevos lo traen; al arrancar se completan los que falten', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  const id = s.db.prepare('SELECT author_id FROM posts WHERE id = 1').get().author_id;
+  assert.ok((await s.texto('/h/1')).includes(`ID ${id}`));
+
+  // La migración: una base con mensajes sin author_id (de antes de la columna).
+  const db = openDb(':memory:');
+  db.prepare("INSERT INTO users (id, identidad, created_at) VALUES (7, 'google:x', 0)").run();
+  db.prepare("INSERT INTO threads (id, board, subject, created_at, bumped_at) VALUES (5, 'cultura', 'x', 0, 0)").run();
+  db.prepare("INSERT INTO posts (id, thread_id, user_id, body, status, created_at) VALUES (9, 5, 7, 'x', 'published', 0)").run();
+  const autorDe = (u, h) => `${u}-${h}`;
+  assert.equal(completarAutores(db, autorDe), 1);
+  assert.equal(db.prepare('SELECT author_id FROM posts').get().author_id, '7-5');
+  assert.equal(completarAutores(db, autorDe), 0, 'no repite');
+});
+
+test('borrar la cuenta borra lo que ignoraba, y la privacidad lo cuenta', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: bea, datos: { asunto: 'Tema', cuerpo: 'arranque' } });
+  await ignorar(s, ana, 1, { hilo: '1', autor: '1' });
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 2);
+  await s.pedir('/cuenta/borrar', { sesion: ana, datos: { confirmar: '1' } });
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 0);
+  assert.ok((await s.texto('/privacidad')).includes('Lo que ignorás'));
 });

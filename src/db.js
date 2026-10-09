@@ -114,6 +114,18 @@ CREATE TABLE IF NOT EXISTS guardados (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, thread_id)
 );
+
+-- Lo que cada cuenta eligió ignorar (/p/:id/ignorar). Solo lo ve quien ignora: no se oculta a nadie
+-- más ni le llega nada al otro. Lo ignorado se muestra colapsado y va al final de los listados.
+-- entity_type · entity_id: 'hilo' · id de la publicación; 'mensaje' · id del mensaje; 'autor' · su ID
+-- pseudoanónimo en esa publicación (posts.author_id), que no vale en ninguna otra.
+CREATE TABLE IF NOT EXISTS ignorados (
+  user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('hilo', 'mensaje', 'autor')),
+  entity_id TEXT NOT NULL,
+  ignored_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, entity_type, entity_id)
+);
 `;
 
 export function openDb(archivo) {
@@ -150,6 +162,12 @@ export function openDb(archivo) {
   agregar('rechazos', 'cache_read_tokens');
   agregar('rechazos', 'cache_write_tokens');
   agregar('rechazos', 'grave');
+  // ID pseudoanónimo de cada mensaje (el de "ID abc12345", único por persona y publicación), guardado
+  // para poder ignorar a un autor dentro de una publicación. Lo completa completarAutores.
+  if (!db.prepare('PRAGMA table_info(posts)').all().some((c) => c.name === 'author_id')) {
+    db.exec('ALTER TABLE posts ADD COLUMN author_id TEXT');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS posts_autor ON posts (thread_id, author_id)');
   db.exec('CREATE INDEX IF NOT EXISTS threads_portada ON threads (visible, archived, bumped_at)');
   db.exec('CREATE INDEX IF NOT EXISTS threads_op ON threads (op_post_id)');
   // Estadísticas para mods (/mod/estadisticas). Visitas contadas en el servidor, sin cookies ni IPs:
@@ -211,6 +229,18 @@ export function openDb(archivo) {
     console.error('[estadísticas] No se pudieron calcular al abrir la base:', err);
   }
   return db;
+}
+
+// Migración de posts.author_id: el ID pseudoanónimo sale de SECRET, que la base no conoce, así que
+// la corre la aplicación al arrancar y completa los mensajes que no lo tienen (los de antes de la
+// columna). Devuelve cuántos mensajes tocó.
+export function completarAutores(db, autorDe) {
+  const filas = db.prepare('SELECT id, user_id, thread_id FROM posts WHERE author_id IS NULL').all();
+  const poner = db.prepare('UPDATE posts SET author_id = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const p of filas) poner.run(autorDe(p.user_id, p.thread_id), p.id);
+  })();
+  return filas.length;
 }
 
 export function limpiarVencidos(db, ahora = Date.now()) {

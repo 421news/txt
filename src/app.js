@@ -6,6 +6,7 @@ import { NORMAS } from './normas.js';
 import * as V from './views.js';
 import { extracto, textoPlano, sinSpoilers } from './format.js';
 import * as D from './documentos.js';
+import { completarAutores } from './db.js';
 import { decisionJev, PRECIO_JEV_POR_MTOK } from './sombra.js';
 import { PRECIO_CLAUDE } from './moderation.js';
 
@@ -73,7 +74,11 @@ export function createApp({
 
   const hmac = (s) => crypto.createHmac('sha256', secret).update(s).digest('base64url');
   const anonId = (userId, threadId) => hmac(`anon:${userId}:${threadId}`).slice(0, 8);
+  // posts.author_id guarda ese mismo ID (para ignorar autores); al arrancar se completa lo que falte.
+  completarAutores(db, anonId);
   const esMod = (u) => !!u && (u.role === 'mod' || u.role === 'admin');
+  // Quién lee, para lo que ignora (-1 sin sesión: no coincide con ninguna cuenta).
+  const yo = (req) => req.user?.id ?? -1;
   const suspendido = (u) => !!u.banned_until && u.banned_until > now();
   const iguales = (a, b) => {
     if (typeof a !== 'string' || typeof b !== 'string') return false;
@@ -82,34 +87,56 @@ export function createApp({
     return x.length === y.length && crypto.timingSafeEqual(x, y);
   };
 
+  // Lo que ignora el lector (@yo: su id, o -1 sin sesión, que no ignora nada). Ver `ignorados` en db.js.
+  const IGNORA_HILO = (t) =>
+    `EXISTS (SELECT 1 FROM ignorados i WHERE i.user_id = @yo AND i.entity_type = 'hilo' AND i.entity_id = CAST(${t}.id AS TEXT))`;
+  // Un mensaje: él mismo o su autor en esa publicación (author_id solo vale dentro de una).
+  const IGNORA_MENSAJE = (p) => `(EXISTS (SELECT 1 FROM ignorados i
+      WHERE i.user_id = @yo AND i.entity_type = 'mensaje' AND i.entity_id = CAST(${p}.id AS TEXT))
+    OR EXISTS (SELECT 1 FROM ignorados i WHERE i.user_id = @yo AND i.entity_type = 'autor' AND i.entity_id = ${p}.author_id))`;
+  // Listados de publicaciones: lo ignorado va al final y, entre sí, por creación (no sube por bump
+  // ni por estar fijado).
+  const ORDEN_HILOS = `ignorado, CASE WHEN ignorado THEN 0 ELSE COALESCE(t.fijado, 0) END DESC,
+    CASE WHEN ignorado THEN t.created_at ELSE t.bumped_at END DESC`;
+
   const q = {
     sesion: db.prepare(`SELECT u.id, u.role, u.created_at, u.banned_until, u.ban_reason, s.id_hash
       FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id_hash = ? AND s.expires_at > ?`),
     hilo: db.prepare('SELECT * FROM threads WHERE id = ?'),
     post: db.prepare('SELECT * FROM posts WHERE id = ?'),
     contarPortada: db.prepare('SELECT COUNT(*) AS n FROM threads WHERE visible = 1 AND archived = 0'),
-    hilosPortada: db.prepare(`SELECT t.*, p.body AS op_body, p.user_id AS op_user_id, p.created_at AS op_created_at
+    hilosPortada: db.prepare(`SELECT t.*, p.body AS op_body, p.user_id AS op_user_id, p.author_id AS op_author_id, p.created_at AS op_created_at,
+        ${IGNORA_HILO('t')} AS ignorado, ${IGNORA_MENSAJE('p')} AS op_ignorado
       FROM threads t JOIN posts p ON p.id = t.op_post_id
-      WHERE t.visible = 1 AND t.archived = 0 ORDER BY COALESCE(t.fijado, 0) DESC, t.bumped_at DESC LIMIT ? OFFSET ?`),
+      WHERE t.visible = 1 AND t.archived = 0 ORDER BY ${ORDEN_HILOS} LIMIT @limite OFFSET @desde`),
     contarTablon: db.prepare('SELECT COUNT(*) AS n FROM threads WHERE board = ? AND visible = 1 AND archived = ?'),
-    hilosTablon: db.prepare(`SELECT t.*, p.body AS op_body, p.user_id AS op_user_id, p.created_at AS op_created_at
+    hilosTablon: db.prepare(`SELECT t.*, p.body AS op_body, p.user_id AS op_user_id, p.author_id AS op_author_id, p.created_at AS op_created_at,
+        ${IGNORA_HILO('t')} AS ignorado, ${IGNORA_MENSAJE('p')} AS op_ignorado
       FROM threads t JOIN posts p ON p.id = t.op_post_id
-      WHERE t.board = ? AND t.visible = 1 AND t.archived = ? ORDER BY COALESCE(t.fijado, 0) DESC, t.bumped_at DESC LIMIT ? OFFSET ?`),
+      WHERE t.board = @board AND t.visible = 1 AND t.archived = @archivo ORDER BY ${ORDEN_HILOS} LIMIT @limite OFFSET @desde`),
     // Las últimas N respuestas publicadas de cada hilo de la lista (ids en JSON), sin el mensaje inicial.
+    // Las ignoradas entran solo si no alcanzan las otras, y van al final.
     ultimasRespuestas: db.prepare(`SELECT * FROM (
-        SELECT p.*, ROW_NUMBER() OVER (PARTITION BY p.thread_id ORDER BY p.id DESC) AS rn
+        SELECT p.*, ${IGNORA_MENSAJE('p')} AS ignorado,
+          ROW_NUMBER() OVER (PARTITION BY p.thread_id ORDER BY ${IGNORA_MENSAJE('p')}, p.id DESC) AS rn
         FROM posts p JOIN threads t ON t.id = p.thread_id
-        WHERE p.thread_id IN (SELECT value FROM json_each(?)) AND p.status = 'published' AND p.id != t.op_post_id
-      ) WHERE rn <= ? ORDER BY thread_id, id`),
-    postsHilo: db.prepare(
-      `SELECT * FROM posts WHERE thread_id = ? AND (status IN ('published', 'removed') OR user_id = ?) ORDER BY id`,
-    ),
-    postsHiloMod: db.prepare('SELECT * FROM posts WHERE thread_id = ? ORDER BY id'),
+        WHERE p.thread_id IN (SELECT value FROM json_each(@hilos)) AND p.status = 'published' AND p.id != t.op_post_id
+      ) WHERE rn <= @cuantas ORDER BY thread_id, ignorado, id`),
+    // Los mensajes de una publicación: el inicial primero (si se ignora la publicación, colapsado) y
+    // los ignorados al final.
+    postsHilo: db.prepare(`SELECT p.*, (${IGNORA_MENSAJE('p')} OR (p.id = t.op_post_id AND ${IGNORA_HILO('t')})) AS ignorado
+      FROM posts p JOIN threads t ON t.id = p.thread_id
+      WHERE p.thread_id = @hilo AND (p.status IN ('published', 'removed') OR p.user_id = @yo)
+      ORDER BY p.id = t.op_post_id DESC, ignorado, p.id`),
+    postsHiloMod: db.prepare(`SELECT p.*, (${IGNORA_MENSAJE('p')} OR (p.id = t.op_post_id AND ${IGNORA_HILO('t')})) AS ignorado
+      FROM posts p JOIN threads t ON t.id = p.thread_id
+      WHERE p.thread_id = @hilo
+      ORDER BY p.id = t.op_post_id DESC, ignorado, p.id`),
     insertarHilo: db.prepare('INSERT INTO threads (board, subject, created_at, bumped_at) VALUES (?, ?, ?, ?)'),
     fijarOp: db.prepare('UPDATE threads SET op_post_id = ? WHERE id = ?'),
     insertarPost: db.prepare(`INSERT INTO posts
-      (thread_id, user_id, body, sage, status, created_at, mod_decision, mod_rule, mod_reason, mod_model, mod_input_tokens, mod_output_tokens, mod_cache_read_tokens, mod_cache_write_tokens)
-      VALUES (@thread_id, @user_id, @body, @sage, @status, @created_at, @decision, @rule, @reason, @model, @input_tokens, @output_tokens, @cache_read_tokens, @cache_write_tokens)`),
+      (thread_id, user_id, author_id, body, sage, status, created_at, mod_decision, mod_rule, mod_reason, mod_model, mod_input_tokens, mod_output_tokens, mod_cache_read_tokens, mod_cache_write_tokens)
+      VALUES (@thread_id, @user_id, @author_id, @body, @sage, @status, @created_at, @decision, @rule, @reason, @model, @input_tokens, @output_tokens, @cache_read_tokens, @cache_write_tokens)`),
     insertarRechazo: db.prepare(`INSERT INTO rechazos
       (user_id, board, thread_id, subject, body, rule, reason, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, grave, created_at)
       VALUES (@user_id, @board, @thread_id, @subject, @body, @rule, @reason, @model, @input_tokens, @output_tokens, @cache_read_tokens, @cache_write_tokens, @grave, @created_at)`),
@@ -132,19 +159,27 @@ export function createApp({
     // Lo que espera a un mod: mensajes en revisión y publicados con reportes abiertos (lo mismo que lista /mod).
     contarPendientesMod: db.prepare(`SELECT (SELECT COUNT(*) FROM posts WHERE status = 'queued')
       + (SELECT COUNT(DISTINCT r.post_id) FROM reports r JOIN posts p ON p.id = r.post_id WHERE r.resolved = 0 AND p.status = 'published') AS n`),
+    // Lo que viene de algo ignorado (la publicación, el mensaje o su autor) no cuenta como nuevo.
     contarNovedades: db.prepare(`SELECT COUNT(*) AS n FROM notificaciones x JOIN posts p ON p.id = x.post_id
       JOIN threads t ON t.id = p.thread_id
-      WHERE x.user_id = ? AND x.leida = 0 AND p.status = 'published' AND t.visible = 1`),
-    notificaciones: db.prepare(`SELECT x.tipo, x.leida, x.created_at, p.id AS post_id, p.body, t.id AS thread_id, t.subject
+      WHERE x.user_id = @yo AND x.leida = 0 AND p.status = 'published' AND t.visible = 1
+        AND NOT ${IGNORA_HILO('t')} AND NOT ${IGNORA_MENSAJE('p')}`),
+    notificaciones: db.prepare(`SELECT x.tipo, x.leida, x.created_at, p.id AS post_id, p.body, t.id AS thread_id, t.subject,
+        (${IGNORA_HILO('t')} OR ${IGNORA_MENSAJE('p')}) AS ignorado
       FROM notificaciones x JOIN posts p ON p.id = x.post_id JOIN threads t ON t.id = p.thread_id
-      WHERE x.user_id = ? AND p.status = 'published' AND t.visible = 1 ORDER BY x.id DESC LIMIT 100`),
+      WHERE x.user_id = @yo AND p.status = 'published' AND t.visible = 1 ORDER BY ignorado, x.id DESC LIMIT 100`),
     marcarLeidas: db.prepare('UPDATE notificaciones SET leida = 1 WHERE user_id = ? AND leida = 0'),
     guardado: db.prepare('SELECT 1 FROM guardados WHERE user_id = ? AND thread_id = ?'),
+    ignorado: db.prepare('SELECT 1 FROM ignorados WHERE user_id = ? AND entity_type = ? AND entity_id = ?'),
+    ignorar: db.prepare('INSERT OR IGNORE INTO ignorados (user_id, entity_type, entity_id, ignored_at) VALUES (?, ?, ?, ?)'),
+    dejarDeIgnorar: db.prepare('DELETE FROM ignorados WHERE user_id = ? AND entity_type = ? AND entity_id = ?'),
     guardar: db.prepare('INSERT OR IGNORE INTO guardados (user_id, thread_id, created_at) VALUES (?, ?, ?)'),
     olvidar: db.prepare('DELETE FROM guardados WHERE user_id = ? AND thread_id = ?'),
-    guardados: db.prepare(`SELECT t.id, t.subject, t.board, t.reply_count, t.bumped_at, t.archived
+    guardados: db.prepare(`SELECT t.id, t.subject, t.board, t.reply_count, t.bumped_at, t.archived, t.op_post_id,
+        ${IGNORA_HILO('t')} AS ignorado
       FROM guardados g JOIN threads t ON t.id = g.thread_id
-      WHERE g.user_id = ? AND t.visible = 1 ORDER BY g.created_at DESC LIMIT 200`),
+      WHERE g.user_id = @yo AND t.visible = 1
+      ORDER BY ignorado, CASE WHEN ignorado THEN t.created_at ELSE g.created_at END DESC LIMIT 200`),
     crearUsuario: db.prepare('INSERT INTO users (identidad, role, created_at) VALUES (?, ?, ?)'),
     hacerAdmin: db.prepare("UPDATE users SET role = 'admin' WHERE id = ?"),
     quitarAdmin: db.prepare("UPDATE users SET role = 'user' WHERE id = ?"),
@@ -236,6 +271,7 @@ export function createApp({
       q.insertarPost.run({
         thread_id: threadId,
         user_id: userId,
+        author_id: anonId(userId, threadId),
         body: cuerpo,
         sage,
         status: v.decision === 'approve' ? 'published' : 'queued',
@@ -428,7 +464,7 @@ export function createApp({
     req.desde = visitaAnterior(req, res);
     // Las páginas con sesión llevan el token CSRF y datos propios: que ninguna caché intermedia las guarde.
     if (req.user) res.set('Cache-Control', 'private, no-store');
-    const novedades = req.user ? q.contarNovedades.get(req.user.id).n : 0;
+    const novedades = req.user ? q.contarNovedades.get({ yo: req.user.id }).n : 0;
     const pendientesMod = esMod(req.user) && !suspendido(req.user) ? q.contarPendientesMod.get().n : 0;
     const cookies = leerCookies(req.headers.cookie);
     const tema = TEMAS.includes(cookies.tema) ? cookies.tema : null;
@@ -482,14 +518,22 @@ export function createApp({
   const porPaginaDe = (vista) => (vista === 'lista' ? LIMITS.hilosPorPagina : LIMITS.hilosPorPaginaCatalogo);
 
   // Cada hilo de un listado lleva su mensaje inicial, las últimas respuestas y cuántas quedaron afuera.
-  function armarResumenes(hilos) {
+  function armarResumenes(req, hilos) {
     if (!hilos.length) return [];
-    const ultimas = q.ultimasRespuestas.all(JSON.stringify(hilos.map((t) => t.id)), LIMITS.respuestasEnResumen);
+    const ultimas = q.ultimasRespuestas.all({ yo: yo(req), hilos: JSON.stringify(hilos.map((t) => t.id)), cuantas: LIMITS.respuestasEnResumen });
     return hilos.map((t) => {
-      const op = { id: t.op_post_id, body: t.op_body, user_id: t.op_user_id, created_at: t.op_created_at, status: 'published', sage: 0 };
+      const op = {
+        id: t.op_post_id,
+        body: t.op_body,
+        user_id: t.op_user_id,
+        author_id: t.op_author_id,
+        created_at: t.op_created_at,
+        status: 'published',
+        sage: 0,
+        ignorado: !!t.op_ignorado,
+      };
       const respuestas = ultimas.filter((p) => p.thread_id === t.id);
       for (const p of [op, ...respuestas]) {
-        p.anon = anonId(p.user_id, t.id);
         p.esAutorOp = p.user_id === t.op_user_id;
       }
       return { ...t, op, respuestas, omitidas: Math.max(0, t.reply_count - respuestas.length) };
@@ -519,8 +563,8 @@ export function createApp({
     res.locals.ctx.ruta = rutaDeLaPagina(req, '/');
     const vista = vistaDe(req);
     const { pagina, paginas, porPagina, offset } = paginar(req, q.contarPortada.get().n, porPaginaDe(vista));
-    const filas = marcarNovedades(req, q.hilosPortada.all(porPagina, offset));
-    const hilos = vista === 'lista' ? armarResumenes(filas) : filas;
+    const filas = marcarNovedades(req, q.hilosPortada.all({ yo: yo(req), limite: porPagina, desde: offset }));
+    const hilos = vista === 'lista' ? armarResumenes(req, filas) : filas;
     const cuerpo = V.portada(res.locals.ctx, { hilos, vista, pagina, paginas, form });
     enviar(res, { cuerpo, aviso: req.query.aviso, ...seoListado('/', vista, pagina) }, status);
   }
@@ -530,8 +574,8 @@ export function createApp({
     const vista = vistaDe(req);
     const total = q.contarTablon.get(board.slug, archivo ? 1 : 0).n;
     const { pagina, paginas, porPagina, offset } = paginar(req, total, porPaginaDe(vista));
-    const filas = marcarNovedades(req, q.hilosTablon.all(board.slug, archivo ? 1 : 0, porPagina, offset));
-    const hilos = vista === 'lista' ? armarResumenes(filas) : filas;
+    const filas = marcarNovedades(req, q.hilosTablon.all({ yo: yo(req), board: board.slug, archivo: archivo ? 1 : 0, limite: porPagina, desde: offset }));
+    const hilos = vista === 'lista' ? armarResumenes(req, filas) : filas;
     const cuerpo = V.tablon(res.locals.ctx, { board, hilos, vista, pagina, paginas, archivo, form });
     const ruta = archivo ? `/b/${board.slug}/archivo` : `/b/${board.slug}`;
     enviar(
@@ -550,14 +594,13 @@ export function createApp({
   // Los posts de una publicación tal como los ve este lector, con ID pseudoanónimo, marcas y
   // respuestas entrantes. Lo usan la página y la actualización en vivo (/h/:id/nuevos).
   function postsVisibles(req, thread) {
-    const posts = esMod(req.user) ? q.postsHiloMod.all(thread.id) : q.postsHilo.all(thread.id, req.user?.id ?? -1);
+    const posts = (esMod(req.user) ? q.postsHiloMod : q.postsHilo).all({ hilo: thread.id, yo: yo(req) });
     const autorOp = q.post.get(thread.op_post_id).user_id;
     const ids = new Set(posts.map((p) => p.id));
     // Respuestas entrantes de cada post (los >>N que lo citan), para seguir una discusión adentro
     // de la publicación sin anidar. Solo cuentan los posts publicados que ve el lector.
     const respuestas = new Map();
     for (const p of posts) {
-      p.anon = anonId(p.user_id, thread.id);
       p.esAutorOp = p.user_id === autorOp;
       p.esMio = !!req.user && p.user_id === req.user.id;
       p.esNuevo = !!req.desde && p.created_at > req.desde && !p.esMio;
@@ -650,7 +693,7 @@ export function createApp({
   function documento(req, ruta) {
     let m;
     if (ruta === '/') {
-      const d = datosListado(req, q.contarPortada.get().n, (lim, off) => q.hilosPortada.all(lim, off));
+      const d = datosListado(req, q.contarPortada.get().n, (limite, desde) => q.hilosPortada.all({ yo: yo(req), limite, desde }));
       return D.docPortada({ siteName, ...d });
     }
     if ((m = ruta.match(/^\/b\/([a-z-]+)(\/archivo)?$/))) {
@@ -658,7 +701,9 @@ export function createApp({
       if (!board) return null;
       const archivo = !!m[2];
       const a = archivo ? 1 : 0;
-      const d = datosListado(req, q.contarTablon.get(board.slug, a).n, (lim, off) => q.hilosTablon.all(board.slug, a, lim, off));
+      const d = datosListado(req, q.contarTablon.get(board.slug, a).n, (limite, desde) =>
+        q.hilosTablon.all({ yo: yo(req), board: board.slug, archivo: a, limite, desde }),
+      );
       return D.docTablon({ siteName, board, archivo, ...d });
     }
     if ((m = ruta.match(/^\/h\/(\d+)$/))) {
@@ -792,14 +837,15 @@ export function createApp({
     if (palabras.length) {
       const consulta = palabras.map((w) => `"${w}"*`).join(' ');
       const donde = `FROM busqueda JOIN posts p ON p.id = busqueda.rowid JOIN threads t ON t.id = p.thread_id
-        WHERE busqueda MATCH ? AND p.status = 'published' AND t.visible = 1`;
-      const total = db.prepare(`SELECT COUNT(*) AS n ${donde}`).get(consulta).n;
+        WHERE busqueda MATCH @consulta AND p.status = 'published' AND t.visible = 1`;
+      const total = db.prepare(`SELECT COUNT(*) AS n ${donde}`).get({ consulta }).n;
       ({ pagina, paginas } = paginar(req, total, 20));
+      // Lo de publicaciones, mensajes o autores ignorados, al final.
       resultados = db
         .prepare(`SELECT p.id, p.thread_id, p.created_at, t.subject, t.board, t.archived, t.op_post_id = p.id AS es_op,
-            snippet(busqueda, 1, char(1), char(2), '…', 16) AS fragmento
-          ${donde} ORDER BY rank LIMIT 20 OFFSET ?`)
-        .all(consulta, (pagina - 1) * 20);
+            snippet(busqueda, 1, char(1), char(2), '…', 16) AS fragmento, (${IGNORA_HILO('t')} OR ${IGNORA_MENSAJE('p')}) AS ignorado
+          ${donde} ORDER BY ignorado, rank LIMIT 20 OFFSET @desde`)
+        .all({ consulta, yo: yo(req), desde: (pagina - 1) * 20 });
       resultados.total = total;
     }
     enviar(res, {
@@ -909,7 +955,8 @@ export function createApp({
     const { posts, ids } = postsVisibles(req, thread);
     const nuevos = posts.filter((p) => p.id > desde);
     res.set('Cache-Control', 'no-store').json({
-      ultimo: posts.length ? posts[posts.length - 1].id : desde,
+      // El más nuevo por id: lo ignorado va al final, así que el último de la lista no siempre lo es.
+      ultimo: Math.max(desde, ...posts.map((p) => p.id)),
       html: String(V.postsSueltos(res.locals.ctx, { thread, posts: nuevos, ids })),
     });
   });
@@ -1110,7 +1157,7 @@ export function createApp({
     // Las mismas reglas que el POST: el propio mensaje o una cuenta suspendida vuelven a la publicación.
     if (post.user_id === req.user.id || suspendido(req.user)) return res.redirect(303, volver);
     const autorOp = q.post.get(thread.op_post_id)?.user_id;
-    const p = { ...post, anon: anonId(post.user_id, thread.id), esAutorOp: post.user_id === autorOp };
+    const p = { ...post, esAutorOp: post.user_id === autorOp };
     enviar(res, { titulo: 'Reportar', indexar: false, cuerpo: V.reportar(res.locals.ctx, { post: p, thread, volver }) });
   });
 
@@ -1133,6 +1180,45 @@ export function createApp({
       }
     })();
     res.redirect(303, `/h/${post.thread_id}?aviso=reportado#p${post.id}`);
+  });
+
+  // Ignorar: como reportar, una página propia (sin JavaScript) con qué ignorar. Solo para quien ignora.
+  // El mensaje inicial ofrece al autor y a la publicación ('hilo'); una respuesta, al autor y a ese
+  // mensaje. El autor es su ID en esta publicación (posts.author_id), que en otras es distinto.
+  function paraIgnorar(req) {
+    const post = q.post.get(Number(req.params.id));
+    const thread = post?.status === 'published' ? hiloVisible(req, post.thread_id) : null;
+    if (!thread) return null;
+    const esOp = post.id === thread.op_post_id;
+    const claves = { autor: ['autor', post.author_id], [esOp ? 'hilo' : 'mensaje']: esOp ? ['hilo', String(thread.id)] : ['mensaje', String(post.id)] };
+    return { post, thread, esOp, claves, volver: `/h/${thread.id}#p${post.id}` };
+  }
+
+  app.get('/p/:id/ignorar', (req, res) => {
+    const d = paraIgnorar(req);
+    if (!d) return noEncontrado(res);
+    if (!req.user) return res.redirect(303, '/entrar');
+    // El propio mensaje no se ignora: vuelve a la publicación (como reportar).
+    if (d.post.user_id === req.user.id) return res.redirect(303, d.volver);
+    const marcado = Object.fromEntries(Object.entries(d.claves).map(([nombre, [tipo, id]]) => [nombre, !!q.ignorado.get(req.user.id, tipo, id)]));
+    const autorOp = q.post.get(d.thread.op_post_id)?.user_id;
+    const post = { ...d.post, esAutorOp: d.post.user_id === autorOp };
+    enviar(res, { titulo: 'Ignorar', indexar: false, cuerpo: V.ignorar(res.locals.ctx, { ...d, post, marcado }) });
+  });
+
+  // Lo tildado queda ignorado y lo destildado deja de estarlo (así se deja de ignorar, desde la misma página).
+  app.post('/p/:id/ignorar', (req, res) => {
+    const d = paraIgnorar(req);
+    if (!d) return noEncontrado(res);
+    if (!exigirUsuario(req, res)) return;
+    if (d.post.user_id === req.user.id) return res.redirect(303, d.volver);
+    db.transaction(() => {
+      for (const [nombre, [tipo, id]] of Object.entries(d.claves)) {
+        if (req.body[nombre] === '1') q.ignorar.run(req.user.id, tipo, id, now());
+        else q.dejarDeIgnorar.run(req.user.id, tipo, id);
+      }
+    })();
+    res.redirect(303, `/h/${d.thread.id}?aviso=ignorado#p${d.post.id}`);
   });
 
   // Borrar un mensaje propio: queda como al borrar la cuenta. En revisión o con reportes abiertos
@@ -1174,7 +1260,7 @@ export function createApp({
     const thread = post && hiloVisible(req, post.thread_id);
     if (!thread) return noEncontrado(res);
     const autorOp = q.post.get(thread.op_post_id)?.user_id;
-    const p = { ...post, anon: anonId(post.user_id, thread.id), esAutorOp: post.user_id === autorOp, esMio: true };
+    const p = { ...post, esAutorOp: post.user_id === autorOp, esMio: true };
     const cuerpo = V.borrar(res.locals.ctx, { post: p, thread, volver: `/h/${thread.id}#p${post.id}`, motivo: motivoParaNoBorrar(post, req.user) });
     enviar(res, { titulo: 'Borrar', indexar: false, cuerpo });
   });
@@ -1463,6 +1549,7 @@ export function createApp({
     db.prepare('DELETE FROM notificaciones WHERE user_id = ? OR post_id IN (SELECT id FROM posts WHERE user_id = ?)').run(userId, userId);
     db.prepare('DELETE FROM gemini_llaves WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM guardados WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM ignorados WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
     db.prepare("UPDATE users SET identidad = 'borrada:' || id, role = 'user', ban_reason = NULL WHERE id = ?").run(userId);
     q.log.run(null, 'borrar-cuenta', null, userId, null, now());
@@ -1471,20 +1558,22 @@ export function createApp({
   // Se marcan como leídas al abrir la página (después de armarla, así la visita muestra cuáles eran nuevas).
   app.get('/respuestas', (req, res) => {
     if (!req.user) return res.redirect(303, '/entrar');
-    const lista = q.notificaciones.all(req.user.id);
+    const lista = q.notificaciones.all({ yo: req.user.id });
+    // Donde participaste: las ignoradas al final, por creación.
     const mias = db
-      .prepare(`SELECT t.id, t.subject, t.board, t.reply_count, t.bumped_at, MAX(p.created_at) AS ultima
+      .prepare(`SELECT t.id, t.subject, t.board, t.reply_count, t.bumped_at, t.op_post_id, MAX(p.created_at) AS ultima,
+          ${IGNORA_HILO('t')} AS ignorado
         FROM posts p JOIN threads t ON t.id = p.thread_id
-        WHERE p.user_id = ? AND p.status != 'removed' AND (t.visible = 1 OR t.op_post_id = p.id)
-        GROUP BY t.id ORDER BY ultima DESC LIMIT 100`)
-      .all(req.user.id);
+        WHERE p.user_id = @yo AND p.status != 'removed' AND (t.visible = 1 OR t.op_post_id = p.id)
+        GROUP BY t.id ORDER BY ignorado, CASE WHEN ignorado THEN t.created_at ELSE ultima END DESC LIMIT 100`)
+      .all({ yo: req.user.id });
     q.marcarLeidas.run(req.user.id);
     enviar(res, { titulo: 'Respuestas', indexar: false, cuerpo: V.respuestas(res.locals.ctx, { lista, mias }) });
   });
 
   app.get('/guardados', (req, res) => {
     if (!req.user) return res.redirect(303, '/entrar');
-    enviar(res, { titulo: 'Guardados', indexar: false, cuerpo: V.guardados(res.locals.ctx, { lista: q.guardados.all(req.user.id) }) });
+    enviar(res, { titulo: 'Guardados', indexar: false, cuerpo: V.guardados(res.locals.ctx, { lista: q.guardados.all({ yo: req.user.id }) }) });
   });
 
   app.get('/cuenta', (req, res) => {
