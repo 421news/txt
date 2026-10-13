@@ -5,7 +5,8 @@ import { aGemtext } from './documentos.js';
 // servidor responde "<estado> <meta>\r\n" y el cuerpo. Estados usados: 10 pedir texto, 20 éxito,
 // 30 redirección, 40 error temporal, 51 no encontrado, 53 el pedido es para otro sitio, 59 pedido
 // inválido, 60 hace falta un certificado de cliente.
-// Se lee siempre como visitante sin sesión (documento de app.js), así que muestra solo lo publicado.
+// Se lee como visitante sin sesión (documento de app.js), salvo con un certificado vinculado: ahí se
+// lee como esa cuenta (guardados, ignorados y lo propio en revisión).
 //
 // Escribir (desde 2026-09-25): el programa de Gemini se identifica con un certificado de cliente
 // (su huella SHA-256). La huella sola NO es una identidad: tiene que estar vinculada a una cuenta de
