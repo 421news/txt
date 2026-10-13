@@ -69,6 +69,20 @@ ${r.error}
   async function escribir(url, ruta, huella) {
     const origen = `gemini://${url.host}`;
     const segmentos = url.pathname.split('/').filter(Boolean);
+    // /h/:id/guardar[/quitar]
+    if (segmentos[0] === 'h' && segmentos[2] === 'guardar' && (segmentos.length === 3 || (segmentos.length === 4 && segmentos[3] === 'quitar'))) {
+      const thread = /^\d+$/.test(segmentos[1]) ? escritura.hilo(Number(segmentos[1])) : null;
+      if (!thread || !thread.visible) return '51 No encontrado';
+      if (!huella) return '60 Para guardar hace falta un certificado de cliente';
+      const user = escritura.usuario(huella);
+      if (!user) return paginaVincular(huella);
+      const guardar = segmentos.length === 3;
+      escritura.guardar(user, thread, guardar);
+      return pagina(`# ${guardar ? 'Guardada' : 'Sacada de guardados'}
+=> /h/${thread.id} Volver a la publicación
+=> /guardados Ver guardados
+`);
+    }
     // /h/:id/responder
     if (segmentos[0] === 'h' && segmentos[2] === 'responder' && segmentos.length === 3) {
       const thread = /^\d+$/.test(segmentos[1]) ? escritura.hilo(Number(segmentos[1])) : null;
@@ -137,7 +151,8 @@ ${r.error}
       }
       if (escrito) return escrito;
     }
-    const bloques = documento(ruta, Object.fromEntries(url.searchParams));
+    const user = escritura && huella ? escritura.usuario(huella) : null;
+    const bloques = documento(ruta, Object.fromEntries(url.searchParams), user);
     if (!bloques) return '51 No encontrado';
     return pagina(aGemtext(bloques, { baseUrl }));
   }

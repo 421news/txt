@@ -986,6 +986,16 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
   assert.match((await s.pedir('/cuenta/gemini', { sesion: ana, datos: { codigo } })).headers.get('location'), /gemini-invalido/);
   assert.ok((await s.texto('/cuenta', bob)).includes('Desvincular'));
 
+  // Guardados: desde Gemini usa la cuenta del certificado vinculado.
+  assert.ok((await pedir('gemini://localhost/h/1')).includes('=> /h/1/guardar Guardar'));
+  assert.ok((await pedir('gemini://localhost/h/1/guardar')).includes('Guardada'));
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM guardados').get().n, 1);
+  assert.ok((await pedir('gemini://localhost/h/1')).includes('=> /h/1/guardar/quitar Sacar de guardados'));
+  assert.ok((await pedir('gemini://localhost/guardados')).includes('=> /h/1 [Cultura] Libros'));
+  assert.ok((await pedir('gemini://localhost/h/1/guardar/quitar')).includes('Sacada de guardados'));
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM guardados').get().n, 0);
+  assert.ok((await pedir('gemini://localhost/guardados')).includes('No tenés publicaciones guardadas.'));
+
   // Responder: 10 pide el texto; con el texto, publica como bob y redirige con 30.
   assert.ok((await pedir('gemini://localhost/h/1/responder')).startsWith('10 '));
   const r = await pedir(`gemini://localhost/h/1/responder?${encodeURIComponent('desde gemini, ¿se ve?')}`);

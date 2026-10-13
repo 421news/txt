@@ -689,7 +689,7 @@ export function createApp({
   };
 
   // Documento de una ruta de lectura, o null si no existe o no es visible para este lector. Lo usan
-  // las rutas .txt y la cápsula Gemini (app.locals.documento, que lee como visitante sin sesión).
+  // las rutas .txt y la cápsula Gemini (app.locals.documento; con usuario si hay certificado vinculado).
   function documento(req, ruta) {
     let m;
     if (ruta === '/') {
@@ -710,13 +710,15 @@ export function createApp({
       const thread = hiloVisible(req, Number(m[1]));
       if (!thread) return null;
       const { posts } = postsVisibles(req, thread);
-      return D.docHilo({ siteName, thread, board: boardBySlug(thread.board), posts });
+      const guardado = req.user ? !!q.guardado.get(req.user.id, thread.id) : null;
+      return D.docHilo({ siteName, thread, board: boardBySlug(thread.board), posts, guardado });
     }
+    if (ruta === '/guardados' && req.user) return D.docGuardados({ siteName, hilos: q.guardados.all({ yo: req.user.id }) });
     if (ruta === '/normas') return D.docNormas({ siteName });
     if (ruta === '/texto') return D.docTexto({ siteName, baseUrl, gemini: geminiUrl });
     return null;
   }
-  app.locals.documento = (ruta, query = {}) => documento({ user: null, query }, ruta);
+  app.locals.documento = (ruta, query = {}, user = null) => documento({ user, query }, ruta);
 
   // --- Escribir desde Gemini (src/gemini.js lo usa por app.locals.gemini) -------------------
   const VIGENCIA_CODIGO = 15 * 60_000;
@@ -791,6 +793,10 @@ export function createApp({
     secciones: BOARDS,
     hilo: (id) => q.hilo.get(id) ?? null,
     tablon: (slug) => boardBySlug(slug) ?? null,
+    guardar(user, thread, guardar) {
+      if (guardar) q.guardar.run(user.id, thread.id, now());
+      else q.olvidar.run(user.id, thread.id);
+    },
     responder: (user, thread, cuerpo) => escribirDesdeGemini(user, { thread, cuerpo }),
     publicar: (user, board, asunto, cuerpo) => escribirDesdeGemini(user, { board, asunto, cuerpo }),
   };
