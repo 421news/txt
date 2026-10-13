@@ -73,7 +73,7 @@ export function docTablon({ siteName, board, hilos, pagina, paginas, archivo }) 
   ];
 }
 
-export function docHilo({ siteName, thread, board, posts }) {
+export function docHilo({ siteName, thread, board, posts, guardado = null }) {
   const bloques = [
     ...encabezado(siteName),
     t(2, thread.subject),
@@ -82,6 +82,10 @@ export function docHilo({ siteName, thread, board, posts }) {
   if (thread.archived) bloques.push(p('Publicación archivada: se puede leer pero ya no acepta respuestas.'));
   else if (thread.locked) bloques.push(p('Publicación cerrada: llegó al límite de respuestas.'));
   if (!thread.archived && !thread.locked) bloques.push({ ...link(`/h/${thread.id}/responder`, 'Responder'), solo: 'gemini' });
+  if (guardado !== null) {
+    bloques.push({ ...link(`/h/${thread.id}/guardar${guardado ? '/quitar' : ''}`, guardado ? 'Sacar de guardados' : 'Guardar'), solo: 'gemini' });
+    bloques.push({ ...link('/guardados', 'Guardados'), solo: 'gemini' });
+  }
   bloques.push(link(`/h/${thread.id}`, 'Responder en la web', true));
   const ignorados = posts.filter((x) => x.ignorado && x.id !== thread.op_post_id);
   for (const post of posts) {
@@ -101,6 +105,20 @@ export function docHilo({ siteName, thread, board, posts }) {
     if (post.respuestas?.length) bloques.push(p(`Respuestas: ${post.respuestas.map((n) => `>>${n}`).join(' ')}`));
   }
   return bloques;
+}
+
+export function docGuardados({ siteName, hilos }) {
+  const ignoradas = hilos.filter((h) => h.ignorado);
+  return [
+    ...encabezado(siteName),
+    t(2, 'Guardados'),
+    ...(hilos.length
+      ? hilos.flatMap((h) => [
+          ...(h === ignoradas[0] ? [avisoIgnorados(ignoradas.length, 'publicación ignorada', 'publicaciones ignoradas')] : []),
+          link(`/h/${h.id}`, `${h.ignorado ? '[Ignorada] ' : ''}[${boardBySlug(h.board)?.nombre ?? h.board}] ${h.subject}`),
+        ])
+      : [p('No tenés publicaciones guardadas.')]),
+  ];
 }
 
 export function docNormas({ siteName }) {
