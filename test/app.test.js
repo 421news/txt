@@ -1556,6 +1556,23 @@ test('eliminar desde la publicación: solo el admin ve el botón y el mensaje qu
   assert.equal((await s.pedir('/mod/p/3/eliminar', { sesion: mod, datos: { volver: '//evil.com' } })).headers.get('location'), '/mod');
 });
 
+test('lo que escribe un admin no pasa por el filtro; lo de los demás sí', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  s.filtro.decision = 'reject';
+  const mod = await s.entrar('mod'); // admin
+  await s.pedir('/b/cultura/hilo', { sesion: mod, datos: { asunto: 'Aviso', cuerpo: 'texto del admin' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: mod, datos: { cuerpo: 'respuesta del admin' } });
+  const posts = s.db.prepare('SELECT status, mod_model FROM posts ORDER BY id').all();
+  assert.deepEqual(posts.map((p) => [p.status, p.mod_model]), [['published', 'admin'], ['published', 'admin']]);
+  const ana = await s.entrar('ana');
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'respuesta de ana' } });
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM posts').get().n, 2);
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM rechazos').get().n, 1);
+});
+
 // --- Ignorar (issue #33) ------------------------------------------------------------------------
 
 const ignorar = (s, sesion, post, datos = {}) => s.pedir(`/p/${post}/ignorar`, { sesion, datos });

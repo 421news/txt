@@ -755,8 +755,7 @@ export function createApp({
     return unaVez(user.id, firma, async () => {
       const tablon = esHilo ? board : boardBySlug(thread.board);
       const datos = { tablon: tablon.nombre, asunto: esHilo ? asunto : thread.subject, cuerpo, esHilo };
-      const v = await moderar(datos);
-      compararEnSombra(datos, v);
+      const v = await moderarMensaje(user, datos);
       if (!cuentaVigente(user.id)) return { error: 'Tu cuenta no puede publicar.' };
       if (v.decision === 'reject') {
         registrarRechazo(user.id, tablon.slug, thread?.id ?? null, esHilo ? asunto : null, cuerpo, v);
@@ -999,6 +998,15 @@ export function createApp({
   const guardarSombra = db.prepare(`INSERT INTO sombra_jev (created_at, tablon, es_hilo, asunto, cuerpo, claude_decision,
     claude_rule, claude_grave, jev_decision, jev_rule, jev_grave, respuestas, tokens, ms, error)
     VALUES (@t, @tablon, @es_hilo, @asunto, @cuerpo, @cd, @cr, @cg, @jd, @jr, @jg, @respuestas, @tokens, @ms, @error)`);
+  // Veredicto para un mensaje: lo de un admin se publica sin pasar por el filtro (decisión del usuario,
+  // 2026-10-13); el resto pasa por el filtro y queda en la comparación de la sombra.
+  async function moderarMensaje(user, datos) {
+    if (user.role === 'admin') return { decision: 'approve', model: 'admin' };
+    const v = await moderar(datos);
+    compararEnSombra(datos, v);
+    return v;
+  }
+
   function compararEnSombra(datos, v) {
     const base = { t: now(), tablon: datos.tablon, es_hilo: datos.esHilo ? 1 : 0, asunto: datos.asunto, cuerpo: datos.cuerpo,
       cd: v.decision, cr: v.rule ?? null, cg: v.grave ?? 'ninguna' };
@@ -1085,8 +1093,7 @@ export function createApp({
     const userId = req.user.id;
     const r = await unaVez(userId, firma, async () => {
       const datos = { tablon: board.nombre, asunto, cuerpo, esHilo: true };
-      const v = await moderar(datos);
-      compararEnSombra(datos, v);
+      const v = await moderarMensaje(req.user, datos);
       if (!cuentaVigente(userId)) return { destino: '/' };
       if (v.decision === 'reject') {
         registrarRechazo(userId, board.slug, null, asunto, cuerpo, v);
@@ -1136,8 +1143,7 @@ export function createApp({
     const userId = req.user.id;
     const r = await unaVez(userId, firma, async () => {
       const datos = { tablon: boardBySlug(thread.board).nombre, asunto: thread.subject, cuerpo, esHilo: false };
-      const v = await moderar(datos);
-      compararEnSombra(datos, v);
+      const v = await moderarMensaje(req.user, datos);
       if (!cuentaVigente(userId)) return { destino: '/' };
       if (v.decision === 'reject') {
         registrarRechazo(userId, thread.board, thread.id, null, cuerpo, v);
