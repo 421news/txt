@@ -792,6 +792,20 @@ export function createApp({
     secciones: BOARDS,
     hilo: (id) => q.hilo.get(id) ?? null,
     tablon: (slug) => boardBySlug(slug) ?? null,
+    opcionesIgnorar(user, id) {
+      const d = paraIgnorar(user, id);
+      if (!d || d.post.user_id === user.id) return null;
+      return { esOp: d.esOp, autor: d.post.author_id, threadId: d.thread.id,
+        opciones: Object.fromEntries(Object.entries(d.claves).map(([nombre, [tipo, entidad]]) => [nombre, !!q.ignorado.get(user.id, tipo, entidad)])) };
+    },
+    ignorar(user, id, nombre, activar) {
+      const d = paraIgnorar(user, id);
+      if (!d || d.post.user_id === user.id || !Object.hasOwn(d.claves, nombre)) return false;
+      const [tipo, entidad] = d.claves[nombre];
+      if (activar) q.ignorar.run(user.id, tipo, entidad, now());
+      else q.dejarDeIgnorar.run(user.id, tipo, entidad);
+      return true;
+    },
     guardar(user, thread, guardar) {
       if (guardar) q.guardar.run(user.id, thread.id, now());
       else q.olvidar.run(user.id, thread.id);
@@ -1197,9 +1211,9 @@ export function createApp({
   // Ignorar: como reportar, una página propia (sin JavaScript) con qué ignorar. Solo para quien ignora.
   // El mensaje inicial ofrece al autor y a la publicación ('hilo'); una respuesta, al autor y a ese
   // mensaje. El autor es su ID en esta publicación (posts.author_id), que en otras es distinto.
-  function paraIgnorar(req) {
-    const post = q.post.get(Number(req.params.id));
-    const thread = post?.status === 'published' ? hiloVisible(req, post.thread_id) : null;
+  function paraIgnorar(user, id) {
+    const post = q.post.get(Number(id));
+    const thread = post?.status === 'published' ? hiloVisible({ user }, post.thread_id) : null;
     if (!thread) return null;
     const esOp = post.id === thread.op_post_id;
     const claves = { autor: ['autor', post.author_id], [esOp ? 'hilo' : 'mensaje']: esOp ? ['hilo', String(thread.id)] : ['mensaje', String(post.id)] };
@@ -1207,7 +1221,7 @@ export function createApp({
   }
 
   app.get('/p/:id/ignorar', (req, res) => {
-    const d = paraIgnorar(req);
+    const d = paraIgnorar(req.user, req.params.id);
     if (!d) return noEncontrado(res);
     if (!req.user) return res.redirect(303, '/entrar');
     // El propio mensaje no se ignora: vuelve a la publicación (como reportar).
@@ -1220,7 +1234,7 @@ export function createApp({
 
   // Lo tildado queda ignorado y lo destildado deja de estarlo (así se deja de ignorar, desde la misma página).
   app.post('/p/:id/ignorar', (req, res) => {
-    const d = paraIgnorar(req);
+    const d = paraIgnorar(req.user, req.params.id);
     if (!d) return noEncontrado(res);
     if (!exigirUsuario(req, res)) return;
     if (d.post.user_id === req.user.id) return res.redirect(303, d.volver);

@@ -978,6 +978,8 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
   assert.ok(sinVincular.startsWith('20') && sinVincular.includes('https://prueba/cuenta#gemini'));
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM posts').get().n, 1);
   assert.equal((await pedir('gemini://localhost/h/1/responder')).match(/TXT-[A-Z0-9]{6}/)[0], codigo, 'mismo código mientras está vigente');
+  assert.ok((await pedir('gemini://localhost/p/1/ignorar/autor/poner')).includes(codigo), 'sin vincular no ignora');
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 0);
 
   // Vincular desde la web: un código inventado no sirve; el bueno sí, una sola vez.
   const bob = await s.entrar('bob');
@@ -985,6 +987,27 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
   assert.match((await s.pedir('/cuenta/gemini', { sesion: bob, datos: { codigo: codigo.toLowerCase() } })).headers.get('location'), /gemini-ok/);
   assert.match((await s.pedir('/cuenta/gemini', { sesion: ana, datos: { codigo } })).headers.get('location'), /gemini-invalido/);
   assert.ok((await s.texto('/cuenta', bob)).includes('Desvincular'));
+
+  // Ignorar: cada opción se cambia por separado; solo afecta a la cuenta vinculada.
+  assert.ok(!(await pedir('gemini://localhost/h/1', false)).includes('/p/1/ignorar'));
+  assert.ok(!(await s.texto('/h/1.txt', bob)).includes('/p/1/ignorar'));
+  assert.ok((await pedir('gemini://localhost/h/1')).includes('=> /p/1/ignorar Ignorar / dejar de ignorar'));
+  assert.ok((await pedir('gemini://localhost/p/1/ignorar', false)).startsWith('60'));
+  const opciones = await pedir('gemini://localhost/p/1/ignorar');
+  assert.ok(opciones.includes('=> /p/1/ignorar/autor/poner Ignorar autor ID'));
+  assert.ok(opciones.includes('=> /p/1/ignorar/hilo/poner Ignorar publicación'));
+  assert.equal((await pedir('gemini://localhost/p/1/ignorar/hilo/poner')).trim(), '30 gemini://localhost/p/1/ignorar');
+  assert.ok((await pedir('gemini://localhost/')).includes('[Ignorada]'));
+  assert.ok((await pedir('gemini://localhost/h/1')).includes('· ignorado'));
+  assert.ok(!(await s.texto('/', ana)).includes('Ignorada'), 'no afecta a otras cuentas');
+  assert.ok((await pedir('gemini://localhost/p/1/ignorar')).includes('/hilo/quitar Dejar de ignorar publicación'));
+  await pedir('gemini://localhost/p/1/ignorar/autor/poner');
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 2);
+  await pedir('gemini://localhost/p/1/ignorar/hilo/quitar');
+  await pedir('gemini://localhost/p/1/ignorar/autor/quitar');
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 0);
+  assert.ok((await pedir('gemini://localhost/p/1/ignorar/mensaje/poner')).startsWith('51'));
+  assert.ok((await pedir('gemini://localhost/p/99/ignorar')).startsWith('51'));
 
   // Guardados: desde Gemini usa la cuenta del certificado vinculado.
   assert.ok((await pedir('gemini://localhost/h/1')).includes('=> /h/1/guardar Guardar'));
@@ -1005,9 +1028,26 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
   assert.equal(post.user_id, s.db.prepare("SELECT user_id FROM gemini_llaves").get().user_id);
   // Mismos límites que la web: otra respuesta enseguida no pasa.
   assert.ok((await pedir(`gemini://localhost/h/1/responder?otra`)).includes('Esperá'));
+  assert.ok(!(await pedir('gemini://localhost/h/1')).includes(`/p/${post.id}/ignorar`), 'no ignora el propio mensaje');
+  assert.ok((await pedir(`gemini://localhost/p/${post.id}/ignorar`)).startsWith('51'));
+  s.avanzar(60);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'respuesta de ana' } });
+  const respuesta = s.db.prepare('SELECT id FROM posts ORDER BY id DESC LIMIT 1').get().id;
+  assert.ok((await pedir(`gemini://localhost/p/${respuesta}/ignorar`)).includes(`/mensaje/poner Ignorar mensaje No.${respuesta}`));
+  await pedir(`gemini://localhost/p/${respuesta}/ignorar/mensaje/poner`);
+  assert.ok((await pedir('gemini://localhost/h/1')).includes(`No.${respuesta} · ID`));
+  assert.ok(!(await pedir('gemini://localhost/h/1')).includes('respuesta de ana'));
+  assert.ok((await s.texto('/h/1', ana)).includes('respuesta de ana'));
+  await pedir(`gemini://localhost/p/${respuesta}/ignorar/mensaje/quitar`);
+  assert.ok((await pedir('gemini://localhost/h/1')).includes('respuesta de ana'));
+  await pedir(`gemini://localhost/p/${respuesta}/ignorar/autor/poner`);
+  assert.ok((await pedir(`gemini://localhost/p/${respuesta}/ignorar`)).includes('/autor/quitar Dejar de ignorar autor'));
+  await pedir(`gemini://localhost/p/${respuesta}/ignorar/autor/quitar`);
+  s.db.prepare("UPDATE posts SET status = 'queued' WHERE id = ?").run(respuesta);
+  assert.ok((await pedir(`gemini://localhost/p/${respuesta}/ignorar`)).startsWith('51'));
+  s.db.prepare("UPDATE posts SET status = 'published' WHERE id = ?").run(respuesta);
 
   // Publicar en pasos: sección → asunto → mensaje.
-  s.avanzar(60);
   assert.ok((await pedir('gemini://localhost/publicar')).includes('=> /publicar/musica Música'));
   assert.ok((await pedir('gemini://localhost/publicar/musica')).startsWith('10 '));
   assert.equal((await pedir('gemini://localhost/publicar/musica?Discos%20nuevos')).trim(), '30 gemini://localhost/publicar/musica/mensaje');
@@ -1029,6 +1069,8 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
   await s.pedir('/cuenta/borrar', { sesion: bob, datos: { confirmar: '1' } });
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM gemini_llaves').get().n, 0);
   assert.ok((await pedir('gemini://localhost/h/1/responder')).includes('TXT-'), 'vuelve a pedir vincular');
+  assert.ok((await pedir('gemini://localhost/p/1/ignorar/autor/poner')).includes('Vincular este certificado'));
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 0);
 });
 
 test('auditoría: texto y Gemini no dejan pasar controles ni sintaxis del usuario; /tema no redirige afuera', async (t) => {
