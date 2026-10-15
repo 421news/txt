@@ -170,6 +170,10 @@ export function openDb(archivo) {
   db.exec('CREATE INDEX IF NOT EXISTS posts_autor ON posts (thread_id, author_id)');
   db.exec('CREATE INDEX IF NOT EXISTS threads_portada ON threads (visible, archived, bumped_at)');
   db.exec('CREATE INDEX IF NOT EXISTS threads_op ON threads (op_post_id)');
+  // Publicaciones cuyo mensaje inicial se borró: desde el 2026-10-15 se ocultan enteras. Las que se borraron
+  // antes quedaban abiertas como "(eliminada)"; esto las cierra al arrancar (no cambia nada si ya están ocultas).
+  db.exec(`UPDATE threads SET visible = 0 WHERE visible = 1
+    AND op_post_id IN (SELECT id FROM posts WHERE status = 'removed')`);
   // Estadísticas para mods (/mod/estadisticas). Visitas contadas en el servidor, sin cookies ni IPs:
   // `visitantes_dia` guarda un hash con sal diaria (que vive solo en memoria) para no contar dos veces
   // a la misma persona en el día; se vacía al cambiar de día. `actividad_dia`: qué cuentas usaron el

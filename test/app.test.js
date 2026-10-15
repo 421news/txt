@@ -390,7 +390,7 @@ test('la página de privacidad existe y no promete guardar el correo', async (t)
   assert.ok((await s.texto('/entrar')).includes('href="/privacidad"'));
 });
 
-test('borrar la cuenta vacía los mensajes y deja las respuestas ajenas', async (t) => {
+test('borrar la cuenta vacía los mensajes y borra las publicaciones que abrió, con sus respuestas', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
   const ana = await s.entrar('ana');
@@ -398,13 +398,18 @@ test('borrar la cuenta vacía los mensajes y deja las respuestas ajenas', async 
   await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Asunto-de-ana', cuerpo: 'texto-de-ana' } });
   s.avanzar(31);
   await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'respuesta-de-bea' } });
+  s.avanzar(601);
+  await s.pedir('/b/cultura/hilo', { sesion: bea, datos: { asunto: 'Asunto-de-bea', cuerpo: 'texto-de-bea' } });
+  s.avanzar(31);
+  await s.pedir('/h/2/responder', { sesion: ana, datos: { cuerpo: 'respuesta-de-ana' } });
 
   const r = await s.pedir('/cuenta/borrar', { sesion: ana, datos: { confirmar: '1' } });
   assert.equal(r.status, 303);
-  const hilo = await s.texto('/h/1');
-  assert.ok(!hilo.includes('texto-de-ana') && !hilo.includes('Asunto-de-ana'));
-  assert.ok(hilo.includes('respuesta-de-bea'));
-  assert.ok(hilo.includes('Eliminado por su autor'));
+  assert.equal((await s.pedir('/h/1')).status, 404, 'la publicación que abrió se va entera');
+  assert.ok(!(await s.texto('/b/cultura')).includes('Asunto-de-ana'));
+  const ajena = await s.texto('/h/2');
+  assert.ok(ajena.includes('texto-de-bea') && !ajena.includes('respuesta-de-ana'));
+  assert.ok(ajena.includes('Eliminado por su autor'));
   assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM users WHERE identidad LIKE '%ana%'").get().n, 0);
   assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM users WHERE identidad LIKE 'borrada:%'").get().n, 1);
   // La sesión vieja ya no sirve.
@@ -1305,7 +1310,7 @@ test('borrar un mensaje propio: queda "Eliminado por su autor", sale de la búsq
   assert.ok((await s.texto('/mod', mod)).includes('0 eliminados antes'));
 });
 
-test('borrar el mensaje que abre la publicación: con respuestas de otros queda "(eliminada)"; sin ellas se oculta', async (t) => {
+test('borrar el mensaje que abre la publicación borra la publicación entera, aunque tenga respuestas de otros', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
   const ana = await s.entrar('ana');
@@ -1318,11 +1323,18 @@ test('borrar el mensaje que abre la publicación: con respuestas de otros queda 
   s.avanzar(31);
   await s.pedir('/h/2/responder', { sesion: ana, datos: { cuerpo: 'me-respondo' } });
 
-  assert.ok((await s.texto('/p/1/borrar', ana)).includes('(eliminada)'), 'la confirmación lo avisa');
-  await s.pedir('/p/1/borrar', { sesion: ana, datos: {} });
-  const uno = await s.texto('/h/1');
-  assert.ok(uno.includes('(eliminada)') && !uno.includes('Berenjena') && !uno.includes('texto-uno'));
-  assert.ok(uno.includes('respuesta-de-bea'));
+  assert.ok((await s.texto('/p/1/borrar', ana)).includes('se borra la publicación entera'), 'la confirmación lo avisa');
+  const r = await s.pedir('/p/1/borrar', { sesion: ana, datos: {} });
+  assert.equal(r.headers.get('location'), '/b/cultura?aviso=publicacion-borrada', 'vuelve a la sección');
+  assert.ok((await s.texto('/b/cultura?aviso=publicacion-borrada', ana)).includes('Tu publicación quedó borrada.'));
+  assert.equal((await s.pedir('/h/1')).status, 404, 'no queda abierta con las respuestas de otros');
+  assert.equal((await s.pedir('/h/1', { sesion: bea })).status, 404);
+  assert.ok(!(await s.texto('/b/cultura')).includes('Berenjena'));
+  // Ya no se puede seguir respondiendo.
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'otra-de-bea' } });
+  assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM posts WHERE body = 'otra-de-bea'").get().n, 0);
+  assert.ok(!(await s.texto('/buscar?q=respuesta')).includes('respuesta-de-bea'), 'sale de la búsqueda');
   assert.ok((await s.texto('/buscar?q=texto')).includes('texto</mark>-dos'), 'la otra sigue en la búsqueda');
   assert.deepEqual(s.db.prepare('SELECT asunto, cuerpo FROM busqueda WHERE rowid = 1').get(), { asunto: '', cuerpo: '' });
 

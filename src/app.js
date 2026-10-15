@@ -1243,13 +1243,14 @@ export function createApp({
     return null;
   }
 
+  // Si es el mensaje que abre la publicación, se va la publicación entera, con sus respuestas (2026-10-15, pedido
+  // del usuario): antes quedaba abierta con el asunto "(eliminada)" y se podía seguir respondiendo. Es lo mismo que
+  // pasa cuando un mod elimina el mensaje inicial (alRetirar).
   const borrarMensaje = db.transaction((p) => {
     const t = q.hilo.get(p.thread_id);
     if (t.op_post_id === p.id) {
-      const deOtros = db
-        .prepare("SELECT COUNT(*) AS n FROM posts WHERE thread_id = ? AND id != ? AND user_id != ? AND status = 'published'")
-        .get(t.id, p.id, p.user_id).n;
-      db.prepare("UPDATE threads SET subject = '(eliminada)', visible = ? WHERE id = ?").run(deOtros > 0 ? t.visible : 0, t.id);
+      db.prepare("UPDATE threads SET subject = '(eliminada)', visible = 0 WHERE id = ?").run(t.id);
+      db.prepare('UPDATE busqueda SET asunto = \'\' WHERE rowid = ?').run(p.id);
     } else {
       alRetirar(p);
     }
@@ -1282,7 +1283,10 @@ export function createApp({
     const post = mensajePropio(req);
     if (!post) return noEncontrado(res);
     if (motivoParaNoBorrar(post, req.user)) return res.redirect(303, `/p/${post.id}/borrar`);
+    const thread = q.hilo.get(post.thread_id);
     borrarMensaje(post);
+    // Si era el mensaje inicial la publicación ya no existe: se vuelve a su sección.
+    if (thread.op_post_id === post.id) return res.redirect(303, `/b/${thread.board}?aviso=publicacion-borrada`);
     res.redirect(303, `/h/${post.thread_id}?aviso=mensaje-borrado#p${post.id}`);
   });
 
@@ -1544,15 +1548,14 @@ export function createApp({
 
   // Borrar la cuenta: se vacía todo lo que escribió y se reemplaza el identificador de Google, así
   // que no queda nada que la vincule con la persona. Suspendida no se puede: sería volver a entrar
-  // con la misma cuenta de Google limpia. Las publicaciones que abrió siguen visibles si tienen
-  // respuestas de otros (con el asunto borrado); si no, se ocultan.
+  // con la misma cuenta de Google limpia. Las publicaciones que abrió se ocultan enteras, con sus
+  // respuestas (igual que al borrar el mensaje inicial; antes seguían abiertas como "(eliminada)").
   const borrarCuenta = db.transaction((userId) => {
     for (const p of db.prepare("SELECT * FROM posts WHERE user_id = ? AND status = 'published'").all(userId)) {
       const t = q.hilo.get(p.thread_id);
       if (t.op_post_id !== p.id) alRetirar(p);
     }
-    db.prepare(`UPDATE threads SET subject = '(eliminada)',
-        visible = CASE WHEN reply_count > 0 THEN visible ELSE 0 END
+    db.prepare(`UPDATE threads SET subject = '(eliminada)', visible = 0
       WHERE op_post_id IN (SELECT id FROM posts WHERE user_id = ?)`).run(userId);
     db.prepare(`UPDATE posts SET body = '', status = 'removed', mod_reason = NULL WHERE user_id = ?`).run(userId);
     db.prepare(`UPDATE busqueda SET asunto = '', cuerpo = '' WHERE rowid IN (SELECT id FROM posts WHERE user_id = ?)`).run(userId);

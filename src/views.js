@@ -29,6 +29,7 @@ const AVISOS = {
   ignorado: 'Listo. Lo ignorado se ve colapsado y al final; lo podés desplegar o dejar de ignorar cuando quieras.',
   'cuenta-borrada': 'Tu cuenta y tus mensajes quedaron borrados.',
   'mensaje-borrado': 'Tu mensaje quedó borrado.',
+  'publicacion-borrada': 'Tu publicación quedó borrada.',
   'gemini-ok': 'Listo: ya podés escribir desde Gemini con ese certificado.',
   'gemini-invalido': 'El código no existe o venció (dura 15 minutos). Pedí uno nuevo desde Gemini.',
   'gemini-suspendida': 'Mientras dure la suspensión no se pueden vincular certificados.',
@@ -483,7 +484,7 @@ ${vistaPost(ctx, post, { esOp: post.id === thread.op_post_id, resumen: true })}
 // Borrar un mensaje propio (/p/:id/borrar): el mensaje y la confirmación, o por qué todavía no se puede.
 export function borrar(ctx, { post, thread, volver, motivo }) {
   return html`<h1>Borrar</h1>
-<p class="ayuda">En <a href="${volver}">${thread.subject}</a>. En su lugar queda "Eliminado por su autor"${post.id === thread.op_post_id ? ' y la publicación pasa a llamarse "(eliminada)"' : ''}.</p>
+<p class="ayuda">En <a href="${volver}">${thread.subject}</a>. ${post.id === thread.op_post_id ? 'Es el mensaje que abre la publicación: se borra la publicación entera, con todas sus respuestas.' : 'En su lugar queda "Eliminado por su autor".'}</p>
 ${vistaPost(ctx, post, { esOp: post.id === thread.op_post_id, resumen: true })}
 ${motivo
   ? html`<p class="nota">${motivo}</p><p class="botones"><a href="${volver}">Volver</a></p>`
@@ -953,7 +954,7 @@ export function cuenta(ctx, { suspendida, error, llaves = [], geminiUrl = null }
 ${preferencias(ctx.tema, ctx.vista)}
 ${geminiUrl ? gemini(ctx, llaves, geminiUrl) : ''}
 <h2>Borrar la cuenta</h2>
-<p>Se borra el texto de todos tus mensajes, los que el filtro te rechazó y los reportes que hiciste. Donde había un mensaje tuyo va a decir "Eliminado por su autor". Si abriste una publicación que tiene respuestas de otras personas, esas respuestas siguen ahí. No se puede deshacer.</p>
+<p>Se borra el texto de todos tus mensajes, los que el filtro te rechazó y los reportes que hiciste. Donde había un mensaje tuyo va a decir "Eliminado por su autor". Las publicaciones que abriste se borran enteras, con todas sus respuestas. No se puede deshacer.</p>
 ${error ? html`<p class="error">${error}</p>` : ''}
 ${suspendida
   ? html`<p>Mientras dure la suspensión no se puede borrar la cuenta. Si necesitás que borremos tus datos, escribí a <a href="mailto:admin@421.news">admin@421.news</a>.</p>`
