@@ -37,7 +37,7 @@ export function crearCapsula({ documento, escritura = null, baseUrl, cert, key, 
   function paginaVincular(huella) {
     const codigo = escritura.codigo(huella);
     return pagina(`# Vincular este certificado
-Tu certificado de Gemini todavía no está vinculado a una cuenta de txt. Para escribir desde acá:
+Tu certificado de Gemini todavía no está vinculado a una cuenta de txt. Para escribir, guardar o ignorar desde acá:
 
 * Entrá a la web con tu cuenta.
 * En Mi cuenta → Gemini, pegá este código:
@@ -70,6 +70,27 @@ ${r.error}
   async function escribir(url, ruta, huella) {
     const origen = `gemini://${url.host}`;
     const segmentos = url.pathname.split('/').filter(Boolean);
+    // /p/:id/ignorar[/autor|hilo|mensaje/poner|quitar]
+    if (segmentos[0] === 'p' && /^\d+$/.test(segmentos[1]) && segmentos[2] === 'ignorar' &&
+      (segmentos.length === 3 || (segmentos.length === 5 && ['poner', 'quitar'].includes(segmentos[4])))) {
+      if (!huella) return '60 Para ignorar hace falta un certificado de cliente';
+      const user = escritura.usuario(huella);
+      if (!user) return paginaVincular(huella);
+      const id = Number(segmentos[1]);
+      const datos = escritura.opcionesIgnorar(user, id);
+      if (!datos) return '51 No encontrado';
+      if (segmentos.length === 5) {
+        if (!escritura.ignorar(user, id, segmentos[3], segmentos[4] === 'poner')) return '51 No encontrado';
+        return `30 ${origen}/p/${id}/ignorar`;
+      }
+      const opciones = [['autor', `autor ID ${datos.autor} en esta publicación`],
+        [datos.esOp ? 'hilo' : 'mensaje', datos.esOp ? 'publicación' : `mensaje No.${id}`]];
+      return pagina(`# Ignorar No.${id}
+Solo para vos: lo ignorado se ve sin texto y va al final. Elegí qué cambiar:
+${opciones.map(([nombre, titulo]) => `=> /p/${id}/ignorar/${nombre}/${datos.opciones[nombre] ? 'quitar' : 'poner'} ${datos.opciones[nombre] ? 'Dejar de ignorar' : 'Ignorar'} ${titulo}`).join('\n')}
+=> /h/${datos.threadId} Volver a la publicación
+`);
+    }
     // /h/:id/guardar[/quitar]
     if (segmentos[0] === 'h' && segmentos[2] === 'guardar' && (segmentos.length === 3 || (segmentos.length === 4 && segmentos[3] === 'quitar'))) {
       const thread = /^\d+$/.test(segmentos[1]) ? escritura.hilo(Number(segmentos[1])) : null;
