@@ -27,7 +27,7 @@ export const LIMITS = {
   rechazosPorHora: 10,
   // Reportes de personas distintas que sacan un post de la vista hasta que lo revise un mod.
   reportesParaOcultar: 3,
-  // Más comentadas: cuántas en el bloque de la portada y por página en /top.
+  // Más comentadas: cuántas en el bloque de la portada y en /top (sin páginas).
   topEnPortada: 10,
   topPorPagina: 25,
 };

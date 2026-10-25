@@ -174,8 +174,6 @@ export function createApp({
     guardado: db.prepare('SELECT 1 FROM guardados WHERE user_id = ? AND thread_id = ?'),
     // Más comentadas (2026-10-24, pedido del usuario): por respuestas, abiertas y archivadas. @archivo null =
     // las dos; @board null = todas las secciones; @desde filtra por cuándo se abrió. Lo ignorado va al final.
-    contarTop: db.prepare(`SELECT COUNT(*) AS n FROM threads t WHERE t.visible = 1 AND t.reply_count > 0
-      AND (@archivo IS NULL OR t.archived = @archivo) AND (@board IS NULL OR t.board = @board) AND t.created_at >= @desde`),
     top: db.prepare(`SELECT t.id, t.subject, t.board, t.reply_count, t.created_at, t.archived, t.locked, t.op_post_id,
         ${IGNORA_HILO('t')} AS ignorado
       FROM threads t WHERE t.visible = 1 AND t.reply_count > 0
@@ -978,16 +976,16 @@ export function createApp({
       board: filtros.seccion || null,
       desde: PERIODOS[filtros.periodo] ? now() - PERIODOS[filtros.periodo] * DIA : 0,
     };
-    const { pagina, paginas, porPagina, offset } = paginar(req, q.contarTop.get(params).n, LIMITS.topPorPagina);
-    const hilos = q.top.all({ ...params, limite: porPagina, offset });
+    // Solo las primeras 25 de cada filtro, sin páginas (pedido del usuario: 83 páginas no tenían sentido).
+    const hilos = q.top.all({ ...params, limite: LIMITS.topPorPagina, offset: 0 });
     res.locals.ctx.ruta = rutaDeLaPagina(req, '/top');
     const filtrado = filtros.periodo !== 'siempre' || filtros.estado !== 'todas' || filtros.seccion;
     enviar(res, {
       titulo: 'Más comentadas',
       descripcion: 'Las publicaciones de txt con más respuestas, abiertas y archivadas.',
-      cuerpo: V.top(res.locals.ctx, { hilos, filtros, pagina, paginas, offset }),
+      cuerpo: V.top(res.locals.ctx, { hilos, filtros }),
       canonical: '/top',
-      indexar: !filtrado && pagina === 1,
+      indexar: !filtrado,
     });
   });
 

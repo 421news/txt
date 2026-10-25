@@ -610,7 +610,7 @@ test('tema claro/oscuro por cookie, sin JavaScript', async (t) => {
   t.after(s.cerrar);
   const auto = await s.texto('/normas');
   assert.ok(auto.includes('<html lang="es">') && auto.includes('prefers-color-scheme: light'));
-  assert.ok(auto.includes('class="boton-tema"') && !auto.includes('Usar el tema del sistema'));
+  assert.ok(auto.includes('class="boton-tema menu-cab"') && !auto.includes('Usar el tema del sistema'));
 
   const r = await s.pedir('/tema?t=claro&volver=%2Fnormas');
   assert.equal(r.status, 303);
@@ -647,7 +647,11 @@ test('tema: el script que lo cambia sin recargar va en todas las páginas y el b
   const ana = await s.entrar('ana');
   const cuenta = await s.texto('/cuenta', ana);
   assert.ok(/href="\/tema\?t=auto[^"]*"[^>]*aria-current="true"/.test(cuenta), 'sin cookie, "sistema" es la opción marcada');
-  assert.ok(pagina.includes('class="icono a-claro" href="/tema?t=claro&amp;volver='));
+  // El desplegable de la barra ofrece todos los temas y "sistema", y marca el que está en uso.
+  for (const t of ['auto', 'claro', 'oscuro', 'descanso', 'monocromo']) assert.ok(pagina.includes(`href="/tema?t=${t}&amp;volver=`), t);
+  assert.match(pagina, /class="boton-tema menu-cab"[\s\S]*href="\/tema\?t=auto[^"]*" rel="nofollow" aria-current="true"/);
+  const conDescanso = await s.texto('/normas', { cookie: 'tema=descanso' });
+  assert.match(conDescanso, /href="\/tema\?t=descanso[^"]*" rel="nofollow" aria-current="true"/);
   const js = await s.pedir(src);
   assert.equal(js.status, 200);
   assert.ok((await js.text()).includes("a[href^=\"/tema?\"]"));
@@ -739,7 +743,7 @@ test('barra inferior y botón de tema', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
   const anon = await s.texto('/');
-  assert.ok(anon.includes('class="abajo"') && anon.includes('href="/entrar"') && anon.includes('class="boton-tema"'));
+  assert.ok(anon.includes('class="abajo"') && anon.includes('href="/entrar"') && anon.includes('class="boton-tema menu-cab"'));
   const ana = await s.entrar('ana');
   const conSesion = await s.texto('/b/cultura', ana);
   assert.ok(conSesion.includes('href="/b/cultura?publicar=1#publicar"') && conSesion.includes('>Respuestas</a>'));
@@ -1147,7 +1151,7 @@ test('cambiar el tema nunca manda a una ruta que solo acepta POST', async (t) =>
   const ana = await s.entrar('ana');
   await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Libros', cuerpo: 'hola' } });
   const volver = (html, esperado) => {
-    const href = html.match(/class="icono a-claro" href="\/tema\?t=claro&amp;volver=([^"]+)"/)[1];
+    const href = html.match(/href="\/tema\?t=claro&amp;volver=([^"]+)"/)[1];
     assert.equal(decodeURIComponent(href), esperado);
   };
 
@@ -1925,6 +1929,7 @@ test('más comentadas: bloque en la portada con abiertas y archivadas, y /top co
   const top = await s.texto('/top');
   assert.ok(top.indexOf('Libros') < top.indexOf('Balatro') && !top.includes('>Sin respuestas<'));
   assert.ok(top.includes('archivada') && top.includes('R: 3'));
+  assert.ok(!top.includes('class="paginas"'), 'solo las primeras 25, sin páginas');
   assert.ok(!(await s.texto('/top?estado=abiertas')).includes('Balatro'));
   assert.ok(!(await s.texto('/top?seccion=juegos')).includes('>Libros<'));
   s.avanzar(8 * 86400);

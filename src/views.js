@@ -56,11 +56,18 @@ const ICONOS = {
   escudo: svg('<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M12 8v4M12 16h.01"/>'),
   marcador: svg('<path d="M6 3h12v18l-6-4.5L6 21z"/>'),
   marcadorLleno: svg('<path d="M6 3h12v18l-6-4.5L6 21z" fill="currentColor"/>'),
+  contraste: svg('<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>'),
 };
 
-function botonTema(ruta) {
+// Tema: un desplegable (<details>, sin JavaScript) con todos los temas y "sistema" (2026-10-24, pedido del
+// usuario; antes era un botón sol/luna que solo pasaba de claro a oscuro). Cada opción es un link a /tema.
+const NOMBRES_TEMA = { auto: 'Sistema', claro: 'Claro', oscuro: 'Oscuro', descanso: 'Descanso', monocromo: 'Monocromo' };
+function botonTema(ruta, tema) {
   const volver = encodeURIComponent(ruta);
-  return html`<span class="boton-tema"><a class="icono a-claro" href="/tema?t=claro&amp;volver=${volver}" rel="nofollow" title="Pasar a modo claro" aria-label="Pasar a modo claro">${ICONOS.sol}</a><a class="icono a-oscuro" href="/tema?t=oscuro&amp;volver=${volver}" rel="nofollow" title="Pasar a modo oscuro" aria-label="Pasar a modo oscuro">${ICONOS.luna}</a></span>`;
+  const opciones = ['auto', ...Object.keys(COLOR_TEMA)];
+  return html`<details class="boton-tema menu-cab"><summary class="icono" title="Tema" aria-label="Tema">${ICONOS.contraste}</summary>
+  <div class="menu-desplegable temas-menu">${opciones.map((v) => html`<a href="/tema?t=${v}&amp;volver=${volver}" rel="nofollow"${(tema ?? 'auto') === v ? raw(' aria-current="true"') : ''}><span class="muestra muestra-${v}" aria-hidden="true">Aa</span> ${NOMBRES_TEMA[v]}</a>`)}</div>
+</details>`;
 }
 
 // "Leé 421 ↗": al final de las secciones (y del menú Secciones en el celular). txt es de 421; el
@@ -163,7 +170,7 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
     <div class="cab-der">
       <a class="icono lupa" href="/buscar" title="Buscar" aria-label="Buscar">${ICONOS.lupa}</a>
       <a class="icono stats" href="/estadisticas" title="Estadísticas" aria-label="Estadísticas">${ICONOS.grafico}</a>
-      ${botonTema(ruta)}
+      ${botonTema(ruta, tema)}
       ${ctx.pendientesMod
         ? html`<a class="icono mod-pendientes" href="/mod" title="Moderación: ${ctx.pendientesMod} para revisar" aria-label="Moderación (${ctx.pendientesMod} para revisar)">${ICONOS.escudo}<span class="badge">${ctx.pendientesMod}</span></a>`
         : ''}
@@ -359,8 +366,8 @@ function bloqueMasComentadas({ abiertas, archivadas }) {
 const PERIODOS_TOP = [['siempre', 'Siempre'], ['anio', 'Último año'], ['mes', 'Último mes'], ['semana', 'Última semana']];
 const ESTADOS_TOP = [['todas', 'Todas'], ['abiertas', 'Abiertas'], ['archivadas', 'Archivadas']];
 
-// Página /top: ranking por respuestas, con filtros como links (sin formulario ni JavaScript).
-export function top(ctx, { hilos, filtros, pagina: actual, paginas, offset }) {
+// Página /top: las 25 con más respuestas de cada filtro, sin páginas. Filtros como links (sin formulario ni JavaScript).
+export function top(ctx, { hilos, filtros }) {
   const url = (cambio) => {
     const f = { ...filtros, ...cambio };
     const p = new URLSearchParams();
@@ -372,10 +379,9 @@ export function top(ctx, { hilos, filtros, pagina: actual, paginas, offset }) {
   const opcion = (cambio, nombre, activa) =>
     html`<a href="${url(cambio)}"${activa ? raw(' aria-current="true"') : ''}>${nombre}</a>`;
   const ignoradas = hilos.filter((t) => t.ignorado);
-  const parametros = Object.fromEntries(Object.entries(filtros).filter(([k, v]) => v && !(k === 'periodo' && v === 'siempre') && !(k === 'estado' && v === 'todas')));
   return html`<header class="tablon-cabecera">
   <h1>Más comentadas</h1>
-  <p>Las publicaciones con más respuestas, abiertas y archivadas.</p>
+  <p>Las ${LIMITS.topPorPagina} publicaciones con más respuestas, abiertas y archivadas.</p>
 </header>
 <nav class="filtros-top" aria-label="Filtros">
   <p><span class="ayuda">Estado:</span> ${ESTADOS_TOP.map(([v, n]) => opcion({ estado: v }, n, filtros.estado === v))}</p>
@@ -383,12 +389,11 @@ export function top(ctx, { hilos, filtros, pagina: actual, paginas, offset }) {
   <p><span class="ayuda">Sección:</span> ${opcion({ seccion: '' }, 'Todas', !filtros.seccion)} ${BOARDS.map((b) => opcion({ seccion: b.slug }, b.nombre, filtros.seccion === b.slug))}</p>
 </nav>
 ${hilos.length
-  ? html`<ol class="ranking" start="${offset + 1}">${hilos.map((t) => html`${t === ignoradas[0] ? html`<li class="separador">${separadorIgnorados(ignoradas.length, PUBLICACIONES_IGNORADAS)}</li>` : ''}<li${t.ignorado ? raw(' class="ignorado"') : ''}>
+  ? html`<ol class="ranking">${hilos.map((t) => html`${t === ignoradas[0] ? html`<li class="separador">${separadorIgnorados(ignoradas.length, PUBLICACIONES_IGNORADAS)}</li>` : ''}<li${t.ignorado ? raw(' class="ignorado"') : ''}>
   <a class="ranking-asunto" href="/h/${t.id}">${t.subject}</a> <span class="ranking-r">R: ${t.reply_count}</span>
   <span class="ranking-meta">${boardBySlug(t.board)?.nombre} · ${fecha(t.created_at)} <span class="estado-hilo ${estadoHilo(t)}">${estadoHilo(t)}</span>${t.ignorado ? html` <span class="marca-ignorado">ignorada</span>` : ''}</span>
 </li>`)}</ol>`
-  : html`<p class="ayuda">No hay publicaciones con respuestas para estos filtros.</p>`}
-${paginacion(actual, paginas, parametros)}`;
+  : html`<p class="ayuda">No hay publicaciones con respuestas para estos filtros.</p>`}`;
 }
 
 function bloqueoPublicar(ctx, accion) {

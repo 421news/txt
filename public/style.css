@@ -544,14 +544,12 @@ button.enlace::before, button.enlace::after { content: none; }
 .menu-abajo a.leer-421 { border-top: 1px solid var(--borde); margin-top: 0.3rem; padding-top: 0.5rem; }
 
 /* --- Botón de tema ---------------------------------------------------------------------- */
-/* Se dibujan sol y luna; se ve el que lleva al tema contrario del que se está mostrando. */
-.boton-tema .a-oscuro { display: none; }
-@media (prefers-color-scheme: light) {
-  :root:not([data-tema]) .boton-tema .a-claro { display: none; }
-  :root:not([data-tema]) .boton-tema .a-oscuro { display: inline-flex; }
-}
-:root[data-tema="claro"] .boton-tema .a-claro { display: none; }
-:root[data-tema="claro"] .boton-tema .a-oscuro { display: inline-flex; }
+/* Desplegable con todos los temas; la opción elegida va marcada. Reusa el menú de la cabecera. */
+.temas-menu { min-width: 10rem; }
+.temas-menu a { display: flex; align-items: center; gap: 0.6rem; }
+.temas-menu a[aria-current] { color: var(--texto); font-weight: 700; }
+.temas-menu a[aria-current]::after { content: '✓'; margin-left: auto; }
+.temas-menu .muestra { font-size: 0.7rem; padding: 0 0.3rem; border: 1px solid; }
 
 /* --- Barra inferior (solo celular) ------------------------------------------------------ */
 .abajo { display: none; }
@@ -560,7 +558,7 @@ button.enlace::before, button.enlace::after { content: none; }
 @media (max-width: 40rem) {
   html { scroll-padding-top: 4.5rem; }
   /* Arriba queda solo la marca y el tema; lo demás baja a la barra inferior. */
-  .cabecera .secciones, .cabecera .correo, .cabecera .menu-cab, .cab-der > a.icono:not(.a-claro):not(.a-oscuro):not(.lupa):not(.stats) { display: none; }
+  .cabecera .secciones, .cabecera .correo, .cabecera .menu-cab:not(.boton-tema), .cab-der > a.icono:not(.a-claro):not(.a-oscuro):not(.lupa):not(.stats) { display: none; }
   body { padding-bottom: 4.2rem; }
 
   .abajo {
@@ -697,7 +695,8 @@ mark { background: var(--fosforo); color: var(--fondo); padding: 0 0.1rem; }
 .top-lista { margin: 0; padding-left: 1.4rem; font-size: 0.8rem; line-height: 1.45; }
 .top-lista li { margin: 0.1rem 0; color: var(--tenue); }
 .top-lista a { color: var(--fosforo); text-decoration: none; overflow-wrap: anywhere; }
-.top-lista a:hover { color: var(--fosforo); text-decoration: underline; }
+/* Sin el relleno de a:hover: con el texto del mismo color quedaba ilegible. Subrayado, como en el resto de la lista. */
+.top-lista a:hover { background: transparent; color: var(--fosforo); text-decoration: underline; }
 .top-lista .ignorado a { color: var(--tenue); }
 .top-n { font-size: 0.72rem; color: var(--tenue); white-space: nowrap; }
 

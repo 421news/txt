@@ -1,4 +1,4 @@
-// Tema claro/oscuro sin recargar. El botón es un link a /tema, que guarda la cookie y vuelve a la
+// Cambiar de tema sin recargar. Cada opción es un link a /tema, que guarda la cookie y vuelve a la
 // página: funciona sin JavaScript, pero recarga y deja la página arriba de todo. Con este script el
 // cambio se hace en el lugar: se escribe la misma cookie que pone el servidor y se cambia data-tema
 // en <html>, que es lo que el CSS ya mira. Si no carga, el link sigue funcionando como siempre.
@@ -37,16 +37,17 @@
     if (tema) document.documentElement.dataset.tema = tema;
     else delete document.documentElement.dataset.tema;
     barraDelNavegador(tema);
-    // En Preferencias (Mi cuenta), la opción marcada pasa a ser la elegida.
-    for (const a of document.querySelectorAll('.temas a')) {
-      if (a === link) a.setAttribute('aria-current', 'true');
+    // En el desplegable de la barra y en Preferencias (Mi cuenta), la opción marcada pasa a ser la elegida.
+    for (const a of document.querySelectorAll('.temas a, .temas-menu a')) {
+      if (new URL(a.href).searchParams.get('t') === t) a.setAttribute('aria-current', 'true');
       else a.removeAttribute('aria-current');
     }
 
-    if (link.closest('.boton-tema')) {
-      // El CSS esconde el botón tocado y muestra el otro: el foco del teclado pasa al que quedó. Sin
-      // preventScroll, focus() lleva la página hasta la posición original de la barra fija (arriba).
-      if (document.activeElement === link) [...link.parentElement.children].find((a) => a !== link)?.focus({ preventScroll: true });
+    // El desplegable se cierra; el foco vuelve a su botón (sin preventScroll, focus() lleva la página arriba).
+    const menu = link.closest('.boton-tema');
+    if (menu) {
+      menu.open = false;
+      menu.querySelector('summary')?.focus({ preventScroll: true });
     }
   });
 })();
