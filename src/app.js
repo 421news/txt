@@ -96,6 +96,8 @@ export function createApp({
     OR EXISTS (SELECT 1 FROM ignorados i WHERE i.user_id = @yo AND i.entity_type = 'autor' AND i.entity_id = ${p}.author_id))`;
   // Listados de publicaciones: lo ignorado va al final y, entre sí, por creación (no sube por bump
   // ni por estar fijado).
+  // Si la guardó el lector: las fichas del catálogo llevan el marcador lleno o vacío.
+  const GUARDADO = (t) => `EXISTS (SELECT 1 FROM guardados g WHERE g.user_id = @yo AND g.thread_id = ${t}.id)`;
   const ORDEN_HILOS = `ignorado, CASE WHEN ignorado THEN 0 ELSE COALESCE(t.fijado, 0) END DESC,
     CASE WHEN ignorado THEN t.created_at ELSE t.bumped_at END DESC`;
 
@@ -106,12 +108,12 @@ export function createApp({
     post: db.prepare('SELECT * FROM posts WHERE id = ?'),
     contarPortada: db.prepare('SELECT COUNT(*) AS n FROM threads WHERE visible = 1 AND archived = 0'),
     hilosPortada: db.prepare(`SELECT t.*, p.body AS op_body, p.user_id AS op_user_id, p.author_id AS op_author_id, p.created_at AS op_created_at,
-        ${IGNORA_HILO('t')} AS ignorado, ${IGNORA_MENSAJE('p')} AS op_ignorado
+        ${IGNORA_HILO('t')} AS ignorado, ${IGNORA_MENSAJE('p')} AS op_ignorado, ${GUARDADO('t')} AS guardado
       FROM threads t JOIN posts p ON p.id = t.op_post_id
       WHERE t.visible = 1 AND t.archived = 0 ORDER BY ${ORDEN_HILOS} LIMIT @limite OFFSET @desde`),
     contarTablon: db.prepare('SELECT COUNT(*) AS n FROM threads WHERE board = ? AND visible = 1 AND archived = ?'),
     hilosTablon: db.prepare(`SELECT t.*, p.body AS op_body, p.user_id AS op_user_id, p.author_id AS op_author_id, p.created_at AS op_created_at,
-        ${IGNORA_HILO('t')} AS ignorado, ${IGNORA_MENSAJE('p')} AS op_ignorado
+        ${IGNORA_HILO('t')} AS ignorado, ${IGNORA_MENSAJE('p')} AS op_ignorado, ${GUARDADO('t')} AS guardado
       FROM threads t JOIN posts p ON p.id = t.op_post_id
       WHERE t.board = @board AND t.visible = 1 AND t.archived = @archivo ORDER BY ${ORDEN_HILOS} LIMIT @limite OFFSET @desde`),
     // Las últimas N respuestas publicadas de cada hilo de la lista (ids en JSON), sin el mensaje inicial.
@@ -170,6 +172,15 @@ export function createApp({
       WHERE x.user_id = @yo AND p.status = 'published' AND t.visible = 1 ORDER BY ignorado, x.id DESC LIMIT 100`),
     marcarLeidas: db.prepare('UPDATE notificaciones SET leida = 1 WHERE user_id = ? AND leida = 0'),
     guardado: db.prepare('SELECT 1 FROM guardados WHERE user_id = ? AND thread_id = ?'),
+    // Más comentadas (2026-10-24, pedido del usuario): por respuestas, abiertas y archivadas. @archivo null =
+    // las dos; @board null = todas las secciones; @desde filtra por cuándo se abrió. Lo ignorado va al final.
+    contarTop: db.prepare(`SELECT COUNT(*) AS n FROM threads t WHERE t.visible = 1 AND t.reply_count > 0
+      AND (@archivo IS NULL OR t.archived = @archivo) AND (@board IS NULL OR t.board = @board) AND t.created_at >= @desde`),
+    top: db.prepare(`SELECT t.id, t.subject, t.board, t.reply_count, t.created_at, t.archived, t.locked, t.op_post_id,
+        ${IGNORA_HILO('t')} AS ignorado
+      FROM threads t WHERE t.visible = 1 AND t.reply_count > 0
+        AND (@archivo IS NULL OR t.archived = @archivo) AND (@board IS NULL OR t.board = @board) AND t.created_at >= @desde
+      ORDER BY ignorado, t.reply_count DESC, t.bumped_at DESC LIMIT @limite OFFSET @offset`),
     ignorado: db.prepare('SELECT 1 FROM ignorados WHERE user_id = ? AND entity_type = ? AND entity_id = ?'),
     ignorar: db.prepare('INSERT OR IGNORE INTO ignorados (user_id, entity_type, entity_id, ignored_at) VALUES (?, ?, ?, ?)'),
     dejarDeIgnorar: db.prepare('DELETE FROM ignorados WHERE user_id = ? AND entity_type = ? AND entity_id = ?'),
@@ -565,7 +576,11 @@ export function createApp({
     const { pagina, paginas, porPagina, offset } = paginar(req, q.contarPortada.get().n, porPaginaDe(vista));
     const filas = marcarNovedades(req, q.hilosPortada.all({ yo: yo(req), limite: porPagina, desde: offset }));
     const hilos = vista === 'lista' ? armarResumenes(req, filas) : filas;
-    const cuerpo = V.portada(res.locals.ctx, { hilos, vista, pagina, paginas, form });
+    const masComentadas = {
+      abiertas: q.top.all({ yo: yo(req), archivo: 0, board: null, desde: 0, limite: LIMITS.topEnPortada, offset: 0 }),
+      archivadas: q.top.all({ yo: yo(req), archivo: 1, board: null, desde: 0, limite: LIMITS.topEnPortada, offset: 0 }),
+    };
+    const cuerpo = V.portada(res.locals.ctx, { hilos, vista, pagina, paginas, form, masComentadas });
     enviar(res, { cuerpo, aviso: req.query.aviso, ...seoListado('/', vista, pagina) }, status);
   }
 
@@ -881,8 +896,8 @@ export function createApp({
   // Adónde vuelve un cambio de preferencia: solo rutas del propio sitio. "/\\evil.com" pasaba el
   // chequeo viejo y el navegador lo lee como //evil.com (auditoría 2026-09-25). Una sola copia para
   // /tema y /vista: dos que se desincronizan es exactamente cómo vuelve ese agujero.
-  function volverSeguro(req) {
-    const volver = String(req.query.volver ?? '/');
+  function volverSeguro(req, valor = req.query.volver) {
+    const volver = String(valor ?? '/');
     const seguro = /^\/(?![\/\\])[^\s\\]*$/.test(volver) && new URL(volver, baseUrl).origin === new URL(baseUrl).origin;
     return seguro ? volver : '/';
   }
@@ -947,6 +962,34 @@ export function createApp({
   app.get('/privacidad', (req, res) =>
     enviar(res, { titulo: 'Privacidad', canonical: '/privacidad', descripcion: 'Qué datos guarda txt, con quién se comparten y cómo ejercer tus derechos (Ley 25.326).', cuerpo: V.privacidad(res.locals.ctx) }),
   );
+
+  // Más comentadas: por cantidad de respuestas, con filtros de estado, sección y período (cuándo se abrió).
+  const PERIODOS = { siempre: 0, anio: 365, mes: 30, semana: 7 };
+  const ESTADOS = { todas: null, abiertas: 0, archivadas: 1 };
+  app.get('/top', (req, res) => {
+    const filtros = {
+      periodo: Object.hasOwn(PERIODOS, req.query.periodo) ? req.query.periodo : 'siempre',
+      estado: Object.hasOwn(ESTADOS, req.query.estado) ? req.query.estado : 'todas',
+      seccion: boardBySlug(req.query.seccion)?.slug ?? '',
+    };
+    const params = {
+      yo: yo(req),
+      archivo: ESTADOS[filtros.estado],
+      board: filtros.seccion || null,
+      desde: PERIODOS[filtros.periodo] ? now() - PERIODOS[filtros.periodo] * DIA : 0,
+    };
+    const { pagina, paginas, porPagina, offset } = paginar(req, q.contarTop.get(params).n, LIMITS.topPorPagina);
+    const hilos = q.top.all({ ...params, limite: porPagina, offset });
+    res.locals.ctx.ruta = rutaDeLaPagina(req, '/top');
+    const filtrado = filtros.periodo !== 'siempre' || filtros.estado !== 'todas' || filtros.seccion;
+    enviar(res, {
+      titulo: 'Más comentadas',
+      descripcion: 'Las publicaciones de txt con más respuestas, abiertas y archivadas.',
+      cuerpo: V.top(res.locals.ctx, { hilos, filtros, pagina, paginas, offset }),
+      canonical: '/top',
+      indexar: !filtrado && pagina === 1,
+    });
+  });
 
   app.get('/b/:board', (req, res) => {
     const board = boardBySlug(req.params.board);
@@ -1311,7 +1354,21 @@ export function createApp({
     if (!exigirUsuario(req, res)) return;
     if (req.body.quitar === '1') q.olvidar.run(req.user.id, thread.id);
     else q.guardar.run(req.user.id, thread.id, now());
-    res.redirect(303, `/h/${thread.id}`);
+    // Desde una ficha del catálogo se vuelve a la misma página del listado.
+    res.redirect(303, req.body.volver ? volverSeguro(req, req.body.volver) : `/h/${thread.id}`);
+  });
+
+  // Ignorar la publicación desde la ficha, sin entrar (2026-10-24, pedido del usuario). Solo la publicación:
+  // ignorar al autor sigue en /p/:id/ignorar. La propia no se ignora (como en esa página).
+  app.post('/h/:id/ignorar', (req, res) => {
+    const thread = hiloVisible(req, Number(req.params.id));
+    if (!thread || !thread.visible) return noEncontrado(res);
+    if (!exigirUsuario(req, res)) return;
+    const volver = volverSeguro(req, req.body.volver);
+    if (q.post.get(thread.op_post_id)?.user_id === req.user.id) return res.redirect(303, volver);
+    if (req.body.quitar === '1') q.dejarDeIgnorar.run(req.user.id, 'hilo', String(thread.id));
+    else q.ignorar.run(req.user.id, 'hilo', String(thread.id), now());
+    res.redirect(303, volver);
   });
 
   // --- Moderación ----------------------------------------------------------------------------

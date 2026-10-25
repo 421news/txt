@@ -1891,3 +1891,87 @@ test('borrar la cuenta borra lo que ignoraba, y la privacidad lo cuenta', async 
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 0);
   assert.ok((await s.texto('/privacidad')).includes('Lo que ignorás'));
 });
+
+test('más comentadas: bloque en la portada con abiertas y archivadas, y /top con filtros', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Libros', cuerpo: 'qué leen' } });
+  s.avanzar(700);
+  await s.pedir('/b/juegos/hilo', { sesion: ana, datos: { asunto: 'Balatro', cuerpo: 'adicto' } });
+  s.avanzar(700);
+  await s.pedir('/b/musica/hilo', { sesion: ana, datos: { asunto: 'Sin respuestas', cuerpo: 'nadie' } });
+  for (let i = 0; i < 3; i++) {
+    s.avanzar(40);
+    await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: `libro ${i}` } });
+  }
+  s.avanzar(40);
+  await s.pedir('/h/2/responder', { sesion: bea, datos: { cuerpo: 'yo también' } });
+  s.db.prepare('UPDATE threads SET archived = 1 WHERE id = 2').run();
+
+  // Portada: las dos listas, con radios para cambiar sin JavaScript; las sin respuestas no entran.
+  const portada = await s.texto('/');
+  const bloque = portada.slice(portada.indexOf('class="mas-comentadas"'), portada.indexOf('</aside>'));
+  assert.ok(bloque.includes('id="top-abiertas" checked') && bloque.includes('for="top-archivadas"'));
+  const abiertas = bloque.slice(bloque.indexOf('de-abiertas'), bloque.indexOf('de-archivadas'));
+  const archivadas = bloque.slice(bloque.indexOf('de-archivadas'));
+  assert.ok(abiertas.includes('Libros') && !abiertas.includes('Balatro'));
+  assert.ok(archivadas.includes('Balatro') && !archivadas.includes('Libros'));
+  assert.ok(!bloque.includes('Sin respuestas'));
+
+  // /top: por respuestas, con estado y sección; el período cuenta desde que se abrió.
+  const top = await s.texto('/top');
+  assert.ok(top.indexOf('Libros') < top.indexOf('Balatro') && !top.includes('>Sin respuestas<'));
+  assert.ok(top.includes('archivada') && top.includes('R: 3'));
+  assert.ok(!(await s.texto('/top?estado=abiertas')).includes('Balatro'));
+  assert.ok(!(await s.texto('/top?seccion=juegos')).includes('>Libros<'));
+  s.avanzar(8 * 86400);
+  assert.ok((await s.texto('/top?periodo=semana')).includes('No hay publicaciones con respuestas'));
+  assert.ok((await s.texto('/top?periodo=mes')).includes('Libros'));
+  // Lo oculto no aparece; un filtro raro vuelve al default; solo la página sin filtros se indexa.
+  s.db.prepare('UPDATE threads SET visible = 0 WHERE id = 1').run();
+  assert.ok(!(await s.texto('/top?estado=cualquiera')).includes('>Libros<'));
+  assert.ok((await s.texto('/top?estado=abiertas')).includes('noindex'));
+  assert.ok(!(await s.texto('/top')).includes('noindex'));
+});
+
+test('guardar e ignorar desde la ficha, sin entrar a la publicación', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Cine', cuerpo: 'qué ven' } });
+  // Sin sesión no hay botones; con sesión, el marcador vacío. A la propia no se le ofrece ignorar.
+  assert.ok(!(await s.texto('/')).includes('action="/h/1/guardar"'));
+  const deAna = await s.texto('/', ana);
+  assert.ok(deAna.includes('action="/h/1/guardar"') && !deAna.includes('action="/h/1/ignorar"'));
+  let deBea = await s.texto('/b/cultura', bea);
+  assert.ok(deBea.includes('action="/h/1/ignorar"') && deBea.includes('aria-label="Guardar"'));
+
+  // Guardar vuelve al listado y el marcador queda lleno; tocarlo de nuevo lo saca.
+  let r = await s.pedir('/h/1/guardar', { sesion: bea, datos: { volver: '/b/cultura?pagina=1' } });
+  assert.equal(r.headers.get('location'), '/b/cultura?pagina=1');
+  deBea = await s.texto('/b/cultura', bea);
+  assert.ok(deBea.includes('Guardada: tocá para sacarla') && deBea.includes('name="quitar" value="1"'));
+  await s.pedir('/h/1/guardar', { sesion: bea, datos: { quitar: '1', volver: '/b/cultura' } });
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM guardados').get().n, 0);
+  // Desde la publicación sigue volviendo a la publicación; un volver de afuera cae en la portada.
+  assert.equal((await s.pedir('/h/1/guardar', { sesion: bea, datos: {} })).headers.get('location'), '/h/1');
+  assert.equal((await s.pedir('/h/1/guardar', { sesion: bea, datos: { volver: '//evil.com' } })).headers.get('location'), '/');
+
+  // Ignorar desde la ficha: solo la publicación (no al autor), y se deshace igual.
+  r = await s.pedir('/h/1/ignorar', { sesion: bea, datos: { volver: '/' } });
+  assert.equal(r.headers.get('location'), '/');
+  assert.deepEqual(s.db.prepare('SELECT entity_type, entity_id FROM ignorados').all().map((x) => ({ ...x })), [{ entity_type: 'hilo', entity_id: '1' }]);
+  assert.ok((await s.texto('/', bea)).includes('ficha ignorado'));
+  assert.ok(!(await s.texto('/', ana)).includes('ficha ignorado'), 'no afecta a otras cuentas');
+  await s.pedir('/h/1/ignorar', { sesion: bea, datos: { quitar: '1', volver: '/' } });
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 0);
+  // La propia no se ignora; sin CSRF no pasa nada.
+  await s.pedir('/h/1/ignorar', { sesion: ana, datos: { volver: '/' } });
+  await s.pedir('/h/1/ignorar', { cookie: bea.cookie, datos: { volver: '/' } });
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 0);
+  // En la vista lista también están.
+  assert.ok((await s.texto('/?vista=lista', bea)).includes('action="/h/1/ignorar"'));
+});

@@ -54,6 +54,8 @@ const ICONOS = {
   lupa: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
   grafico: svg('<path d="M4 20V4M4 20h16"/><path d="M8 16l4-5 3 3 5-7"/>'),
   escudo: svg('<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M12 8v4M12 16h.01"/>'),
+  marcador: svg('<path d="M6 3h12v18l-6-4.5L6 21z"/>'),
+  marcadorLleno: svg('<path d="M6 3h12v18l-6-4.5L6 21z" fill="currentColor"/>'),
 };
 
 function botonTema(ruta) {
@@ -76,7 +78,7 @@ function barraAbajo(ctx) {
   return html`<nav class="abajo" aria-label="Navegación">
   <a href="/"${activa(camino === '/')}><b>⌂</b>Inicio</a>
   <details class="abajo-menu"><summary${activa(!!seccion)}><b>☰</b>Secciones</summary>
-    <div class="menu-abajo">${BOARDS.map((b) => html`<a href="/b/${b.slug}">${b.nombre}</a>`)}${leer421(ctx)}</div>
+    <div class="menu-abajo">${BOARDS.map((b) => html`<a href="/b/${b.slug}">${b.nombre}</a>`)}<a href="/top">Más comentadas</a>${leer421(ctx)}</div>
   </details>
   <a href="${publicar}"><b>+</b>Publicar</a>
   ${user
@@ -173,6 +175,7 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
         <div class="menu-desplegable">
           ${user ? html`<a href="/respuestas">Respuestas${ctx.novedades ? ` (${ctx.novedades})` : ''}</a><a href="/guardados">Guardados</a><a href="/cuenta">Mi cuenta</a>` : html`<a href="/entrar">Entrar</a>`}
           ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas y costos</a>` : ''}
+          <a href="/top">Más comentadas</a>
           <a href="/normas">Normas</a>
           <a href="/formato">Formato</a>
           ${user ? html`<form method="post" action="/salir"><input type="hidden" name="_csrf" value="${csrf}"><button class="enlace">Salir</button></form>` : ''}
@@ -207,7 +210,7 @@ function listaHilos(ctx, hilos, { conTablon = false } = {}) {
     ? html`<p class="omitidas">${t.omitidas === 1 ? '1 respuesta omitida' : `${t.omitidas} respuestas omitidas`}. <a href="/h/${t.id}">Ver la publicación completa</a></p>`
     : ''}
   ${t.respuestas.map((p) => vistaPost(ctx, p, { resumen: true }))}
-  <p class="ayuda"><a href="/h/${t.id}#responder">Responder</a> · ${t.reply_count} respuestas${t.locked ? ' · cerrada' : ''}</p>`;
+  <p class="ayuda pie-resumen"><span><a href="/h/${t.id}#responder">Responder</a> · ${t.reply_count} respuestas${t.locked ? ' · cerrada' : ''}</span>${accionesListado(ctx, t)}</p>`;
     const separador = t === ignoradas[0] ? separadorIgnorados(ignoradas.length, PUBLICACIONES_IGNORADAS) : '';
     if (t.ignorado) {
       return html`${separador}<section class="hilo-resumen ignorado"><details><summary>${titulo}</summary>${resto}</details></section>`;
@@ -228,15 +231,28 @@ function marcaNovedad(t) {
   return '';
 }
 
+// Guardar (marcador) e ignorar la publicación desde un listado, sin entrar (2026-10-24, pedido del usuario).
+// Sin JavaScript: cada botón es un formulario que vuelve a la misma página. La propia no se ignora.
+function accionesListado(ctx, t) {
+  if (!ctx.user) return '';
+  const form = (accion, quitar, contenido, titulo) =>
+    html`<form class="accion" method="post" action="/h/${t.id}/${accion}"><input type="hidden" name="_csrf" value="${ctx.csrf}"><input type="hidden" name="volver" value="${ctx.ruta ?? '/'}">${quitar ? raw('<input type="hidden" name="quitar" value="1">') : ''}<button class="enlace" title="${titulo}" aria-label="${titulo}">${contenido}</button></form>`;
+  const ignorar = t.op_user_id === ctx.user.id || t.ignorado ? '' : form('ignorar', false, 'ignorar', 'Ignorar esta publicación');
+  const guardar = t.guardado
+    ? form('guardar', true, ICONOS.marcadorLleno, 'Guardada: tocá para sacarla de guardados')
+    : form('guardar', false, ICONOS.marcador, 'Guardar');
+  return html`<span class="acciones-listado">${ignorar}${guardar}</span>`;
+}
+
 // Catálogo: una ficha por hilo (asunto, comienzo del mensaje, respuestas).
-function catalogo(hilos, { conTablon = false } = {}) {
+function catalogo(ctx, hilos, { conTablon = false } = {}) {
   if (!hilos.length) return html`<p class="ayuda">No hay publicaciones todavía.</p>`;
   const ignoradas = hilos.filter((t) => t.ignorado);
   return html`<div class="catalogo">${hilos.map((t) => {
     const barra = html`<div class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span class="solo-eww"> · </span><span>${marcaFijada(t)}${marcaNovedad(t)} R: ${t.reply_count}</span></div>`;
     const titulo = html`<h2 class="ficha-titulo"><a class="ficha-asunto" href="/h/${t.id}"><strong>${t.subject}</strong></a>${t.ignorado ? marcaIgnorada(t) : ''}</h2>`;
     const resto = html`<div class="ficha-texto">${extracto(textoPlano(t.op_body), 180)}</div>
-    <div class="ficha-pie">${fecha(t.bumped_at)}${t.locked ? ' · cerrada' : ''}</div>`;
+    <div class="ficha-pie"><span class="ficha-fecha">${fecha(t.bumped_at)}${t.locked ? ' · cerrada' : ''}</span>${accionesListado(ctx, t)}</div>`;
     if (t.ignorado) {
       return html`${t === ignoradas[0] ? separadorIgnorados(ignoradas.length, PUBLICACIONES_IGNORADAS) : ''}<article class="ficha ignorado"><details><summary>${titulo}</summary>${barra}${resto}</details></article>`;
     }
@@ -254,7 +270,7 @@ function selectorVista(vista, ruta = '/') {
 }
 
 const listado = (ctx, hilos, vista, opciones) =>
-  vista === 'lista' ? listaHilos(ctx, hilos, opciones) : catalogo(hilos, opciones);
+  vista === 'lista' ? listaHilos(ctx, hilos, opciones) : catalogo(ctx, hilos, opciones);
 
 function paginacion(paginaActual, totalPaginas, parametros = {}) {
   if (totalPaginas <= 1) return '';
@@ -310,13 +326,71 @@ ${paginaActual < totalPaginas ? html`<a href="${url(paginaActual + 1)}" rel="nex
 }
 
 // La portada son los hilos de todos los tablones, ordenados por última respuesta.
-export function portada(ctx, { hilos, vista, pagina: actual, paginas, form }) {
+export function portada(ctx, { hilos, vista, pagina: actual, paginas, form, masComentadas }) {
   return html`<h1 class="solo-lector">Últimas publicaciones</h1>
 ${formHilo(ctx, null, form)}
 <p class="ayuda">Pseudoanónimo y moderado: cada mensaje se revisa antes de publicarse. <a href="/normas">Normas</a></p>
+<div class="portada-columnas">
+<div class="portada-principal">
 ${selectorVista(vista, ctx.ruta)}
 ${listado(ctx, hilos, vista, { conTablon: true })}
-${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}`;
+${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}
+</div>
+${masComentadas ? bloqueMasComentadas(masComentadas) : ''}
+</div>`;
+}
+
+const estadoHilo = (t) => (t.archived ? 'archivada' : t.locked ? 'cerrada' : 'abierta');
+
+// Bloque de la portada: las más comentadas, abiertas o archivadas. El cambio es instantáneo y sin
+// JavaScript: dos radios y el CSS muestra la lista del que está marcado (sin CSS se ven las dos).
+function bloqueMasComentadas({ abiertas, archivadas }) {
+  if (!abiertas.length && !archivadas.length) return '';
+  const lista = (clase, hilos, estado) => html`<ol class="top-lista ${clase}">${hilos.length
+    ? hilos.map((t) => html`<li${t.ignorado ? raw(' class="ignorado"') : ''}><a href="/h/${t.id}">${t.subject}</a> <span class="top-n">${t.reply_count}${t.locked && !t.archived ? ' · cerrada' : ''}</span></li>`)
+    : html`<li class="ayuda">Todavía no hay publicaciones ${estado}.</li>`}</ol>`;
+  return html`<aside class="mas-comentadas" aria-labelledby="titulo-top">
+  <div class="top-cabecera"><h2 id="titulo-top">Más comentadas</h2><a href="/top">ver todas</a></div>
+  <input type="radio" name="top-estado" id="top-abiertas" checked><input type="radio" name="top-estado" id="top-archivadas">
+  <div class="top-filtro" role="group" aria-label="Estado"><label for="top-abiertas">Abiertas</label><label for="top-archivadas">Archivadas</label></div>
+  ${lista('de-abiertas', abiertas, 'abiertas')}
+  ${lista('de-archivadas', archivadas, 'archivadas')}
+</aside>`;
+}
+
+const PERIODOS_TOP = [['siempre', 'Siempre'], ['anio', 'Último año'], ['mes', 'Último mes'], ['semana', 'Última semana']];
+const ESTADOS_TOP = [['todas', 'Todas'], ['abiertas', 'Abiertas'], ['archivadas', 'Archivadas']];
+
+// Página /top: ranking por respuestas, con filtros como links (sin formulario ni JavaScript).
+export function top(ctx, { hilos, filtros, pagina: actual, paginas, offset }) {
+  const url = (cambio) => {
+    const f = { ...filtros, ...cambio };
+    const p = new URLSearchParams();
+    if (f.periodo !== 'siempre') p.set('periodo', f.periodo);
+    if (f.estado !== 'todas') p.set('estado', f.estado);
+    if (f.seccion) p.set('seccion', f.seccion);
+    return `/top${p.size ? `?${p}` : ''}`;
+  };
+  const opcion = (cambio, nombre, activa) =>
+    html`<a href="${url(cambio)}"${activa ? raw(' aria-current="true"') : ''}>${nombre}</a>`;
+  const ignoradas = hilos.filter((t) => t.ignorado);
+  const parametros = Object.fromEntries(Object.entries(filtros).filter(([k, v]) => v && !(k === 'periodo' && v === 'siempre') && !(k === 'estado' && v === 'todas')));
+  return html`<header class="tablon-cabecera">
+  <h1>Más comentadas</h1>
+  <p>Las publicaciones con más respuestas, abiertas y archivadas.</p>
+</header>
+<nav class="filtros-top" aria-label="Filtros">
+  <p><span class="ayuda">Estado:</span> ${ESTADOS_TOP.map(([v, n]) => opcion({ estado: v }, n, filtros.estado === v))}</p>
+  <p><span class="ayuda">Período:</span> ${PERIODOS_TOP.map(([v, n]) => opcion({ periodo: v }, n, filtros.periodo === v))}</p>
+  <p><span class="ayuda">Sección:</span> ${opcion({ seccion: '' }, 'Todas', !filtros.seccion)} ${BOARDS.map((b) => opcion({ seccion: b.slug }, b.nombre, filtros.seccion === b.slug))}</p>
+</nav>
+${hilos.length
+  ? html`<ol class="ranking" start="${offset + 1}">${hilos.map((t) => html`${t === ignoradas[0] ? html`<li class="separador">${separadorIgnorados(ignoradas.length, PUBLICACIONES_IGNORADAS)}</li>` : ''}<li${t.ignorado ? raw(' class="ignorado"') : ''}>
+  <a class="ranking-asunto" href="/h/${t.id}">${t.subject}</a> <span class="ranking-r">R: ${t.reply_count}</span>
+  <span class="ranking-meta">${boardBySlug(t.board)?.nombre} · ${fecha(t.created_at)} <span class="estado-hilo ${estadoHilo(t)}">${estadoHilo(t)}</span>${t.ignorado ? html` <span class="marca-ignorado">ignorada</span>` : ''}</span>
+</li>`)}</ol>`
+  : html`<p class="ayuda">No hay publicaciones con respuestas para estos filtros.</p>`}
+${paginacion(actual, paginas, parametros)}`;
 }
 
 function bloqueoPublicar(ctx, accion) {
