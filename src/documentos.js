@@ -97,6 +97,9 @@ export function docHilo({ siteName, thread, board, posts, guardado = null }) {
     }
     const marcas = [post.esAutorOp ? 'OP' : null, post.sage ? 'sage' : null].filter(Boolean).join(' · ');
     bloques.push(t(3, `No.${post.id} · ID ${post.author_id}${marcas ? ` · ${marcas}` : ''} · ${fecha(post.created_at)}${post.ignorado ? ' · ignorado' : ''}`));
+    if (guardado !== null && !post.esMio && post.status === 'published') {
+      bloques.push({ ...link(`/p/${post.id}/ignorar`, 'Ignorar / dejar de ignorar'), solo: 'gemini' });
+    }
     if (post.ignorado) continue;
     // Las líneas que empiezan con > (sin ser >>123) son citas, igual que en la web.
     for (const linea of sinSpoilers(post.body).replace(/\r\n?/g, '\n').split('\n')) {
