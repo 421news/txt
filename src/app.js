@@ -705,6 +705,8 @@ export function createApp({
   const cantidadesSecciones = () => Object.fromEntries(contarPorSeccion.all().map((f) => [f.board, f.n]));
   const PERIODOS = { siempre: 0, anio: 365, mes: 30, semana: 7 };
   const ESTADOS = { todas: null, abiertas: 0, archivadas: 1 };
+  // Web, Gemini y texto comparten los filtros y la consulta: las primeras 25, sin paginación.
+  // Sin páginas por pedido del usuario: las 83 páginas del ranking original no tenían sentido.
   function datosTop(req) {
     const filtros = {
       periodo: Object.hasOwn(PERIODOS, req.query.periodo) ? req.query.periodo : 'siempre',
