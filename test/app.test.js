@@ -977,6 +977,13 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
     c.on('data', (x) => (d += x)).on('end', () => resolve(d)).on('error', reject);
   });
 
+  // Las nuevas páginas y su navegación también funcionan sobre TLS, sin certificado.
+  const inicio = await pedir('gemini://localhost/', false);
+  assert.ok(inicio.includes('=> /secciones Secciones') && inicio.includes('=> /top Más comentadas'));
+  assert.ok((await pedir('gemini://localhost/secciones', false)).includes('## Secciones'));
+  assert.ok((await pedir('gemini://localhost/top?estado=abiertas', false)).includes('[Actual] Abiertas'));
+  assert.ok(!inicio.includes('/h/1/guardar') && !inicio.includes('/p/1/ignorar'));
+
   // La lectura sigue igual y ofrece escribir; la versión texto no.
   assert.ok((await pedir('gemini://localhost/h/1')).includes('=> /h/1/responder Responder'));
   assert.ok(!(await s.texto('/h/1.txt')).includes('/responder'));
@@ -996,6 +1003,11 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
   assert.match((await s.pedir('/cuenta/gemini', { sesion: bob, datos: { codigo: codigo.toLowerCase() } })).headers.get('location'), /gemini-ok/);
   assert.match((await s.pedir('/cuenta/gemini', { sesion: ana, datos: { codigo } })).headers.get('location'), /gemini-invalido/);
   assert.ok((await s.texto('/cuenta', bob)).includes('Desvincular'));
+
+  // Las acciones de los listados usan las mismas rutas y la cuenta vinculada.
+  const listado = await pedir('gemini://localhost/b/cultura');
+  assert.ok(listado.includes('=> /h/1/guardar Guardar') && listado.includes('=> /p/1/ignorar Ignorar / dejar de ignorar'));
+  assert.ok(!(await s.texto('/b/cultura.txt', bob)).includes('/h/1/guardar'));
 
   // Ignorar: cada opción se cambia por separado; solo afecta a la cuenta vinculada.
   assert.ok(!(await pedir('gemini://localhost/h/1', false)).includes('/p/1/ignorar'));
@@ -1023,6 +1035,7 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
   assert.ok((await pedir('gemini://localhost/h/1/guardar')).includes('Guardada'));
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM guardados').get().n, 1);
   assert.ok((await pedir('gemini://localhost/h/1')).includes('=> /h/1/guardar/quitar Sacar de guardados'));
+  assert.ok((await pedir('gemini://localhost/')).includes('=> /h/1/guardar/quitar Sacar de guardados'));
   assert.ok((await pedir('gemini://localhost/guardados')).includes('=> /h/1 [Cultura] Libros'));
   assert.ok((await pedir('gemini://localhost/h/1/guardar/quitar')).includes('Sacada de guardados'));
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM guardados').get().n, 0);
@@ -1057,7 +1070,9 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
   s.db.prepare("UPDATE posts SET status = 'published' WHERE id = ?").run(respuesta);
 
   // Publicar en pasos: sección → asunto → mensaje.
-  assert.ok((await pedir('gemini://localhost/publicar')).includes('=> /publicar/musica Música'));
+  const secciones = await pedir('gemini://localhost/publicar');
+  assert.ok(secciones.includes('## Cultura\n=> /publicar/cultura Cultura\n=> /publicar/musica Música'));
+  assert.ok(secciones.includes('=> /publicar/actualidad Actualidad') && secciones.includes('## El foro'));
   assert.ok((await pedir('gemini://localhost/publicar/musica')).startsWith('10 '));
   assert.equal((await pedir('gemini://localhost/publicar/musica?Discos%20nuevos')).trim(), '30 gemini://localhost/publicar/musica/mensaje');
   assert.ok((await pedir('gemini://localhost/publicar/musica/mensaje')).startsWith('10 Discos nuevos'));
@@ -1935,9 +1950,31 @@ test('más comentadas: bloque en la portada con abiertas y archivadas, y /top co
   s.avanzar(8 * 86400);
   assert.ok((await s.texto('/top?periodo=semana')).includes('No hay publicaciones con respuestas'));
   assert.ok((await s.texto('/top?periodo=mes')).includes('Lecturas'));
+  // Gemini y .txt comparten ranking, filtros y límites con la web.
+  const { aGemtext } = await import('../src/documentos.js');
+  const gem = (query = {}, user = null) => aGemtext(s.documento('/top', query, user), { baseUrl: 'http://prueba' });
+  const ranking = gem();
+  assert.ok(ranking.indexOf('=> /h/1 Lecturas (3 respuestas)') < ranking.indexOf('=> /h/2 Balatro (1 respuesta)'));
+  assert.ok(!ranking.includes('Sin respuestas') && ranking.includes('archivada'));
+  assert.ok(!gem({ estado: 'abiertas' }).includes('Balatro'));
+  assert.ok(!gem({ seccion: 'juegos' }).includes('Lecturas'));
+  assert.ok(gem({ periodo: 'semana' }).includes('No hay publicaciones con respuestas'));
+  assert.ok(gem({ estado: 'invalido', periodo: '__proto__', seccion: 'invalida' }).includes('Lecturas'));
+  assert.ok(gem({ estado: 'archivadas', seccion: 'juegos' }).includes('=> /top?estado=archivadas&periodo=mes&seccion=juegos Último mes'));
+  assert.ok((await s.texto('/top.txt?estado=abiertas')).includes('/h/1.txt'));
+  assert.ok(!(await s.texto('/top.txt?estado=abiertas')).includes('/h/2.txt'));
+  const inicioGem = aGemtext(s.documento('/'), { baseUrl: 'http://prueba' });
+  assert.ok(inicioGem.includes('## Más comentadas\n\n### Abiertas'));
+  assert.ok(inicioGem.includes('### Archivadas\n=> /h/2 Balatro'));
+  const beaId = s.db.prepare("SELECT user_id FROM posts WHERE body = 'libro 0'").get().user_id;
+  s.db.prepare("INSERT INTO ignorados (user_id, entity_type, entity_id, ignored_at) VALUES (?, 'hilo', '1', 0)").run(beaId);
+  const ignorado = gem({}, { id: beaId });
+  assert.ok(ignorado.indexOf('=> /h/2 Balatro') < ignorado.indexOf('=> /h/1 [Ignorada] Lecturas'));
+  assert.ok(!gem().includes('[Ignorada]'), 'lo ignorado solo afecta a su cuenta');
   // Lo oculto no aparece; un filtro raro vuelve al default; solo la página sin filtros se indexa.
   s.db.prepare('UPDATE threads SET visible = 0 WHERE id = 1').run();
   assert.ok(!(await s.texto('/top?estado=cualquiera')).includes('>Lecturas<'));
+  assert.ok(!gem().includes('Lecturas'));
   assert.ok((await s.texto('/top?estado=abiertas')).includes('noindex'));
   assert.ok(!(await s.texto('/top')).includes('noindex'));
 });
@@ -1999,6 +2036,18 @@ test('secciones: barra agrupada a lo 4chan, índice con cantidades y las nuevas 
   assert.match(indice, /href="\/b\/actualidad">Actualidad<\/a> <span class="cod">\/act\/<\/span> <span class="n">· 1<\/span>/);
   assert.ok(indice.includes('<h2>El foro</h2>') && indice.includes('href="/top"'));
   assert.ok((await s.texto('/sitemap.xml')).includes('/secciones'));
+  // El índice de texto/Gemini conserva grupos, descripciones y cantidades, sin contar lo oculto.
+  const { aGemtext } = await import('../src/documentos.js');
+  const gem = () => aGemtext(s.documento('/secciones'), { baseUrl: 'http://prueba' });
+  assert.ok(gem().includes('### Vida real\n=> /b/vida-real'));
+  assert.ok(gem().includes('=> /b/actualidad Actualidad · /act/ · 1 publicación\nPolítica, noticias y el país.'));
+  assert.ok(gem().includes('### El foro'));
+  assert.ok((await s.texto('/secciones.txt')).includes('Actualidad · /act/ · 1 publicación'));
+  const terminal = await fetch(s.base + '/secciones', { headers: { 'user-agent': 'curl/8.0' } });
+  assert.match(terminal.headers.get('content-type'), /text\/plain/);
+  assert.ok((await terminal.text()).includes('Actualidad · /act/ · 1 publicación'));
+  s.db.prepare('UPDATE threads SET visible = 0 WHERE id = 1').run();
+  assert.ok(gem().includes('Actualidad · /act/ · 0 publicaciones'));
   // El ícono de Más comentadas está en la barra (el CSS lo muestra solo cuando no está la cuarta columna).
   assert.ok(indice.includes('class="icono top-icono" href="/top"'));
 });

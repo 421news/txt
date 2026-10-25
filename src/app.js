@@ -452,7 +452,7 @@ export function createApp({
     res.vary('User-Agent');
     if (req.method !== 'GET' || !TERMINAL.test(req.get('user-agent') ?? '')) return next();
     const [camino, query] = req.url.split('?');
-    if (/^\/(|b\/[a-z-]+|b\/[a-z-]+\/archivo|h\/\d+|normas|texto)$/.test(camino)) {
+    if (/^\/(|b\/[a-z-]+|b\/[a-z-]+\/archivo|h\/\d+|secciones|top|normas|texto)$/.test(camino)) {
       req.url = D.rutaTxt(camino) + (query ? `?${query}` : '');
     }
     next();
@@ -701,13 +701,35 @@ export function createApp({
     return { pagina, paginas, hilos: filas(porPagina, offset) };
   };
 
+  const contarPorSeccion = db.prepare('SELECT board, COUNT(*) AS n FROM threads WHERE visible = 1 GROUP BY board');
+  const cantidadesSecciones = () => Object.fromEntries(contarPorSeccion.all().map((f) => [f.board, f.n]));
+  const PERIODOS = { siempre: 0, anio: 365, mes: 30, semana: 7 };
+  const ESTADOS = { todas: null, abiertas: 0, archivadas: 1 };
+  function datosTop(req) {
+    const filtros = {
+      periodo: Object.hasOwn(PERIODOS, req.query.periodo) ? req.query.periodo : 'siempre',
+      estado: Object.hasOwn(ESTADOS, req.query.estado) ? req.query.estado : 'todas',
+      seccion: boardBySlug(req.query.seccion)?.slug ?? '',
+    };
+    const hilos = q.top.all({
+      yo: yo(req), archivo: ESTADOS[filtros.estado], board: filtros.seccion || null,
+      desde: PERIODOS[filtros.periodo] ? now() - PERIODOS[filtros.periodo] * DIA : 0,
+      limite: LIMITS.topPorPagina, offset: 0,
+    });
+    return { filtros, hilos };
+  }
+
   // Documento de una ruta de lectura, o null si no existe o no es visible para este lector. Lo usan
   // las rutas .txt y la cápsula Gemini (app.locals.documento; con usuario si hay certificado vinculado).
   function documento(req, ruta) {
     let m;
     if (ruta === '/') {
       const d = datosListado(req, q.contarPortada.get().n, (limite, desde) => q.hilosPortada.all({ yo: yo(req), limite, desde }));
-      return D.docPortada({ siteName, ...d });
+      const masComentadas = d.pagina === 1 ? {
+        abiertas: q.top.all({ yo: yo(req), archivo: 0, board: null, desde: 0, limite: LIMITS.topEnPortada, offset: 0 }),
+        archivadas: q.top.all({ yo: yo(req), archivo: 1, board: null, desde: 0, limite: LIMITS.topEnPortada, offset: 0 }),
+      } : null;
+      return D.docPortada({ siteName, ...d, masComentadas, userId: req.user?.id });
     }
     if ((m = ruta.match(/^\/b\/([a-z-]+)(\/archivo)?$/))) {
       const board = boardBySlug(m[1]);
@@ -717,7 +739,7 @@ export function createApp({
       const d = datosListado(req, q.contarTablon.get(board.slug, a).n, (limite, desde) =>
         q.hilosTablon.all({ yo: yo(req), board: board.slug, archivo: a, limite, desde }),
       );
-      return D.docTablon({ siteName, board, archivo, ...d });
+      return D.docTablon({ siteName, board, archivo, ...d, userId: req.user?.id });
     }
     if ((m = ruta.match(/^\/h\/(\d+)$/))) {
       const thread = hiloVisible(req, Number(m[1]));
@@ -727,6 +749,8 @@ export function createApp({
       return D.docHilo({ siteName, thread, board: boardBySlug(thread.board), posts, guardado });
     }
     if (ruta === '/guardados' && req.user) return D.docGuardados({ siteName, hilos: q.guardados.all({ yo: req.user.id }) });
+    if (ruta === '/secciones') return D.docSecciones({ siteName, cantidades: cantidadesSecciones() });
+    if (ruta === '/top') return D.docTop({ siteName, ...datosTop(req) });
     if (ruta === '/normas') return D.docNormas({ siteName });
     if (ruta === '/texto') return D.docTexto({ siteName, baseUrl, gemini: geminiUrl });
     return null;
@@ -802,7 +826,6 @@ export function createApp({
       q_g.nuevoCodigo.run(codigo, huella, now());
       return codigo;
     },
-    secciones: BOARDS,
     hilo: (id) => q.hilo.get(id) ?? null,
     tablon: (slug) => boardBySlug(slug) ?? null,
     opcionesIgnorar(user, id) {
@@ -852,7 +875,7 @@ export function createApp({
     res.redirect(303, '/cuenta#gemini');
   });
 
-  app.get(['/index.txt', '/b/:board.txt', '/b/:board/archivo.txt', '/h/:id.txt', '/normas.txt', '/texto.txt'], (req, res) => {
+  app.get(['/index.txt', '/b/:board.txt', '/b/:board/archivo.txt', '/h/:id.txt', '/secciones.txt', '/top.txt', '/normas.txt', '/texto.txt'], (req, res) => {
     const ruta = req.path === '/index.txt' ? '/' : req.path.replace(/\.txt$/, '');
     const bloques = documento(req, ruta);
     if (!bloques) return res.status(404).type('text/plain').send('No encontrado.\n');
@@ -963,10 +986,9 @@ export function createApp({
   );
 
   // Índice de secciones, con cuántas publicaciones visibles tiene cada una (activas y archivadas).
-  const contarPorSeccion = db.prepare('SELECT board, COUNT(*) AS n FROM threads WHERE visible = 1 GROUP BY board');
   app.get('/secciones', (req, res) => {
     res.locals.ctx.ruta = '/secciones';
-    const cantidades = Object.fromEntries(contarPorSeccion.all().map((f) => [f.board, f.n]));
+    const cantidades = cantidadesSecciones();
     enviar(res, {
       titulo: 'Secciones',
       descripcion: 'Todas las secciones de txt, el foro de texto de 421.',
@@ -976,22 +998,8 @@ export function createApp({
   });
 
   // Más comentadas: por cantidad de respuestas, con filtros de estado, sección y período (cuándo se abrió).
-  const PERIODOS = { siempre: 0, anio: 365, mes: 30, semana: 7 };
-  const ESTADOS = { todas: null, abiertas: 0, archivadas: 1 };
   app.get('/top', (req, res) => {
-    const filtros = {
-      periodo: Object.hasOwn(PERIODOS, req.query.periodo) ? req.query.periodo : 'siempre',
-      estado: Object.hasOwn(ESTADOS, req.query.estado) ? req.query.estado : 'todas',
-      seccion: boardBySlug(req.query.seccion)?.slug ?? '',
-    };
-    const params = {
-      yo: yo(req),
-      archivo: ESTADOS[filtros.estado],
-      board: filtros.seccion || null,
-      desde: PERIODOS[filtros.periodo] ? now() - PERIODOS[filtros.periodo] * DIA : 0,
-    };
-    // Solo las primeras 25 de cada filtro, sin páginas (pedido del usuario: 83 páginas no tenían sentido).
-    const hilos = q.top.all({ ...params, limite: LIMITS.topPorPagina, offset: 0 });
+    const { filtros, hilos } = datosTop(req);
     res.locals.ctx.ruta = rutaDeLaPagina(req, '/top');
     const filtrado = filtros.periodo !== 'siempre' || filtros.estado !== 'todas' || filtros.seccion;
     enviar(res, {

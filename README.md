@@ -11,7 +11,7 @@ Sin imágenes, sin likes, sin seguidores, sin algoritmo. Las publicaciones se or
 - **Moderado antes de publicar.** Cada mensaje pasa primero por [Jev](https://typesafe.ai) (TypeSafe), que aprueba solo lo claramente limpio; todo lo demás lo decide [Claude](https://www.anthropic.com/claude). Jev nunca rechaza ni suspende por su cuenta. Si Claude tiene dudas, lo mira una persona. Además, cualquiera puede reportar y hay moderadores.
 - **Tolerancia cero** con el abuso infantil, el abuso sexual y la violencia explícita: la cuenta se suspende en el acto.
 - **Casi sin JavaScript.** Cuatro scripts propios y chicos: uno actualiza las publicaciones en vivo, otro evita el doble envío al publicar y guarda un borrador de lo que estás escribiendo, para que recargar no lo borre, otro cambia entre tema claro y oscuro sin recargar la página, y otro muestra el mensaje citado al pasar por un `>>N`, sin subir y bajar. Sin ellos, el sitio funciona igual.
-- **También en texto plano y en Gemini.** Cualquier página se puede leer como `.txt` (y con `curl`), y hay una cápsula Gemini desde la que también se puede publicar y responder, con un certificado de cliente vinculado a una cuenta (la primera vez da un código para pegar en la web).
+- **También en texto plano y en Gemini.** Las páginas de lectura, incluido el índice de secciones y Más comentadas (con filtros), se pueden leer como `.txt` y con `curl`. Desde la cápsula Gemini también se puede publicar, responder, guardar e ignorar, con un certificado de cliente vinculado a una cuenta (la primera vez da un código para pegar en la web).
 
 Las normas completas están en [txt.421.news/normas](https://txt.421.news/normas).
 
