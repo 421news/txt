@@ -16,8 +16,9 @@ export const NORMAS = [
 // anunciarlo). Las aplican el filtro de Claude y el de Jev, y sus id quedan en /mod, pero NO salen en
 // /normas, en la versión texto ni en el menú de reportes. El autor de un rechazo no ve qué norma fue.
 export const NORMAS_INTERNAS = [
-  { id: 'lenguaje', titulo: 'Sin puteadas', texto: 'Nada de puteadas, malas palabras ni insultos, aunque no apunten a nadie.' },
-  { id: 'streaming', titulo: 'Sin canales de streaming argentinos', texto: 'Nada sobre los canales de streaming argentinos (Blender, Olga, Luzu y parecidos), su gente ni sus peleas.' },
+  // Aflojada el 2026-10-24 (pedido del usuario): solo las puteadas muy fuertes. Ese día también se sacó
+  // la norma 'streaming' (canales de streaming argentinos): los rechazos viejos guardan rule = streaming.
+  { id: 'lenguaje', titulo: 'Sin puteadas fuertes', texto: 'Las malas palabras comunes están bien. Las puteadas muy fuertes, no.' },
 ];
 
 // Las que usan los filtros: las públicas y las internas.

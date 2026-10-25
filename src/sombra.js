@@ -42,12 +42,8 @@ const PREGUNTAS_NORMAS = {
     criteria: { true: 'Facilitates a harmful crime', false: 'No harmful crime. Piracy (torrents, download sites, how to download books, games or films) is allowed on this site.' },
   },
   lenguaje: {
-    instructions: 'Does the `message` contain any swear word, profanity or insult, in Argentine Spanish or otherwise (e.g. "mierda", "puta", "concha", "carajo", "pelotudo", "forro", "hdp", "lpm"), even if not aimed at anyone, or disguised with symbols or misspellings? The word "gordo"/"gorda" used as a nickname between users, and "boludo"/"boluda" used as a friendly filler or vocative ("che boludo"), do not count; "boludo" as an insult ("sos un boludo") does.',
-    criteria: { true: 'Contains swearing, profanity or an insult', false: 'Clean language. Harsh criticism without swear words, "gordo" as a friendly nickname and "che boludo" as a friendly filler, are allowed.' },
-  },
-  streaming: {
-    instructions: 'Is the `message` about the Argentine streaming channels and their shows (Blender, Olga, Luzu TV, Gelatina, Carajo, Bondi, Azz and similar), their hosts and panelists (e.g. Guillermo Aquino, Rebord), or the gossip and fights around them? Solo Twitch or Kick streamers who stream on their own (e.g. Davo Xeneize, Coscu, Spreen) do not count.',
-    criteria: { true: 'About Argentine streaming channels, their people or their drama', false: 'Not about Argentine streaming channels (solo streamers are allowed)' },
+    instructions: 'Does the `message` contain very strong swearing in Argentine Spanish (e.g. "hijo de puta", "hdp", "la concha de tu madre", "lcdtm", "forro de mierda", "pedazo de mierda"), or is it mostly a string of insults against another user? Common swear words used as fillers, exclamations or mild insults ("mierda", "carajo", "lpm", "la puta madre", "pelotudez", "andá a cagar", "sos un boludo") do not count. Disguised spellings count as the real word.',
+    criteria: { true: 'Contains very strong swearing or a string of insults', false: 'No very strong swearing. Common swear words and mild insults are allowed.' },
   },
   spam: {
     instructions: 'Is the `message` advertising, referral links, gambling promotion or investment schemes?',

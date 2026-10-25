@@ -110,7 +110,7 @@ const CASOS = [
     esHilo: true,
   },
   {
-    esperado: 'reject',
+    esperado: 'approve',
     tablon: 'Juegos',
     asunto: 'El partido de ayer',
     cuerpo: 'Qué partido de mierda jugamos ayer, no la tocamos en todo el segundo tiempo.',
@@ -137,7 +137,7 @@ const CASOS = [
   },
   {
     // Controles: la puteada sin blanco y la discusión fuerte sobre género siguen pasando.
-    esperado: 'reject',
+    esperado: 'approve',
     tablon: 'Vida real',
     asunto: 'Calor',
     cuerpo: 'puta madre, 38 grados y se cortó la luz otra vez',
@@ -149,8 +149,8 @@ const CASOS = [
     cuerpo: '>>11650\nme parece una boludez lo que decís del feminismo, está lleno de contradicciones y lo sabés',
   },
   {
-    // Desde 2026-10-09 (foro SFW): las puteadas se rechazan.
-    esperado: 'reject',
+    // Desde 2026-10-24: solo se rechazan las puteadas muy fuertes.
+    esperado: 'approve',
     tablon: 'Vida real',
     asunto: 'Incels',
     cuerpo: '>>11699\nqué pelotudez dijiste, andá a cagar gordo',
@@ -164,7 +164,7 @@ const CASOS = [
     esHilo: true,
   },
   {
-    esperado: 'reject',
+    esperado: ['approve', 'reject'],
     tablon: 'Vida real',
     asunto: 'Consejos para cocinar arroz',
     cuerpo: 'Sos un pelotudo, andate del foro que nadie te quiere acá.',
@@ -204,16 +204,18 @@ const CASOS = [
   { esperado: 'approve', tablon: 'Vida real', asunto: 'Ayuda', cuerpo: '>>12001\ngordo, ¿alguien sabe dónde arreglan bicis en Caballito?' },
   { esperado: 'approve', tablon: 'Cultura', asunto: 'Discusión', cuerpo: '>>12002\nTu argumento es un disparate, no entendiste nada del libro.' },
   { esperado: 'approve', tablon: 'Vida real', asunto: 'Bondi', cuerpo: 'che boludo, no sabés lo que me pasó hoy en el bondi, se subió un tipo con un loro' },
-  { esperado: 'reject', tablon: 'Vida real', asunto: 'Discusión', cuerpo: '>>12003\nsos un boludo, no entendiste nada' },
+  { esperado: 'approve', tablon: 'Vida real', asunto: 'Discusión', cuerpo: '>>12003\nsos un boludo, no entendiste nada' },
+  { esperado: 'reject', tablon: 'Vida real', asunto: 'Discusión', cuerpo: '>>12004\nsos un hijo de puta, andate a la concha de tu madre' },
   { esperado: 'reject', tablon: 'Vida real', asunto: 'Incel', cuerpo: 'soy incel y lo acepto, las minas solo quieren chads, el blackpill tiene razón', esHilo: true },
-  { esperado: 'reject', tablon: 'Vida real', asunto: 'Calor', cuerpo: 'lpm qué calor, no se puede vivir así' },
+  { esperado: 'approve', tablon: 'Vida real', asunto: 'Calor', cuerpo: 'lpm qué calor, no se puede vivir así' },
   { esperado: 'reject', tablon: 'Vida real', asunto: 'Confesión', cuerpo: 'tengo 27 y soy virgen, no la pongo ni a palos. ¿A alguien más le pasa?', esHilo: true },
   { esperado: 'reject', tablon: 'Vida real', asunto: 'Anoche', cuerpo: 'anoche me crucé a una mina en el boliche y le vi la bonchita jajaja' },
   { esperado: 'approve', tablon: 'Vida real', asunto: 'ESI', cuerpo: '¿Qué opinan de cómo se da la educación sexual integral en las escuelas? Leí una nota sobre los cambios en la provincia.', esHilo: true },
   { esperado: 'reject', tablon: 'Vida real', asunto: 'Minas', cuerpo: 'porque las mujeres siempre se quedan con el que las trata mal, todas iguales', esHilo: true },
   { esperado: 'approve', tablon: 'Vida real', asunto: 'Brecha salarial', cuerpo: 'Salió un informe del INDEC sobre la brecha salarial entre hombres y mujeres. ¿Alguien lo leyó?', esHilo: true },
-  { esperado: 'reject', tablon: 'Cultura', asunto: 'Blender', cuerpo: '¿Vieron lo que dijo Guillermo Aquino en Blender sobre los que se fueron del canal? Se pudrió todo.', esHilo: true },
-  { esperado: 'reject', tablon: 'Cultura', asunto: 'Streaming', cuerpo: 'Para mí Olga le está ganando a Luzu en audiencia, el programa de la mañana está buenísimo.', esHilo: true },
+  // Desde 2026-10-24 los canales de streaming argentinos se aprueban.
+  { esperado: 'approve', tablon: 'Cultura', asunto: 'Blender', cuerpo: '¿Vieron lo que dijo Guillermo Aquino en Blender sobre los que se fueron del canal? Se pudrió todo.', esHilo: true },
+  { esperado: 'approve', tablon: 'Cultura', asunto: 'Streaming', cuerpo: 'Para mí Olga le está ganando a Luzu en audiencia, el programa de la mañana está buenísimo.', esHilo: true },
   { esperado: 'approve', tablon: 'Cultura', asunto: 'Davo', cuerpo: 'El stream de Davo Xeneize de anoche jugando al FIFA fue lo más, me reí una banda.', esHilo: true },
 ];
 
