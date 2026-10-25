@@ -933,6 +933,7 @@ export function createApp({
     const hilos = db.prepare('SELECT id, bumped_at FROM threads WHERE visible = 1 ORDER BY bumped_at DESC LIMIT 45000').all();
     const urls = [
       { loc: '/', lastmod: hilos[0] ? fecha(hilos[0].bumped_at) : null },
+      { loc: '/secciones' },
       ...BOARDS.map((b) => ({ loc: `/b/${b.slug}` })),
       ...['/normas', '/formato', '/texto', '/estadisticas', '/terminos', '/privacidad'].map((loc) => ({ loc })),
       ...hilos.map((t) => ({ loc: `/h/${t.id}`, lastmod: fecha(t.bumped_at) })),
@@ -960,6 +961,19 @@ export function createApp({
   app.get('/privacidad', (req, res) =>
     enviar(res, { titulo: 'Privacidad', canonical: '/privacidad', descripcion: 'Qué datos guarda txt, con quién se comparten y cómo ejercer tus derechos (Ley 25.326).', cuerpo: V.privacidad(res.locals.ctx) }),
   );
+
+  // Índice de secciones, con cuántas publicaciones visibles tiene cada una (activas y archivadas).
+  const contarPorSeccion = db.prepare('SELECT board, COUNT(*) AS n FROM threads WHERE visible = 1 GROUP BY board');
+  app.get('/secciones', (req, res) => {
+    res.locals.ctx.ruta = '/secciones';
+    const cantidades = Object.fromEntries(contarPorSeccion.all().map((f) => [f.board, f.n]));
+    enviar(res, {
+      titulo: 'Secciones',
+      descripcion: 'Todas las secciones de txt, el foro de texto de 421.',
+      cuerpo: V.secciones(res.locals.ctx, { cantidades }),
+      canonical: '/secciones',
+    });
+  });
 
   // Más comentadas: por cantidad de respuestas, con filtros de estado, sección y período (cuándo se abrió).
   const PERIODOS = { siempre: 0, anio: 365, mes: 30, semana: 7 };

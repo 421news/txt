@@ -1,6 +1,6 @@
 import { html, raw, esc } from './html.js';
 import { estatico } from './estaticos.js';
-import { BOARDS, LIMITS, boardBySlug } from './config.js';
+import { BOARDS, GRUPOS, LIMITS, boardBySlug } from './config.js';
 import { NORMAS } from './normas.js';
 import { formatear, extracto, textoPlano } from './format.js';
 import { URL_421 } from './nota421.js';
@@ -53,6 +53,7 @@ const ICONOS = {
   lista: svg('<path d="M9 5h12M9 12h12M9 19h12M3 5h1M3 12h1M3 19h1"/>'),
   lupa: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
   grafico: svg('<path d="M4 20V4M4 20h16"/><path d="M8 16l4-5 3 3 5-7"/>'),
+  podio: svg('<path d="M4 20h4v-6H4zM10 20h4V8h-4zM16 20h4V4h-4z"/>'),
   escudo: svg('<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M12 8v4M12 16h.01"/>'),
   marcador: svg('<path d="M6 3h12v18l-6-4.5L6 21z"/>'),
   marcadorLleno: svg('<path d="M6 3h12v18l-6-4.5L6 21z" fill="currentColor"/>'),
@@ -75,6 +76,15 @@ function botonTema(ruta, tema) {
 const leer421 = (ctx) =>
   html`<a class="leer-421" href="${URL_421}"${ctx.nota421 ? html` title="Última nota: ${ctx.nota421}"` : ''}>Leé 421 ↗</a>`;
 
+// Barra de secciones de escritorio, a lo 4chan (2026-10-24): [MADRE / cod / cod] por grupo, el nombre
+// completo en el title, y al final el índice. Termina abierta: el que la llama agrega "Leé 421" y cierra el <nav>.
+function barraSecciones(ruta) {
+  const actual = ruta.split('?')[0].match(/^\/b\/([^/]+)/)?.[1];
+  const link = (b, texto, clase) =>
+    html`<a href="/b/${b.slug}" title="${b.nombre}" class="${clase}${actual === b.slug ? ' activa' : ''}"${actual === b.slug ? raw(' aria-current="page"') : ''}>${texto}</a>`;
+  return html`<nav class="secciones" aria-label="Secciones">${GRUPOS.map(({ madre, hijas }) => html`<span class="grupo">[${link(madre, madre.nombre, 'madre')}${hijas.map((b) => html` / ${link(b, b.codigo, 'hija')}`)}]</span>`)}<span class="grupo">[<a href="/secciones" title="Todas las secciones"${ruta.split('?')[0] === '/secciones' ? raw(' class="activa" aria-current="page"') : ''}>índice</a>]</span>`;
+}
+
 // Barra inferior para celular (en escritorio se oculta por CSS y queda la barra de arriba).
 function barraAbajo(ctx) {
   const { user, csrf, ruta = '/', novedades } = ctx;
@@ -85,7 +95,7 @@ function barraAbajo(ctx) {
   return html`<nav class="abajo" aria-label="Navegación">
   <a href="/"${activa(camino === '/')}><b>⌂</b>Inicio</a>
   <details class="abajo-menu"><summary${activa(!!seccion)}><b>☰</b>Secciones</summary>
-    <div class="menu-abajo">${BOARDS.map((b) => html`<a href="/b/${b.slug}">${b.nombre}</a>`)}<a href="/top">Más comentadas</a>${leer421(ctx)}</div>
+    <div class="menu-abajo">${GRUPOS.map(({ madre, hijas }) => html`<a class="madre" href="/b/${madre.slug}">${madre.nombre}</a>${hijas.map((b) => html`<a class="hija" href="/b/${b.slug}">${b.nombre}</a>`)}`)}<a class="todas" href="/secciones">Todas las secciones</a><a href="/top">Más comentadas</a>${leer421(ctx)}</div>
   </details>
   <a href="${publicar}"><b>+</b>Publicar</a>
   ${user
@@ -169,6 +179,7 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
     <a class="marca" href="/">${siteName}</a>
     <div class="cab-der">
       <a class="icono lupa" href="/buscar" title="Buscar" aria-label="Buscar">${ICONOS.lupa}</a>
+      <a class="icono top-icono" href="/top" title="Más comentadas" aria-label="Más comentadas">${ICONOS.podio}</a>
       <a class="icono stats" href="/estadisticas" title="Estadísticas" aria-label="Estadísticas">${ICONOS.grafico}</a>
       ${botonTema(ruta, tema)}
       ${ctx.pendientesMod
@@ -190,14 +201,14 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
       </details>
     </div>
   </div>
-  <nav class="secciones">${BOARDS.map((b) => html` <a href="/b/${b.slug}"${(ruta.split('?')[0].match(/^\/b\/([^/]+)/)?.[1] === b.slug) ? raw(' class="activa"') : ''}>${b.nombre}</a>`)}<span class="sep-421" aria-hidden="true">|</span>${leer421(ctx)}</nav>
+  ${barraSecciones(ruta)}${leer421(ctx)}</nav>
 </header>
 <main>
 ${aviso && Object.hasOwn(AVISOS, aviso) ? html`<p class="aviso">${AVISOS[aviso]}</p>` : ''}
 ${cuerpo}
 </main>
 ${barraAbajo(ctx)}
-<footer class="pie"><a href="/normas">Normas</a> · <a href="/formato">Formato</a> · <a href="/texto">Versión texto</a> · <a href="/estadisticas">Estadísticas</a> · <a href="/terminos">Términos</a> · <a href="/privacidad">Privacidad</a>${ctx.codigoUrl ? html` · <a href="${ctx.codigoUrl}">Código fuente</a> (AGPLv3)` : ''}</footer>
+<footer class="pie"><a href="/secciones">Secciones</a> · <a href="/normas">Normas</a> · <a href="/formato">Formato</a> · <a href="/texto">Versión texto</a> · <a href="/estadisticas">Estadísticas</a> · <a href="/terminos">Términos</a> · <a href="/privacidad">Privacidad</a>${ctx.codigoUrl ? html` · <a href="${ctx.codigoUrl}">Código fuente</a> (AGPLv3)` : ''}</footer>
 </body>
 </html>`}`;
 }
@@ -336,7 +347,6 @@ ${paginaActual < totalPaginas ? html`<a href="${url(paginaActual + 1)}" rel="nex
 export function portada(ctx, { hilos, vista, pagina: actual, paginas, form, masComentadas }) {
   return html`<h1 class="solo-lector">Últimas publicaciones</h1>
 ${formHilo(ctx, null, form)}
-<p class="ayuda">Pseudoanónimo y moderado: cada mensaje se revisa antes de publicarse. <a href="/normas">Normas</a></p>
 ${selectorVista(vista, ctx.ruta)}
 <div class="portada-con-top">
 <div class="portada-listado">${listado(ctx, hilos, vista, { conTablon: true })}</div>
@@ -361,6 +371,18 @@ function bloqueMasComentadas({ abiertas, archivadas }) {
   ${lista('de-abiertas', abiertas, 'abiertas')}
   ${lista('de-archivadas', archivadas, 'archivadas')}
 </aside>`;
+}
+
+// Índice de secciones (/secciones), como la home de 4chan: las cuatro madre con las que cuelgan, y txt aparte.
+export function secciones(ctx, { cantidades }) {
+  const item = (b) => html`<li><a href="/b/${b.slug}">${b.nombre}</a> <span class="cod">/${b.codigo}/</span> <span class="n">· ${(cantidades[b.slug] ?? 0).toLocaleString('es-AR')}</span><span class="desc">${b.descripcion}</span></li>`;
+  return html`<header class="tablon-cabecera">
+  <h1>Secciones</h1>
+  <p>Pseudoanónimo y moderado: cada mensaje se revisa antes de publicarse. <a href="/normas">Normas</a></p>
+</header>
+<div class="indice-secciones">${GRUPOS.map(({ madre, hijas }) => html`<section class="cat"><h2>${madre.slug === 'txt' ? 'El foro' : madre.nombre}</h2><ul>${[madre, ...hijas].map(item)}</ul></section>`)}
+<section class="cat"><h2>Además</h2><ul><li><a href="/top">Más comentadas</a> <span class="cod">/top</span><span class="desc">Las ${LIMITS.topPorPagina} publicaciones con más respuestas.</span></li></ul></section>
+</div>`;
 }
 
 const PERIODOS_TOP = [['siempre', 'Siempre'], ['anio', 'Último año'], ['mes', 'Último mes'], ['semana', 'Última semana']];
@@ -429,7 +451,7 @@ function formHilo(ctx, board, { asunto = '', cuerpo = '', tablon = '', error, ab
       ? ''
       : html`<label>Tablón <select name="tablon" required>
       <option value="">Elegí dónde publicarlo</option>
-      ${BOARDS.map((b) => html`<option value="${b.slug}"${b.slug === tablon ? raw(' selected') : ''}>${b.nombre}</option>`)}
+      ${GRUPOS.map(({ madre, hijas }) => html`<optgroup label="${madre.nombre}">${[madre, ...hijas].map((b) => html`<option value="${b.slug}"${b.slug === tablon ? raw(' selected') : ''}>${b.nombre}</option>`)}</optgroup>`)}
     </select></label>`}
     <label>Asunto <input type="text" name="asunto" maxlength="${LIMITS.asunto}" required value="${asunto}"></label>
     <label>Mensaje <textarea name="cuerpo" rows="8" maxlength="${LIMITS.cuerpo}" required>${cuerpo}</textarea></label>

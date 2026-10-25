@@ -1902,7 +1902,7 @@ test('más comentadas: bloque en la portada con abiertas y archivadas, y /top co
   t.after(s.cerrar);
   const ana = await s.entrar('ana');
   const bea = await s.entrar('bea');
-  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Libros', cuerpo: 'qué leen' } });
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Lecturas', cuerpo: 'qué leen' } });
   s.avanzar(700);
   await s.pedir('/b/juegos/hilo', { sesion: ana, datos: { asunto: 'Balatro', cuerpo: 'adicto' } });
   s.avanzar(700);
@@ -1921,23 +1921,23 @@ test('más comentadas: bloque en la portada con abiertas y archivadas, y /top co
   assert.ok(bloque.includes('id="top-abiertas" checked') && bloque.includes('for="top-archivadas"'));
   const abiertas = bloque.slice(bloque.indexOf('de-abiertas'), bloque.indexOf('de-archivadas'));
   const archivadas = bloque.slice(bloque.indexOf('de-archivadas'));
-  assert.ok(abiertas.includes('Libros') && !abiertas.includes('Balatro'));
-  assert.ok(archivadas.includes('Balatro') && !archivadas.includes('Libros'));
+  assert.ok(abiertas.includes('Lecturas') && !abiertas.includes('Balatro'));
+  assert.ok(archivadas.includes('Balatro') && !archivadas.includes('Lecturas'));
   assert.ok(!bloque.includes('Sin respuestas'));
 
   // /top: por respuestas, con estado y sección; el período cuenta desde que se abrió.
   const top = await s.texto('/top');
-  assert.ok(top.indexOf('Libros') < top.indexOf('Balatro') && !top.includes('>Sin respuestas<'));
+  assert.ok(top.indexOf('Lecturas') < top.indexOf('Balatro') && !top.includes('>Sin respuestas<'));
   assert.ok(top.includes('archivada') && top.includes('R: 3'));
   assert.ok(!top.includes('class="paginas"'), 'solo las primeras 25, sin páginas');
   assert.ok(!(await s.texto('/top?estado=abiertas')).includes('Balatro'));
-  assert.ok(!(await s.texto('/top?seccion=juegos')).includes('>Libros<'));
+  assert.ok(!(await s.texto('/top?seccion=juegos')).includes('>Lecturas<'));
   s.avanzar(8 * 86400);
   assert.ok((await s.texto('/top?periodo=semana')).includes('No hay publicaciones con respuestas'));
-  assert.ok((await s.texto('/top?periodo=mes')).includes('Libros'));
+  assert.ok((await s.texto('/top?periodo=mes')).includes('Lecturas'));
   // Lo oculto no aparece; un filtro raro vuelve al default; solo la página sin filtros se indexa.
   s.db.prepare('UPDATE threads SET visible = 0 WHERE id = 1').run();
-  assert.ok(!(await s.texto('/top?estado=cualquiera')).includes('>Libros<'));
+  assert.ok(!(await s.texto('/top?estado=cualquiera')).includes('>Lecturas<'));
   assert.ok((await s.texto('/top?estado=abiertas')).includes('noindex'));
   assert.ok(!(await s.texto('/top')).includes('noindex'));
 });
@@ -1980,4 +1980,25 @@ test('guardar e ignorar desde la ficha, sin entrar a la publicación', async (t)
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 0);
   // En la vista lista también están.
   assert.ok((await s.texto('/?vista=lista', bea)).includes('action="/h/1/ignorar"'));
+});
+
+test('secciones: barra agrupada a lo 4chan, índice con cantidades y las nuevas andan', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/actualidad/hilo', { sesion: ana, datos: { asunto: 'Elecciones', cuerpo: 'qué onda' } });
+  const portada = await s.texto('/b/actualidad');
+  // Madre con el nombre, las que cuelgan con el código y el nombre en el title; la activa marcada.
+  assert.match(portada, /\[<a href="\/b\/vida-real" title="Vida real" class="madre">Vida real<\/a> \/ <a href="\/b\/actualidad" title="Actualidad" class="hija activa" aria-current="page">act<\/a>/);
+  assert.ok(portada.includes('<a href="/b/txt" title="txt" class="madre">txt</a>') && portada.includes('href="/secciones"'));
+  assert.ok((await s.texto('/', ana)).includes('<optgroup label="Vida real">'));
+  // La línea de "pseudoanónimo y moderado" ya no está en la portada; sí en el índice, con el link a las normas.
+  assert.ok(!(await s.texto('/')).includes('Pseudoanónimo y moderado'));
+  const indice = await s.texto('/secciones');
+  assert.ok(indice.includes('Pseudoanónimo y moderado') && indice.includes('href="/normas"'));
+  assert.match(indice, /href="\/b\/actualidad">Actualidad<\/a> <span class="cod">\/act\/<\/span> <span class="n">· 1<\/span>/);
+  assert.ok(indice.includes('<h2>El foro</h2>') && indice.includes('href="/top"'));
+  assert.ok((await s.texto('/sitemap.xml')).includes('/secciones'));
+  // El ícono de Más comentadas está en la barra (el CSS lo muestra solo cuando no está la cuarta columna).
+  assert.ok(indice.includes('class="icono top-icono" href="/top"'));
 });
