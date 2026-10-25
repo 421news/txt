@@ -1751,7 +1751,8 @@ test('ignorar hilo: al final de la portada y la sección, colapsado y por creaci
   await ignorar(s, ana, 1, { hilo: '1' });
   await ignorar(s, ana, 2, { hilo: '1' });
   for (const ruta of ['/', '/b/cultura', '/?vista=lista', '/b/cultura?vista=lista']) {
-    const pagina = await s.texto(ruta, ana);
+    // Sin el bloque de más comentadas, que va arriba de las fichas y también linkea publicaciones.
+    const pagina = (await s.texto(ruta, ana)).replace(/<aside class="ficha mas-comentadas"[\s\S]*?<\/aside>/, '');
     // Nuevo; después las ignoradas por creación (Medio es más nueva que Viejo aunque Viejo tenga bump).
     assert.ok(antes(pagina, 'href="/h/3"', 'class="separador-ignorados"'), ruta);
     assert.ok(antes(pagina, 'class="separador-ignorados"', 'href="/h/2"') && antes(pagina, 'href="/h/2"', 'href="/h/1"'), ruta);
@@ -1912,7 +1913,9 @@ test('más comentadas: bloque en la portada con abiertas y archivadas, y /top co
 
   // Portada: las dos listas, con radios para cambiar sin JavaScript; las sin respuestas no entran.
   const portada = await s.texto('/');
-  const bloque = portada.slice(portada.indexOf('class="mas-comentadas"'), portada.indexOf('</aside>'));
+  const bloque = portada.slice(portada.indexOf('class="ficha mas-comentadas"'), portada.indexOf('</aside>'));
+  // Es una ficha más del catálogo, antes de las publicaciones.
+  assert.ok(portada.indexOf('class="ficha mas-comentadas"') < portada.indexOf('<article class="ficha'));
   assert.ok(bloque.includes('id="top-abiertas" checked') && bloque.includes('for="top-archivadas"'));
   const abiertas = bloque.slice(bloque.indexOf('de-abiertas'), bloque.indexOf('de-archivadas'));
   const archivadas = bloque.slice(bloque.indexOf('de-archivadas'));

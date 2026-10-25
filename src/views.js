@@ -245,10 +245,17 @@ function accionesListado(ctx, t) {
 }
 
 // Catálogo: una ficha por hilo (asunto, comienzo del mensaje, respuestas).
-function catalogo(ctx, hilos, { conTablon = false } = {}) {
+// `extra`: una ficha más (el bloque de más comentadas), después de las fijadas.
+function catalogo(ctx, hilos, { conTablon = false, extra = '' } = {}) {
   if (!hilos.length) return html`<p class="ayuda">No hay publicaciones todavía.</p>`;
   const ignoradas = hilos.filter((t) => t.ignorado);
-  return html`<div class="catalogo">${hilos.map((t) => {
+  const fijadas = hilos.findIndex((t) => !t.fijado || t.ignorado);
+  return html`<div class="catalogo">${hilos.map((t, i) => {
+    const antes = extra && i === (fijadas === -1 ? hilos.length : fijadas) ? extra : '';
+    return html`${antes}${ficha(t)}`;
+  })}${extra && fijadas === -1 ? extra : ''}</div>`;
+
+  function ficha(t) {
     const barra = html`<div class="ficha-barra"><span>${conTablon ? boardBySlug(t.board)?.nombre : `No.${t.op_post_id}`}</span><span class="solo-eww"> · </span><span>${marcaFijada(t)}${marcaNovedad(t)} R: ${t.reply_count}</span></div>`;
     const titulo = html`<h2 class="ficha-titulo"><a class="ficha-asunto" href="/h/${t.id}"><strong>${t.subject}</strong></a>${t.ignorado ? marcaIgnorada(t) : ''}</h2>`;
     const resto = html`<div class="ficha-texto">${extracto(textoPlano(t.op_body), 180)}</div>
@@ -257,7 +264,7 @@ function catalogo(ctx, hilos, { conTablon = false } = {}) {
       return html`${t === ignoradas[0] ? separadorIgnorados(ignoradas.length, PUBLICACIONES_IGNORADAS) : ''}<article class="ficha ignorado"><details><summary>${titulo}</summary>${barra}${resto}</details></article>`;
     }
     return html`<article class="ficha${t.fijado ? ' fijada' : ''}">${barra}${titulo}${resto}</article>`;
-  })}</div>`;
+  }
 }
 
 // Los links pasan por /vista, que guarda la elección en una cookie y vuelve acá. El `volver` va sin
@@ -330,14 +337,10 @@ export function portada(ctx, { hilos, vista, pagina: actual, paginas, form, masC
   return html`<h1 class="solo-lector">Últimas publicaciones</h1>
 ${formHilo(ctx, null, form)}
 <p class="ayuda">Pseudoanónimo y moderado: cada mensaje se revisa antes de publicarse. <a href="/normas">Normas</a></p>
-<div class="portada-columnas">
-<div class="portada-principal">
 ${selectorVista(vista, ctx.ruta)}
-${listado(ctx, hilos, vista, { conTablon: true })}
-${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}
-</div>
-${masComentadas ? bloqueMasComentadas(masComentadas) : ''}
-</div>`;
+${vista === 'lista' && actual === 1 && masComentadas ? bloqueMasComentadas(masComentadas) : ''}
+${listado(ctx, hilos, vista, { conTablon: true, extra: vista !== 'lista' && actual === 1 && masComentadas ? bloqueMasComentadas(masComentadas) : '' })}
+${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}`;
 }
 
 const estadoHilo = (t) => (t.archived ? 'archivada' : t.locked ? 'cerrada' : 'abierta');
@@ -349,8 +352,8 @@ function bloqueMasComentadas({ abiertas, archivadas }) {
   const lista = (clase, hilos, estado) => html`<ol class="top-lista ${clase}">${hilos.length
     ? hilos.map((t) => html`<li${t.ignorado ? raw(' class="ignorado"') : ''}><a href="/h/${t.id}">${t.subject}</a> <span class="top-n">${t.reply_count}${t.locked && !t.archived ? ' · cerrada' : ''}</span></li>`)
     : html`<li class="ayuda">Todavía no hay publicaciones ${estado}.</li>`}</ol>`;
-  return html`<aside class="mas-comentadas" aria-labelledby="titulo-top">
-  <div class="top-cabecera"><h2 id="titulo-top">Más comentadas</h2><a href="/top">ver todas</a></div>
+  return html`<aside class="ficha mas-comentadas" aria-labelledby="titulo-top">
+  <div class="ficha-barra"><h2 id="titulo-top">Más comentadas</h2><a href="/top">ver todas</a></div>
   <input type="radio" name="top-estado" id="top-abiertas" checked><input type="radio" name="top-estado" id="top-archivadas">
   <div class="top-filtro" role="group" aria-label="Estado"><label for="top-abiertas">Abiertas</label><label for="top-archivadas">Archivadas</label></div>
   ${lista('de-abiertas', abiertas, 'abiertas')}

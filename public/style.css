@@ -671,24 +671,23 @@ mark { background: var(--fosforo); color: var(--fondo); padding: 0 0.1rem; }
 }
 
 /* --- Más comentadas (2026-10-24) ------------------------------------------------------ */
-/* Bloque de la portada: arriba del listado, a todo el ancho (al costado le sacaba una columna al catálogo).
+/* Bloque de la portada: una ficha más del catálogo (doble ancho si entran dos columnas), después de las fijadas.
    Abiertas/Archivadas son dos radios: el CSS muestra la lista del marcado, sin JavaScript. */
-.mas-comentadas { border: 1px solid var(--borde); background: var(--caja); padding: 0.4rem 0.7rem 0.5rem; margin: 0 0 1rem; order: -1; }
-.portada-columnas { display: flex; flex-direction: column; }
-.top-cabecera { display: flex; align-items: baseline; gap: 0.8rem; flex-wrap: wrap; }
-.top-cabecera h2 { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fosforo); }
-.top-cabecera a { margin-left: auto; font-size: 0.75rem; }
+@media (min-width: 34rem) { .catalogo .mas-comentadas { grid-column: span 2; } }
+.lista-hilos .mas-comentadas, main > .mas-comentadas { margin: 0 0 1rem; }
+.mas-comentadas .ficha-barra h2 { margin: 0; font: inherit; }
+.mas-comentadas .ficha-barra a { text-transform: none; }
 .mas-comentadas input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
-.top-filtro { display: flex; gap: 0.3rem; margin: 0.35rem 0 0.2rem; }
-.top-filtro label { cursor: pointer; font-size: 0.72rem; text-transform: uppercase; padding: 0.05rem 0.45rem; border: 1px solid var(--borde); color: var(--tenue); }
+.top-filtro { display: flex; gap: 0.6rem; font-size: 0.72rem; }
+.top-filtro label { cursor: pointer; color: var(--tenue); text-transform: uppercase; }
 #top-abiertas:checked ~ .top-filtro label[for="top-abiertas"],
-#top-archivadas:checked ~ .top-filtro label[for="top-archivadas"] { background: var(--fosforo); border-color: var(--fosforo); color: var(--fondo); }
+#top-archivadas:checked ~ .top-filtro label[for="top-archivadas"] { color: var(--fosforo); text-decoration: underline; }
 #top-abiertas:focus-visible ~ .top-filtro label[for="top-abiertas"],
 #top-archivadas:focus-visible ~ .top-filtro label[for="top-archivadas"] { outline: 2px solid var(--fosforo); outline-offset: 2px; }
 #top-abiertas:checked ~ .de-archivadas, #top-archivadas:checked ~ .de-abiertas { display: none; }
-.top-lista { margin: 0.2rem 0 0; padding-left: 1.6rem; columns: 2 18rem; column-gap: 2rem; font-size: 0.82rem; }
-.top-lista li { margin: 0.15rem 0; break-inside: avoid; color: var(--tenue); }
-.top-lista a { color: var(--texto); text-decoration: none; overflow-wrap: anywhere; }
+.top-lista { margin: 0; padding-left: 1.4rem; font-size: 0.8rem; line-height: 1.45; }
+.top-lista li { margin: 0.1rem 0; color: var(--tenue); }
+.top-lista a { color: var(--fosforo); text-decoration: none; overflow-wrap: anywhere; }
 .top-lista a:hover { color: var(--fosforo); text-decoration: underline; }
 .top-lista .ignorado a { color: var(--tenue); }
 .top-n { font-size: 0.72rem; color: var(--tenue); white-space: nowrap; }
