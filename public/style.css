@@ -671,10 +671,19 @@ mark { background: var(--fosforo); color: var(--fondo); padding: 0 0.1rem; }
 }
 
 /* --- Más comentadas (2026-10-24) ------------------------------------------------------ */
-/* Bloque de la portada: una ficha más del catálogo (doble ancho si entran dos columnas), después de las fijadas.
+/* Bloque de la portada: con pantalla ancha es una cuarta columna al lado de la grilla de 3 (la portada se ensancha
+   para que las fichas queden del mismo tamaño); más angosto, una ficha arriba del listado.
    Abiertas/Archivadas son dos radios: el CSS muestra la lista del marcado, sin JavaScript. */
-@media (min-width: 34rem) { .catalogo .mas-comentadas { grid-column: span 2; } }
-.lista-hilos .mas-comentadas, main > .mas-comentadas { margin: 0 0 1rem; }
+.portada-con-top { display: flex; flex-direction: column; }
+.portada-con-top > .mas-comentadas { order: -1; margin: 0 0 0.75rem; min-height: 0; }
+.portada-con-top > .mas-comentadas li:nth-child(n+6) { display: none; } /* arriba del listado, 5 alcanzan */
+@media (min-width: 70rem) {
+  main:has(> .portada-con-top) { max-width: 67.5rem; }
+  body:has(.portada-con-top) .cabecera { padding-inline: max(1rem, calc((100vw - 67.5rem) / 2)); }
+  .portada-con-top { display: grid; grid-template-columns: minmax(0, 1fr) 14.5rem; gap: 0.75rem; align-items: start; }
+  .portada-con-top > .mas-comentadas { order: 0; margin: 0; position: sticky; top: 6rem; }
+  .portada-con-top > .mas-comentadas li:nth-child(n+6) { display: list-item; }
+}
 .mas-comentadas .ficha-barra h2 { margin: 0; font: inherit; }
 .mas-comentadas .ficha-barra a { text-transform: none; }
 .mas-comentadas input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }

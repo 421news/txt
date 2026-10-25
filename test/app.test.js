@@ -1914,8 +1914,6 @@ test('más comentadas: bloque en la portada con abiertas y archivadas, y /top co
   // Portada: las dos listas, con radios para cambiar sin JavaScript; las sin respuestas no entran.
   const portada = await s.texto('/');
   const bloque = portada.slice(portada.indexOf('class="ficha mas-comentadas"'), portada.indexOf('</aside>'));
-  // Es una ficha más del catálogo, antes de las publicaciones.
-  assert.ok(portada.indexOf('class="ficha mas-comentadas"') < portada.indexOf('<article class="ficha'));
   assert.ok(bloque.includes('id="top-abiertas" checked') && bloque.includes('for="top-archivadas"'));
   const abiertas = bloque.slice(bloque.indexOf('de-abiertas'), bloque.indexOf('de-archivadas'));
   const archivadas = bloque.slice(bloque.indexOf('de-archivadas'));

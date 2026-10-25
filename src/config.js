@@ -28,6 +28,6 @@ export const LIMITS = {
   // Reportes de personas distintas que sacan un post de la vista hasta que lo revise un mod.
   reportesParaOcultar: 3,
   // Más comentadas: cuántas en el bloque de la portada y por página en /top.
-  topEnPortada: 5,
+  topEnPortada: 10,
   topPorPagina: 25,
 };
