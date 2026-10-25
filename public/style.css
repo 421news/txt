@@ -119,7 +119,7 @@ input[type='checkbox']:focus-visible {
 .cabecera {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 3; /* por encima de los botones de las fichas (z-index 1), que si no pasan por arriba al scrollear */
   display: flex;
   flex-wrap: wrap;
   align-items: center;
