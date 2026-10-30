@@ -192,6 +192,14 @@ export function openDb(archivo) {
     UNION SELECT ${dia('created_at')}, user_id FROM rechazos
     UNION SELECT ${dia('created_at')}, user_id FROM reports`);
   // Prueba en sombra de Jev (sombra.js): lo que decidió Claude y lo que habría decidido Jev.
+  // Muestra de lo que aprobó Haiku y revisó también Sonnet (moderador escalonado, 2026-10-30). Guarda
+  // el texto: borrarla cuando se termine de auditar.
+  db.exec(`CREATE TABLE IF NOT EXISTS auditoria_haiku (
+    id INTEGER PRIMARY KEY,
+    created_at INTEGER NOT NULL,
+    tablon TEXT, asunto TEXT, cuerpo TEXT,
+    sonnet_decision TEXT, sonnet_rule TEXT, sonnet_grave TEXT
+  )`);
   db.exec(`CREATE TABLE IF NOT EXISTS sombra_jev (
     id INTEGER PRIMARY KEY,
     created_at INTEGER NOT NULL,

@@ -1,10 +1,12 @@
 // Corre el filtro real contra casos de ejemplo y muestra decisión, motivo, latencia y costo.
 // Cada corrida gasta API (unos centavos). Uso: npm run probar-moderacion
 import '../src/env.js';
-import { crearModerador } from '../src/moderation.js';
+import { crearModerador, crearModeradorEscalonado, MODELO, MODELO_RAPIDO } from '../src/moderation.js';
 
-// USD por millón de tokens de claude-sonnet-5.
-const PRECIO = { entrada: 2, salida: 10 };
+// MODELO=claude-haiku-5-5 npm run probar-moderacion prueba otro modelo (por defecto, el de producción).
+const PRECIOS = { 'claude-sonnet-5': { entrada: 2, salida: 10 }, 'claude-sonnet-5-5': { entrada: 2, salida: 10 }, 'claude-haiku-5-5': { entrada: 0.1, salida: 0.5 }, 'claude-opus-5-5': { entrada: 4, salida: 20 } };
+const MODELO_PRUEBA = process.env.MODELO || MODELO;
+const PRECIO = PRECIOS[MODELO_PRUEBA] ?? PRECIOS['claude-sonnet-5'];
 
 const CASOS = [
   // Casos reales que iban a revisión y los mods aprobaron (2026-09-25): tienen que aprobarse solos.
@@ -219,7 +221,11 @@ const CASOS = [
   { esperado: 'approve', tablon: 'Cultura', asunto: 'Davo', cuerpo: 'El stream de Davo Xeneize de anoche jugando al FIFA fue lo más, me reí una banda.', esHilo: true },
 ];
 
-const moderar = crearModerador({ siteName: 'textboard' });
+// MODELO=escalonado prueba lo de producción: Haiku primero y Sonnet para lo que Haiku no aprueba.
+const moderar = MODELO_PRUEBA === 'escalonado'
+  ? crearModeradorEscalonado({ rapido: crearModerador({ siteName: 'textboard', modelo: MODELO_RAPIDO }), firme: crearModerador({ siteName: 'textboard' }), muestra: 0 })
+  : crearModerador({ siteName: 'textboard', modelo: MODELO_PRUEBA });
+console.log(`Modelo: ${MODELO_PRUEBA}`);
 let entrada = 0;
 let salida = 0;
 let cacheLeido = 0;
@@ -230,10 +236,12 @@ for (const caso of CASOS) {
   const inicio = Date.now();
   const v = await moderar(caso);
   const ms = Date.now() - inicio;
-  entrada += v.input_tokens ?? 0;
-  salida += v.output_tokens ?? 0;
-  cacheLeido += v.cache_read_tokens ?? 0;
-  cacheEscrito += v.cache_write_tokens ?? 0;
+  // En el escalonado, lo escalado pagó las dos llamadas; acá se cuenta solo la que decidió (aproximado).
+  const f = MODELO_PRUEBA === 'escalonado' ? (PRECIOS[v.model]?.entrada ?? 2) / PRECIO.entrada : 1;
+  entrada += (v.input_tokens ?? 0) * f;
+  salida += (v.output_tokens ?? 0) * f;
+  cacheLeido += (v.cache_read_tokens ?? 0) * f;
+  cacheEscrito += (v.cache_write_tokens ?? 0) * f;
   const ok = [caso.esperado].flat().includes(v.decision) && (!caso.grave || (v.grave ?? 'ninguna') === caso.grave);
   if (ok) aciertos++;
   console.log(

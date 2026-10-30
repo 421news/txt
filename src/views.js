@@ -778,7 +778,7 @@ ${paginacion(pagina, paginas, { q: texto })}`
   : ''}`;
 }
 
-export function sombra(ctx, { activa, mixto = false, total, cruce, gravesEscapados, desacuerdos, costo, simulacion = [], umbral = null }) {
+export function sombra(ctx, { activa, mixto = false, total, cruce, gravesEscapados, desacuerdos, costo, simulacion = [], umbral = null, auditoria = null }) {
   // Solo se comparan los mensajes que vieron los dos: los que Jev aprobó solo ('no-consultado') no cuentan.
   const comparados = cruce.filter((c) => c.c !== 'no-consultado').reduce((s, c) => s + c.n, 0);
   const soloJev = cruce.filter((c) => c.c === 'no-consultado').reduce((s, c) => s + c.n, 0);
@@ -811,6 +811,11 @@ export function sombra(ctx, { activa, mixto = false, total, cruce, gravesEscapad
 <h2>Cruce de decisiones</h2>
 <table class="cruce"><tr><th>Claude</th><th>Jev</th><th>Mensajes</th></tr>
 ${cruce.map((c) => html`<tr${c.c === c.j ? '' : raw(' class="distinto"')}><td>${c.c}</td><td>${c.j}</td><td>${c.n}</td></tr>`)}</table>
+${auditoria ? html`<h2>Haiku primero, Sonnet si duda</h2>
+<p class="ayuda">Claude modera con Haiku 5.5 y escala a Sonnet todo lo que Haiku no aprueba. Una muestra de lo que Haiku aprobó la revisa también Sonnet: si Sonnet lo hubiera frenado, aparece acá (eso es lo que se coló).</p>
+<ul><li>Aprobados por Haiku y auditados: <strong>${auditoria.total}</strong></li>
+<li>Sonnet los hubiera frenado: <strong>${auditoria.desacuerdos.length}</strong>${auditoria.total ? ` (${Math.round((auditoria.desacuerdos.length / auditoria.total) * 1000) / 10}%)` : ''}</li></ul>
+${auditoria.desacuerdos.length ? html`<ul class="resultados">${auditoria.desacuerdos.map((r) => html`<li><span class="ayuda">${fecha(r.created_at)} · Sonnet: ${r.sonnet_decision}${r.sonnet_rule && r.sonnet_rule !== 'ninguna' ? ` (${r.sonnet_rule})` : ''}${r.sonnet_grave && r.sonnet_grave !== 'ninguna' ? ` · grave ${r.sonnet_grave}` : ''}</span><p class="res-fragmento">${extracto(r.cuerpo ?? '', 280)}</p></li>`)}</ul>` : ''}` : ''}
 ${simulacion.length ? html`<h2>Simulación de umbral</h2>
 <p class="ayuda">Sobre los ${simulacion[0].consultas} mensajes que Jev le pasó a Claude. Con cada umbral, Jev aprobaría solo los que tengan todas las normas por debajo (y ningún grave). "Se colarían" = los que Jev aprobaría pero Claude rechazó o mandó a revisión.${umbral != null ? ` Umbral actual: ${umbral}.` : ''}</p>
 <table class="cruce"><tr><th>Umbral</th><th>Consultas a Claude que se ahorran</th><th>Se colarían</th></tr>

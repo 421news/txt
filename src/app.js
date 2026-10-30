@@ -1497,6 +1497,11 @@ export function createApp({
       .prepare(`SELECT * FROM sombra_jev WHERE error IS NULL AND claude_decision != 'no-consultado' AND claude_decision != jev_decision ORDER BY id DESC LIMIT 40`)
       .all();
     const costo = ((total.tokens ?? 0) * PRECIO_JEV_POR_MTOK) / 1e6;
+    // Auditoría del moderador escalonado: muestra de lo que aprobó Haiku, revisada también por Sonnet.
+    const auditoria = {
+      total: db.prepare('SELECT COUNT(*) AS n FROM auditoria_haiku').get().n,
+      desacuerdos: db.prepare(`SELECT * FROM auditoria_haiku WHERE sonnet_decision != 'approve' ORDER BY id DESC LIMIT 40`).all(),
+    };
     // Simulación de umbrales sobre lo que Jev le pasó a Claude (ver simularUmbrales en sombra.js).
     const simulacion = simularUmbrales(
       db.prepare(`SELECT created_at, cuerpo, claude_decision, claude_rule, claude_grave, respuestas FROM sombra_jev WHERE error IS NULL AND respuestas IS NOT NULL AND claude_decision IN ('approve', 'reject', 'queue')`).all(),
@@ -1504,7 +1509,7 @@ export function createApp({
     enviar(res, {
       titulo: 'Prueba Jev',
       indexar: false,
-      cuerpo: V.sombra(res.locals.ctx, { activa: !!sombra || jevActivo, mixto: jevActivo, total, cruce, gravesEscapados, desacuerdos, costo, simulacion, umbral: umbralJev }),
+      cuerpo: V.sombra(res.locals.ctx, { activa: !!sombra || jevActivo, mixto: jevActivo, total, cruce, gravesEscapados, desacuerdos, costo, simulacion, umbral: umbralJev, auditoria }),
     });
   });
 

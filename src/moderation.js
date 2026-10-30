@@ -114,3 +114,28 @@ export function crearModerador({ siteName, client, modelo = MODELO }) {
     }
   };
 }
+
+// --- Moderador escalonado (2026-10-30, decisión del usuario, por costo) ---------------------------
+// Haiku 5.5 mira primero: si aprueba, se publica. Si rechaza, manda a revisión o falla, decide el de
+// siempre (MODELO): la última palabra en todo lo que no se aprueba, graves incluidos, es de Sonnet.
+// Medido con probar-moderacion: Haiku solo 40/42 (los 2 errores fueron frenar de más jerga argentina);
+// escalonado 42/42, ~US$0,0004 por mensaje contra ~US$0,003 en producción.
+// Auditoría: una muestra de lo que Haiku aprueba la revisa también Sonnet en segundo plano, sin
+// demorar la publicación, y `alAuditar` guarda el resultado (tabla auditoria_haiku, panel /mod/sombra).
+export const MODELO_RAPIDO = 'claude-haiku-5-5';
+
+export function crearModeradorEscalonado({ rapido, firme, muestra = 0.1, alAuditar = () => {}, azar = Math.random }) {
+  return async function moderar(datos) {
+    const v1 = await rapido(datos);
+    if (v1.decision !== 'approve') {
+      const v2 = await firme(datos);
+      return { ...v2, escalado: { decision: v1.decision, rule: v1.rule } };
+    }
+    if (azar() < muestra) {
+      firme(datos)
+        .then((v2) => alAuditar(datos, v1, v2))
+        .catch((err) => console.error('[moderación] auditoría de Haiku falló:', err?.message ?? err));
+    }
+    return v1;
+  };
+}
