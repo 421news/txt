@@ -7,7 +7,7 @@ import { createApp } from './app.js';
 import { crearModerador } from './moderation.js';
 import { crearGoogle } from './google.js';
 import { crearCapsula } from './gemini.js';
-import { crearSombra, crearFiltroMixto } from './sombra.js';
+import { crearSombra, crearFiltroMixto, UMBRAL_LIMPIO } from './sombra.js';
 import { crearUltimaNota } from './nota421.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
@@ -39,6 +39,9 @@ const baseUrl = process.env.BASE_URL || `http://localhost:${port}`;
 const db = openDb(path.resolve(raiz, process.env.DB_PATH || 'data/textboard.db'));
 
 const jev = process.env.TYPESAFE_API_KEY ? crearSombra({ apiKey: process.env.TYPESAFE_API_KEY }) : null;
+// Umbral del filtro mixto: por debajo, Jev aprueba solo. JEV_UMBRAL lo cambia sin tocar código (elegirlo con
+// la simulación de /mod/sombra); fuera de 0,05–0,9 o vacío queda en UMBRAL_LIMPIO.
+const umbralJev = (() => { const u = Number(process.env.JEV_UMBRAL); return u >= 0.05 && u <= 0.9 ? u : UMBRAL_LIMPIO; })();
 const app = createApp({
   db,
   ultimaNota421: crearUltimaNota(),
@@ -49,8 +52,9 @@ const app = createApp({
   google,
   loginDePrueba: !google && !production,
   // Con clave de TypeSafe, filtro mixto: Jev primero, Claude solo para lo que Jev ve dudoso.
-  moderar: jev ? crearFiltroMixto({ jev, claude: crearModerador({ siteName }) }) : crearModerador({ siteName }),
+  moderar: jev ? crearFiltroMixto({ jev, claude: crearModerador({ siteName }), umbral: umbralJev }) : crearModerador({ siteName }),
   jevActivo: !!jev,
+  umbralJev,
   alcanceKey: process.env.ALCANCE_KEY || null,
   geminiUrl: process.env.GEMINI_URL || null,
   codigoUrl: process.env.CODIGO_URL || null,

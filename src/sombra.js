@@ -124,6 +124,20 @@ export function limpioParaJev(respuestas, umbral = UMBRAL_LIMPIO) {
   return Math.max(...valores) < umbral;
 }
 
+// Qué hubiera pasado con otro umbral, sobre los mensajes que Jev le pasó a Claude (los que Jev ya
+// aprobó solo siguen aprobados con cualquier umbral más alto). `sePasan` = los que Jev habría aprobado
+// solo pero Claude rechazó o mandó a revisión: lo que se colaría. Panel /mod/sombra (2026-10-30).
+export const UMBRALES_SIMULADOS = [0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6];
+
+export function simularUmbrales(filas, umbrales = UMBRALES_SIMULADOS) {
+  const vistas = filas.map((f) => ({ ...f, resp: typeof f.respuestas === 'string' ? JSON.parse(f.respuestas) : f.respuestas }));
+  return umbrales.map((umbral) => {
+    const aprobaria = vistas.filter((f) => limpioParaJev(f.resp, umbral));
+    const sePasan = aprobaria.filter((f) => f.claude_decision === 'reject' || f.claude_decision === 'queue');
+    return { umbral, consultas: vistas.length, ahorradas: aprobaria.length, sePasan };
+  });
+}
+
 export function crearFiltroMixto({ jev, claude, umbral = UMBRAL_LIMPIO }) {
   return async function moderar(datos) {
     let r;

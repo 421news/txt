@@ -38,3 +38,18 @@ test('filtro mixto: lo limpio lo aprueba Jev solo; lo dudoso y las fallas los de
   assert.match(v3.jev.error, /500/);
   assert.equal(llamadas, 2);
 });
+
+test('simularUmbrales: cuenta lo que Jev aprobaría solo y lo que se colaría de lo que Claude frenó', async () => {
+  const { simularUmbrales } = await import('../src/sombra.js');
+  const filas = [
+    { claude_decision: 'approve', respuestas: JSON.stringify(respuestas({ lenguaje: 0.3 })) },
+    { claude_decision: 'reject', respuestas: JSON.stringify(respuestas({ sexual: 0.45 })) },
+    { claude_decision: 'queue', respuestas: respuestas({ autolesion: 0.25 }, 'ninguna') },
+    { claude_decision: 'reject', respuestas: respuestas({ odio: 0.1 }, 'menores') },
+  ];
+  const [a, b, c] = simularUmbrales(filas, [0.2, 0.35, 0.5]);
+  assert.deepEqual([a.ahorradas, a.sePasan.length], [0, 0]);
+  assert.deepEqual([b.ahorradas, b.sePasan.length], [2, 1]); // aprueba el de 0,3 y se cuela el queue de 0,25
+  assert.deepEqual([c.ahorradas, c.sePasan.length], [3, 2]); // un grave nunca lo aprueba Jev
+  assert.equal(c.consultas, 4);
+});

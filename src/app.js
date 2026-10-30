@@ -7,7 +7,7 @@ import * as V from './views.js';
 import { extracto, textoPlano, sinSpoilers } from './format.js';
 import * as D from './documentos.js';
 import { completarAutores } from './db.js';
-import { decisionJev, PRECIO_JEV_POR_MTOK } from './sombra.js';
+import { decisionJev, PRECIO_JEV_POR_MTOK, simularUmbrales } from './sombra.js';
 import { PRECIO_CLAUDE } from './moderation.js';
 
 const DIA = 86_400_000;
@@ -65,6 +65,7 @@ export function createApp({
   sombra = null,
   alcanceKey = null,
   jevActivo = false,
+  umbralJev = null,
   // Título de la última nota de 421 para el link de la barra (src/nota421.js); null = sin título.
   ultimaNota421 = () => null,
 }) {
@@ -1496,10 +1497,14 @@ export function createApp({
       .prepare(`SELECT * FROM sombra_jev WHERE error IS NULL AND claude_decision != 'no-consultado' AND claude_decision != jev_decision ORDER BY id DESC LIMIT 40`)
       .all();
     const costo = ((total.tokens ?? 0) * PRECIO_JEV_POR_MTOK) / 1e6;
+    // Simulación de umbrales sobre lo que Jev le pasó a Claude (ver simularUmbrales en sombra.js).
+    const simulacion = simularUmbrales(
+      db.prepare(`SELECT created_at, cuerpo, claude_decision, claude_rule, claude_grave, respuestas FROM sombra_jev WHERE error IS NULL AND respuestas IS NOT NULL AND claude_decision IN ('approve', 'reject', 'queue')`).all(),
+    );
     enviar(res, {
       titulo: 'Prueba Jev',
       indexar: false,
-      cuerpo: V.sombra(res.locals.ctx, { activa: !!sombra || jevActivo, mixto: jevActivo, total, cruce, gravesEscapados, desacuerdos, costo }),
+      cuerpo: V.sombra(res.locals.ctx, { activa: !!sombra || jevActivo, mixto: jevActivo, total, cruce, gravesEscapados, desacuerdos, costo, simulacion, umbral: umbralJev }),
     });
   });
 

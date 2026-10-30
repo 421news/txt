@@ -778,7 +778,7 @@ ${paginacion(pagina, paginas, { q: texto })}`
   : ''}`;
 }
 
-export function sombra(ctx, { activa, mixto = false, total, cruce, gravesEscapados, desacuerdos, costo }) {
+export function sombra(ctx, { activa, mixto = false, total, cruce, gravesEscapados, desacuerdos, costo, simulacion = [], umbral = null }) {
   // Solo se comparan los mensajes que vieron los dos: los que Jev aprobó solo ('no-consultado') no cuentan.
   const comparados = cruce.filter((c) => c.c !== 'no-consultado').reduce((s, c) => s + c.n, 0);
   const soloJev = cruce.filter((c) => c.c === 'no-consultado').reduce((s, c) => s + c.n, 0);
@@ -811,6 +811,11 @@ export function sombra(ctx, { activa, mixto = false, total, cruce, gravesEscapad
 <h2>Cruce de decisiones</h2>
 <table class="cruce"><tr><th>Claude</th><th>Jev</th><th>Mensajes</th></tr>
 ${cruce.map((c) => html`<tr${c.c === c.j ? '' : raw(' class="distinto"')}><td>${c.c}</td><td>${c.j}</td><td>${c.n}</td></tr>`)}</table>
+${simulacion.length ? html`<h2>Simulación de umbral</h2>
+<p class="ayuda">Sobre los ${simulacion[0].consultas} mensajes que Jev le pasó a Claude. Con cada umbral, Jev aprobaría solo los que tengan todas las normas por debajo (y ningún grave). "Se colarían" = los que Jev aprobaría pero Claude rechazó o mandó a revisión.${umbral != null ? ` Umbral actual: ${umbral}.` : ''}</p>
+<table class="cruce"><tr><th>Umbral</th><th>Consultas a Claude que se ahorran</th><th>Se colarían</th></tr>
+${simulacion.map((s) => html`<tr${s.sePasan.length ? raw(' class="distinto"') : ''}><td>${s.umbral}</td><td>${s.ahorradas} (${s.consultas ? Math.round((s.ahorradas / s.consultas) * 100) : 0}%)</td><td>${s.sePasan.length}</td></tr>`)}</table>
+${simulacion.filter((s) => s.sePasan.length).map((s) => html`<details><summary>Umbral ${s.umbral}: ${s.sePasan.length} se colarían</summary><ul class="resultados">${s.sePasan.slice(-40).reverse().map((r) => html`<li><span class="ayuda">${fecha(r.created_at)} · Claude: ${r.claude_decision}${r.claude_rule && r.claude_rule !== 'ninguna' ? ` (${r.claude_rule})` : ''}${r.claude_grave && r.claude_grave !== 'ninguna' ? ` · grave ${r.claude_grave}` : ''}</span><p class="res-fragmento">${extracto(r.cuerpo ?? '', 280)}</p></li>`)}</ul></details>`)}` : ''}
 ${gravesEscapados.length ? html`<h2>Graves que se le escaparon a Jev</h2><ul class="resultados">${gravesEscapados.map(fila)}</ul>` : ''}
 <h2>Últimos desacuerdos</h2>
 ${desacuerdos.length ? html`<ul class="resultados">${desacuerdos.map(fila)}</ul>` : html`<p class="ayuda">Ninguno todavía.</p>`}`;
