@@ -1235,7 +1235,7 @@ export function horda(ctx) {
 <input id="nombre-campo" name="nombre" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done">
 <p class="nombre-ayuda">DE 3 A 12: LETRAS, NUMEROS, PUNTO, GUION O GUION BAJO. ES UNICO Y LO VE TODO EL MUNDO. SE PUEDE CAMBIAR UNA VEZ POR DIA.</p>
 <p id="nombre-aviso" class="nombre-aviso" role="status"></p>
-<div class="nombre-botones"><button type="submit" id="nombre-guardar">GUARDAR</button><button type="button" id="nombre-cancelar">ESC  CANCELAR</button></div>
+<div class="nombre-botones"><button type="submit" id="nombre-guardar">GUARDAR</button><button type="button" id="nombre-cancelar">CANCELAR</button></div>
 </form>
 <script src="${estatico('horda.js')}"></script>
 </body>

@@ -14,6 +14,13 @@
 
 html, body { margin: 0; height: 100%; background: #0b0b0d; overflow: hidden; }
 canvas { display: block; cursor: crosshair; }
+/* Táctil (2026-10-31): el juego se encarga de todos los gestos; el navegador no hace zoom, scroll, "tirar
+   para recargar", selección ni menú de mantener apretado. En pantallas de alta densidad el canvas (que va a
+   1 píxel por píxel CSS) se agranda sin suavizar. */
+body { overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+canvas { touch-action: none; }
+.nombre input { -webkit-user-select: text; user-select: text; }   /* en iOS, sin esto no se puede escribir */
+@media (pointer: coarse) { canvas { image-rendering: pixelated; } }
 
 /* Nombre para la tabla (2026-10-31): formulario HTML encima del canvas, con la misma estética que
    los botones de píxel del juego (marco de 2 px, sin bordes redondeados ni sombras). */

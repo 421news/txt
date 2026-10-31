@@ -55,7 +55,10 @@ const blockedByWalls = (x, y, r) => wallAt(x - r, y - r) || wallAt(x + r, y - r)
 
 // Proyección isométrica 2:1. ISO_OX corre todo a la derecha para que no haya x negativas.
 const ISO_OX = MH * T, GUN_Z = 15;   // altura del pecho del mago: de ahí salen los hechizos
-const ZOOM = 1.25;   // cámara más cerca: el mundo se dibuja agrandado, el HUD no
+// Cámara más cerca: el mundo se dibuja agrandado, el HUD no. En pantallas bajas (un celular acostado tiene
+// ~390 px de alto) se aleja, para ver al menos ~440 px de mundo de alto. Se calcula en render().
+let ZOOM = 1.25;
+const zoomPara = (h) => Math.min(1.25, Math.max(0.8, h / 440));
 const isoX = (x, y) => x - y + ISO_OX;
 const isoY = (x, y) => (x + y) / 2;
 
@@ -237,6 +240,8 @@ function compactEnemies() {
 // Los enemigos de a pie dejan su esqueleto en el piso CORPSE_LIFE segundos (de juego) y se van tramándose
 // en los últimos 4. Anillo de MC: si se llena, el más viejo deja su lugar al nuevo.
 const MC = 300, CORPSE_LIFE = 20;
+// Si en táctil el juego anda lento, los esqueletos duran 6 s (son decoración; la simulación no cambia).
+let vidaEsq = CORPSE_LIFE;
 const cxw = new Float32Array(MC), cyw = new Float32Array(MC), ctm = new Float32Array(MC);
 const cty = new Uint8Array(MC), cfl = new Uint8Array(MC);
 let nC = 0, cHead = 0;
@@ -408,7 +413,7 @@ function spendPoint(w) {
     unlocked[w] = true;
     const free = slots.indexOf(-1);
     if (free >= 0) { slots[free] = w; player.weapon = w; }
-    say('Nueva habilidad: ' + WEAPONS[w].name + (free >= 0 ? ' (tecla ' + (free + 1) + ')' : ''));
+    say('Nueva habilidad: ' + WEAPONS[w].name + (free >= 0 ? (touchMode ? ' (casilla ' : ' (tecla ') + (free + 1) + ')' : ''));
   } else { const kind = PERKS[WEAPONS[w].id][level[w]]; level[w]++; say(`${WEAPONS[w].name}: ${PERK_NAME[kind]}`, 3); }
 }
 // Ficha de cada habilidad: descripción y stats con L mejoras tomadas (los mismos números que usa fire()).
@@ -511,6 +516,12 @@ const entrarBtn = { x: 0, y: 0, w: 0, h: 0 };   // botón de entrar a txt (sin s
 const volverBtn = { x: 0, y: 0, w: 0, h: 0 };   // VOLVER A TXT (menú, pausa y final); w = 0 cuando no está a la vista
 const tablaBtn = { x: 0, y: 0, w: 0, h: 0 };    // MEJORES MAGOS (menú)
 const nombreBtn = { x: 0, y: 0, w: 0, h: 0 };   // TU NOMBRE (menú y final, con sesión)
+// Táctil: lo que en la computadora es una tecla.
+const jugarBtn = { x: 0, y: 0, w: 0, h: 0 }, seguirBtn = { x: 0, y: 0, w: 0, h: 0 }, arbolBtn = { x: 0, y: 0, w: 0, h: 0 };
+const pausaBtn = { x: 0, y: 0, w: 0, h: 0 }, subirBtn = { x: 0, y: 0, w: 0, h: 0 }, fichaBox = { x: 0, y: 0, w: 0, h: 0 };
+const slotBoxes = [0, 1, 2, 3, 4].map(() => ({ x: 0, y: 0, w: 0, h: 0 }));   // casillas de la barra de hechizos
+const slotBtns = [0, 1, 2, 3, 4].map(() => ({ x: 0, y: 0, w: 0, h: 0 }));    // "poner en la casilla N" en la ficha
+let treeSel = -1;                                                            // habilidad elegida en el árbol (táctil)
 // Tabla en el menú de inicio (M o el botón): se pide cada vez que se abre.
 const menuTop = { open: false, phase: 'idle', top: [], mine: -1 };
 function volverATxt() { location.href = '/'; }
@@ -731,7 +742,7 @@ function fire() {
   } else if (id === 'frascos') {
     // Frasco de fuego: va al punto del mouse (entre 60 y 240 px) en arco.
     let tx = player.tx, ty = player.ty;
-    if (!usingMouse || tx === undefined) { tx = player.x + Math.cos(a) * 160; ty = player.y + Math.sin(a) * 160; }
+    if (!(usingMouse || touchAiming) || tx === undefined) { tx = player.x + Math.cos(a) * 160; ty = player.y + Math.sin(a) * 160; }
     const dd = Math.hypot(tx - player.x, ty - player.y), k = Math.min(240, Math.max(60, dd)) / (dd || 1);
     tx = player.x + (tx - player.x) * k; ty = player.y + (ty - player.y) * k;
     for (let k = 0; k <= multi; k++) {
@@ -754,7 +765,7 @@ function fire() {
   else if (id === 'bola') fan(multi, (b) => rockets.push({ x: mx, y: my, vox: 0, voy: 0, vx: Math.cos(b) * 430, vy: Math.sin(b) * 430, life: 2, dmg: 18 * m, R: 75 * rad }));
   else if (id === 'ventisca') {
     let tx = player.tx, ty = player.ty;
-    if (!usingMouse || tx === undefined) { tx = player.x + Math.cos(a) * 200; ty = player.y + Math.sin(a) * 200; }
+    if (!(usingMouse || touchAiming) || tx === undefined) { tx = player.x + Math.cos(a) * 200; ty = player.y + Math.sin(a) * 200; }
     storms.push({ x: tx, y: ty, t: 0, next: 0, left: 28 + perk(w, 'shards') * 10, m, R: 150 * rad });
     say('¡Ventisca!', 1);
   }
@@ -793,7 +804,7 @@ addEventListener('keydown', (e) => {
     if (e.code === 'KeyV' && state === 'pause') { volverATxt(); return; }
     if (e.code === 'KeyM' && state === 'menu') { alternarTablaMenu(); return; }
     if (e.code === 'KeyN' && board.logueado && (state === 'menu' || (state === 'over' && board.phase !== 'enviando'))) { e.preventDefault(); abrirNombre(); return; }
-    if (e.code === 'Enter' && (state === 'menu' || (state === 'over' && board.phase !== 'enviando'))) { menuTop.open = false; reset(); state = 'play'; }
+    if (e.code === 'Enter' && (state === 'menu' || (state === 'over' && board.phase !== 'enviando'))) jugar();
     if (e.code === 'KeyP' && (state === 'play' || state === 'pause')) state = state === 'play' ? 'pause' : 'play';
   }
   if (state === 'tree') {
@@ -817,22 +828,120 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; usingMouse = true; });
+function jugar() { menuTop.open = false; reset(); state = 'play'; if (touchMode) pedirPantalla = true; }
+// Clic o toque sobre los botones dibujados en el canvas. Devuelve true si lo atendió. Los botones que no
+// están a la vista tienen w = 0 (se reinician en cada drawHud), así que no responden.
+function clickUI() {
+  const final = state === 'over' && board.phase !== 'enviando';
+  if (state === 'over' && board.phase === 'entrar' && inBox(entrarBtn)) { irAEntrar(); return true; }
+  if ((state === 'menu' || state === 'pause' || final) && inBox(volverBtn)) { volverATxt(); return true; }
+  if (state === 'menu' && inBox(tablaBtn)) { alternarTablaMenu(); return true; }
+  if ((state === 'menu' || final) && inBox(nombreBtn)) { abrirNombre(); return true; }
+  if ((state === 'menu' || final) && inBox(jugarBtn)) { jugar(); return true; }
+  if (state === 'pause' && inBox(seguirBtn)) { state = 'play'; return true; }
+  if (state === 'pause' && inBox(arbolBtn)) { openTree(); return true; }
+  if (state === 'tree') {
+    if (inBox(backBtn)) { state = treeFrom; treeSel = -1; return true; }
+    if (touchMode) {
+      // Táctil: un toque elige la habilidad (se ve su ficha) y la ficha tiene los botones para subirla
+      // y para ponerla en una casilla. Tocar afuera la suelta.
+      if (treeSel >= 0) {
+        if (inBox(subirBtn)) { spendPoint(treeSel); return true; }
+        const k = slotBtns.findIndex(inBox);
+        if (k >= 0) { bindSlot(k, treeSel); return true; }
+        if (inBox(fichaBox)) return true;
+      }
+      const c = treeHit(); treeSel = c ? c.idx : -1; return true;
+    }
+    const c = treeHit(); if (c) spendPoint(c.idx); return true;
+  }
+  if (state === 'play' && inBox(treeBtn)) { openTree(); return true; }
+  if (state === 'play' && inBox(pausaBtn)) { state = 'pause'; return true; }
+  if (state === 'play') {
+    const k = slotBoxes.findIndex(inBox);
+    if (k >= 0) { if (slots[k] >= 0) player.weapon = slots[k]; return true; }
+  }
+  return false;
+}
 addEventListener('mousedown', (e) => {
   if (e.button !== 0 || nombreAbierto()) return;
-  if (state === 'over' && board.phase === 'entrar' && inBox(entrarBtn)) { irAEntrar(); return; }
-  if ((state === 'menu' || state === 'pause' || (state === 'over' && board.phase !== 'enviando')) && inBox(volverBtn)) { volverATxt(); return; }
-  if (state === 'menu' && inBox(tablaBtn)) { alternarTablaMenu(); return; }
-  if ((state === 'menu' || (state === 'over' && board.phase !== 'enviando')) && inBox(nombreBtn)) { abrirNombre(); return; }
-  if (state === 'tree') {
-    if (inBox(backBtn)) { state = treeFrom; return; }
-    const c = treeHit(); if (c) spendPoint(c.idx); return;
-  }
-  if (state === 'play' && inBox(treeBtn)) { openTree(); return; }
+  if (clickUI()) return;
   shooting = true; clickQueued = true;
+});
+
+// ---------- Táctil (2026-10-31) ----------
+// Dos joysticks flotantes: aparecen donde se apoya el pulgar (mitad izquierda mueve, mitad derecha apunta y
+// dispara) y siguen al dedo si se pasa del borde. En el resto de los estados un toque es un clic. Se pasa a
+// modo táctil con el primer toque y se vuelve con el mouse. preventDefault en pointerdown evita los eventos
+// de mouse de compatibilidad (si no, cada toque también sería un clic).
+let touchMode = false, touchAiming = false, pedirPantalla = false;
+const STICK_R = 56;                       // recorrido del joystick, en píxeles de pantalla
+const sticks = { move: null, aim: null }; // { id, ox, oy, x, y }
+function stickVec(st) {
+  if (!st) return null;
+  const dx = st.x - st.ox, dy = st.y - st.oy, d = Math.hypot(dx, dy);
+  if (d < 8) return { x: 0, y: 0, m: 0 };
+  const k = Math.min(1, d / STICK_R);
+  return { x: dx / d * k, y: dy / d * k, m: k };
+}
+const vertical = () => touchMode && H > W;
+function pasarATactil() {
+  if (touchMode) return;
+  touchMode = true; usingMouse = false; showStats = /[?&]fps=1/.test(location.search);
+}
+cv.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') { touchMode = false; return; }
+  e.preventDefault();
+  pasarATactil();
+  if (nombreAbierto() || vertical()) return;
+  mouseX = e.clientX; mouseY = e.clientY;
+  if (state === 'play') {
+    if (clickUI()) return;
+    const lado = e.clientX < W / 2 ? 'move' : 'aim';
+    if (!sticks[lado]) sticks[lado] = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY };
+    return;
+  }
+  if (clickUI()) return;
+  // En el menú, tocar fuera de los botones juega (o cierra la tabla si está abierta).
+  if (state === 'menu') { if (menuTop.open) menuTop.open = false; else jugar(); }
+}, { passive: false });
+cv.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'mouse') return;
+  for (const st of [sticks.move, sticks.aim]) {
+    if (!st || st.id !== e.pointerId) continue;
+    st.x = e.clientX; st.y = e.clientY;
+    const dx = st.x - st.ox, dy = st.y - st.oy, d = Math.hypot(dx, dy);
+    if (d > STICK_R) { st.ox = st.x - dx / d * STICK_R; st.oy = st.y - dy / d * STICK_R; }
+  }
+});
+function soltarDedo(e) {
+  if (e.pointerType === 'mouse') return;
+  for (const lado of ['move', 'aim']) if (sticks[lado] && sticks[lado].id === e.pointerId) sticks[lado] = null;
+  mouseX = mouseY = -999;   // sin dedo no hay "mouse encima"
+  // Pantalla completa (Android; el iPhone no la tiene): sólo se puede pedir al levantar el dedo.
+  if (pedirPantalla) {
+    pedirPantalla = false;
+    const de = document.documentElement;
+    if (de.requestFullscreen && !document.fullscreenElement) {
+      de.requestFullscreen({ navigationUI: 'hide' }).then(() => {
+        if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+      }).catch(() => {});
+    }
+  }
+}
+cv.addEventListener('pointerup', soltarDedo);
+cv.addEventListener('pointercancel', soltarDedo);
+addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' && touchMode) touchMode = false; });
+// iOS: el gesto de pellizcar no respeta touch-action en todas las versiones.
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return;
+  keys.clear(); shooting = false; sticks.move = sticks.aim = null;
+  if (state === 'play') state = 'pause';
 });
 addEventListener('mouseup', (e) => { if (e.button === 0) shooting = false; });
 addEventListener('contextmenu', (e) => e.preventDefault());
-addEventListener('blur', () => { keys.clear(); shooting = false; if (state === 'play') state = 'pause'; });
+addEventListener('blur', () => { keys.clear(); shooting = false; sticks.move = sticks.aim = null; if (state === 'play') state = 'pause'; });
 
 // ---------- Simulación ----------
 let camX = 0, camY = 0;
@@ -845,10 +954,13 @@ function update(dt) {
   if (keys.has('KeyS') || keys.has('ArrowDown')) sy++;
   if (keys.has('KeyA') || keys.has('ArrowLeft')) sx--;
   if (keys.has('KeyD') || keys.has('ArrowRight')) sx++;
+  // Táctil: el joystick izquierdo da una dirección de pantalla con intensidad (a fondo desde el 60%).
+  const mv = touchMode ? stickVec(sticks.move) : null;
+  if (mv && mv.m) { sx = mv.x; sy = mv.y; }
   player.moving = !!(sx || sy);
   if (player.moving) {
     const mx = sy + sx / 2, my = sy - sx / 2;
-    const l = Math.hypot(mx, my), sp = 150 * dt;
+    const l = Math.hypot(mx, my), sp = 150 * dt * (mv && mv.m ? Math.min(1, mv.m / 0.6) : 1);
     const nx = player.x + mx / l * sp, ny = player.y + my / l * sp;
     // Si ya está pisando una barricada (no debería pasar), las barricadas no lo frenan hasta que sale.
     const choca = blocked(player.x, player.y, PR) ? blockedByWalls : blocked;
@@ -862,6 +974,16 @@ function update(dt) {
     player.tx = fyv + fxv / 2; player.ty = fyv - fxv / 2;
     player.aim = Math.atan2(player.ty - player.y, player.tx - player.x);
   }
+  // Táctil: el joystick derecho apunta (dirección de pantalla pasada al mundo, igual que el movimiento) y
+  // dispara mientras se lo mantiene; cuanto más se inclina, más lejos caen frascos y ventisca.
+  const av = touchMode ? stickVec(sticks.aim) : null;
+  touchAiming = !!(av && av.m);
+  if (touchAiming) {
+    const wx = av.y + av.x / 2, wy = av.y - av.x / 2, l = Math.hypot(wx, wy), reach = 80 + av.m * 200;
+    player.aim = Math.atan2(wy, wx);
+    player.tx = player.x + wx / l * reach; player.ty = player.y + wy / l * reach;
+  }
+  if (touchMode) { shooting = touchAiming; if (touchAiming) clickQueued = true; }
   player.cd -= dt; player.hurt -= dt; player.noMana -= dt; player.castT -= dt;
   player.mana = Math.min(MANA_MAX, player.mana + MANA_REGEN * dt);
   // Los hechizos de a uno (varita) disparan una vez por clic; si se hace clic durante la recarga, sale apenas puede.
@@ -1566,6 +1688,7 @@ const depth = (x, y) => Math.min(NBK - 1, Math.max(0, Math.floor((x + y) / DK)))
 let animT = 0;
 function render() {
   animT += 1 / 60;
+  ZOOM = zoomPara(H);
   const pxs = isoX(player.x, player.y), pys = isoY(player.x, player.y);
   const VW = W / ZOOM, VH = H / ZOOM;   // lo que entra en pantalla, en píxeles del mundo
   camX = Math.round(Math.min(Math.max(pxs - VW / 2, 0), Math.max(0, floor.width - VW)));
@@ -1580,10 +1703,10 @@ function render() {
   // Cadáveres: en el piso, debajo de todo lo que está de pie. Los últimos 4 s se van tramándose.
   for (let i = 0; i < nC; i++) {
     const age = playTime - ctm[i];
-    if (age >= CORPSE_LIFE) continue;
+    if (age >= vidaEsq) continue;
     const sx = isoX(cxw[i], cyw[i]), sy = isoY(cxw[i], cyw[i]);
     if (sx < x0 || sx > x1 || sy < y0 || sy > y1) continue;
-    const lvl = Math.min(3, Math.floor(CORPSE_LIFE - age)), spr = CORPSE[cty[i]][cfl[i] * 4 + lvl];
+    const lvl = Math.min(3, Math.floor(vidaEsq - age)), spr = CORPSE[cty[i]][cfl[i] * 4 + lvl];
     ctx.drawImage(spr, snap(sx - spr.width / 2), snap(sy - spr.height / 2));
   }
   headE.fill(-1);
@@ -2098,8 +2221,9 @@ function orb(cx, cy, R, frac, [hi, mid, lo], label, warn, mark = null) {
 
 // Barra de hechizos: casillas con marco de píxel, ícono, tecla y costo.
 function spellBar(R) {
-  const n = slots.length, avail = W - 2 * (2 * R + 60), sw = Math.max(40, Math.min(56, Math.floor(avail / n) - 6));
-  const sh = 54, total = n * (sw + 6) - 6, x0 = Math.round((W - total) / 2), y0 = Math.round(H - R - 26 - sh / 2);   // centrada con los orbes
+  // En táctil va pegada abajo y más angosta (los costados son de los joysticks); si no, centrada con las esferas.
+  const n = slots.length, avail = touchMode ? W * 0.5 : W - 2 * (2 * R + 60), sw = Math.max(40, Math.min(touchMode ? 50 : 56, Math.floor(avail / n) - 6));
+  const sh = 54, total = n * (sw + 6) - 6, x0 = Math.round((W - total) / 2), y0 = Math.round(touchMode ? H - sh - 14 : H - R - 26 - sh / 2);
   ctx.imageSmoothingEnabled = false;
   stoneSlab(x0 - 14, y0 - 10, total + 28, sh + 20);
   const py = y0 + sh + 10 - ORN.pillar.height;
@@ -2114,13 +2238,14 @@ function spellBar(R) {
     if (ch === '.') return;
     ctx.fillStyle = ch === 'o' ? ic : '#6b5232'; ctx.fillRect(isx + xx * 4, isy + yy * 4, 4, 4);
   }));
-  text(points ? '+' + points : 'T', treeBtn.x + treeBtn.w / 2, y0 + sh - 8, 8, points ? '#ffd23f' : '#888', 'center');
+  text(points ? '+' + points : touchMode ? '' : 'T', treeBtn.x + treeBtn.w / 2, y0 + sh - 8, 8, points ? '#ffd23f' : '#888', 'center');
   ctx.drawImage(ORN.pillar, x0 - 14 - ORN.pillar.width + 2, py);
   ctx.drawImage(ORN.pillar, x0 + total + 12, py);
   for (let k = 0; k < n; k++) {
     const w = slots[k], x = x0 + k * (sw + 6), sel = w >= 0 && w === player.weapon;
+    Object.assign(slotBoxes[k], { x, y: y0, w: sw, h: sh });
     pixFrame(x, y0, sw, sh, sel ? '#ffd23f' : w >= 0 ? '#6b5232' : '#2a2a2a', sel ? '#2a2210' : '#120e0a');
-    text(String(k + 1), x + 4, y0 + 12, 8, w >= 0 ? '#c9a463' : '#555');
+    if (!touchMode) text(String(k + 1), x + 4, y0 + 12, 8, w >= 0 ? '#c9a463' : '#555');
     if (w < 0) continue;
     const W_ = WEAPONS[w], isz = 30;
     ctx.drawImage(ICON_CANVAS[W_.id][0], x + (sw - isz) / 2, y0 + 6, isz, isz);
@@ -2129,7 +2254,7 @@ function spellBar(R) {
   }
   text(WEAPONS[player.weapon].name.toUpperCase() + (level[player.weapon] ? '  RANGO ' + level[player.weapon] + '/5' : ''), W / 2, y0 - 34, 8, '#ffd23f', 'center');
   // Experiencia: nivel del mago y barra hasta el próximo.
-  const lv = 'NV ' + plevel + (points ? '  +' + points + ' (T)' : ''), bx0 = x0 - 14 + lv.length * 8 + 10;
+  const lv = 'NV ' + plevel + (points ? '  +' + points + (touchMode ? '' : ' (T)') : ''), bx0 = x0 - 14 + lv.length * 8 + 10;
   text(lv, x0 - 14, y0 - 16, 8, '#b98cff');
   pixBar(bx0, y0 - 26, x0 + total + 14 - bx0, 12, xp / xpNeed(plevel), '#b98cff');
 }
@@ -2142,34 +2267,43 @@ const inBox = (r) => mouseX >= r.x && mouseX < r.x + r.w && mouseY >= r.y && mou
 const treeHit = () => treeNodes.find((r) => mouseX >= r.x && mouseX < r.x + r.w && mouseY >= r.y && mouseY < r.y + r.h);
 function treeMenu() {
   ctx.fillStyle = 'rgba(0,0,0,.8)'; ctx.fillRect(0, 0, W, H);
-  text('ARBOL DE HABILIDADES', W / 2, 44, 16, '#ffd23f', 'center');
-  text(`NIVEL ${plevel}   ${points} ${points === 1 ? 'PUNTO' : 'PUNTOS'}`, W / 2, 68, 8, points ? '#b98cff' : '#888', 'center');
+  // En pantallas bajas: encabezado más apretado y casillas de 40 a 64 px con una sola línea abajo.
+  const lo = bajo();
+  text('ARBOL DE HABILIDADES', W / 2, lo ? 26 : 44, 16, '#ffd23f', 'center');
+  text(`NIVEL ${plevel}   ${points} ${points === 1 ? 'PUNTO' : 'PUNTOS'}`, W / 2, lo ? 44 : 68, 8, points ? '#b98cff' : '#888', 'center');
   const cw = Math.min(210, Math.floor((W - 40) / 3) - 16), gap = Math.min(60, (W - 3 * cw) / 4);
-  const top = 132, nh = Math.max(64, Math.min(90, Math.floor((H - top - 120) / 4) - 22)), rowH = nh + 22;
-  const x0 = (W - 3 * cw - 2 * gap) / 2, hov = treeHit();
+  const top = lo ? 88 : 132, sep = lo ? 12 : 22;
+  const nh = lo ? Math.max(40, Math.min(64, Math.floor((H - top - 70) / 4) - sep)) : Math.max(64, Math.min(90, Math.floor((H - top - 120) / 4) - 22)), rowH = nh + sep;
+  const x0 = (W - 3 * cw - 2 * gap) / 2, hov = touchMode ? treeNodes.find((r) => r.idx === treeSel) : treeHit();
   treeNodes = [];
   TREE.forEach((b, bi) => {
     const x = Math.round(x0 + bi * (cw + gap));
     text(b.name, x + cw / 2, top - 10, 8, b.color, 'center');
     b.skills.forEach((id, row) => {
       const w = WIDX[id], y = top + row * rowH, ok = canRank(w) && points > 0, on = unlocked[w], h = hov && hov.idx === w;
-      if (row) { ctx.fillStyle = on ? b.color : '#3a3226'; ctx.fillRect(x + cw / 2 - 2, y - 22, 4, 22); }
+      if (row) { ctx.fillStyle = on ? b.color : '#3a3226'; ctx.fillRect(x + cw / 2 - 2, y - sep, 4, sep); }
       pixFrame(x, y, cw, nh, h ? '#ffd23f' : ok ? b.color : on ? '#6b5232' : '#2a2a2a', h ? '#2a2210' : '#120e0a');
-      ctx.drawImage(ICON_CANVAS[id][on ? 0 : 1], x + 8, y + 8, 30, 30);
-      text(WEAPONS[w].name.toUpperCase(), x + 46, y + 20, 8, on ? '#e8e0d0' : '#777');
-      for (let k = 0; k < 5; k++) { ctx.fillStyle = !on ? '#222' : k < level[w] ? '#ffd23f' : '#3a3226'; ctx.fillRect(x + 46 + k * 12, y + 28, 10, 6); }
+      const is = lo ? 24 : 30, tx0 = x + is + 16;
+      ctx.drawImage(ICON_CANVAS[id][on ? 0 : 1], x + (lo ? 6 : 8), y + (lo ? 6 : 8), is, is);
+      text(WEAPONS[w].name.toUpperCase(), tx0, y + (lo ? 16 : 20), 8, on ? '#e8e0d0' : '#777');
+      for (let k = 0; k < 5; k++) { ctx.fillStyle = !on ? '#222' : k < level[w] ? '#ffd23f' : '#3a3226'; ctx.fillRect(tx0 + k * 12, y + (lo ? 22 : 28), 10, 6); }
       const slot = slots.indexOf(w);
-      if (slot >= 0) text(String(slot + 1), x + cw - 8, y + 20, 8, '#ffd23f', 'right');
+      if (slot >= 0) text(String(slot + 1), x + cw - 8, y + (lo ? 16 : 20), 8, '#ffd23f', 'right');
       const next = level[w] >= 5 ? 'MAXIMO' : !on ? 'DESBLOQUEAR' : PERK_CARD[PERKS[id][level[w]]];
-      text(next, x + 8, y + nh - 22, 8, ok ? '#7dffd8' : '#666');
-      if (level[w] < 5 && !canRank(w)) text(plevel < rankReq(w) ? 'NV ' + rankReq(w) : 'FALTA LA DE ARRIBA', x + 8, y + nh - 8, 8, '#777');
-      else if (WEAPONS[w].cost) text('MANA ' + WEAPONS[w].cost, x + 8, y + nh - 8, 8, '#7fb4ff');
+      const req = level[w] < 5 && !canRank(w) ? (plevel < rankReq(w) ? 'NV ' + rankReq(w) : 'FALTA LA DE ARRIBA') : '';
+      if (lo) text(req || next, x + 8, y + nh - 6, 8, req ? '#777' : ok ? '#7dffd8' : '#666');
+      else {
+        text(next, x + 8, y + nh - 22, 8, ok ? '#7dffd8' : '#666');
+        if (req) text(req, x + 8, y + nh - 8, 8, '#777');
+        else if (WEAPONS[w].cost) text('MANA ' + WEAPONS[w].cost, x + 8, y + nh - 8, 8, '#7fb4ff');
+      }
       treeNodes.push({ x, y, w: cw, h: nh, idx: w });
     });
   });
-  text('MOUSE ENCIMA: DETALLE    CLIC: SUBIR    1-5: PONER EN EL CONTROL    T: VOLVER', W / 2, 92, 8, '#e0dccf', 'center');
+  text(touchMode ? 'TOCA UNA HABILIDAD PARA VERLA, SUBIRLA O PONERLA EN UNA CASILLA' : 'MOUSE ENCIMA: DETALLE    CLIC: SUBIR    1-5: PONER EN EL CONTROL    T: VOLVER',
+    W / 2, lo ? 60 : 92, 8, '#e0dccf', 'center');
   // Botón para volver al juego (o a la pausa, si se abrió desde ahí).
-  Object.assign(backBtn, { x: Math.round(W / 2 - 110), y: Math.round(Math.min(top + 4 * rowH + 8, H - 136)), w: 220, h: 40 });
+  Object.assign(backBtn, { x: Math.round(W / 2 - 110), y: Math.round(Math.min(top + 4 * rowH + 8, lo ? H - 48 : H - 136)), w: 220, h: 40 });
   const bh = inBox(backBtn);
   pixFrame(backBtn.x, backBtn.y, backBtn.w, backBtn.h, bh ? '#ffd23f' : '#6b5232', bh ? '#2a2210' : '#120e0a');
   text(treeFrom === 'pause' ? 'VOLVER' : 'VOLVER AL JUEGO', backBtn.x + backBtn.w / 2, backBtn.y + 25, 8, bh ? '#ffd23f' : '#e8e0d0', 'center');
@@ -2179,11 +2313,24 @@ function treeMenu() {
 function spellDetail(node) {
   const w = node.idx, id = WEAPONS[w].id, on = unlocked[w], L = level[w], row = ROW_LEVEL[NODE[w].row];
   const cur = spellStats(w, L), nxt = on && L < 5 ? spellStats(w, L + 1) : null;
-  const pw = 380, ph = 96 + cur.length * 16 + 5 * 30 + 30;
+  // En pantallas bajas no entra la lista de mejoras: sólo las stats (con la próxima al lado). En táctil,
+  // abajo van SUBIR y las 5 casillas.
+  const lo = bajo(), botones = touchMode ? 52 : 0;
+  const pw = 380, ph = 96 + cur.length * 16 + (lo ? 0 : 5 * 30 + 30) + botones;
   let x = node.x + node.w + 14; if (x + pw > W - 8) x = node.x - pw - 14; if (x < 8) x = Math.max(8, (W - pw) / 2);
   const y = Math.round(Math.max(8, Math.min(H - ph - 8, node.y)));
   x = Math.round(x);
   pixFrame(x, y, pw, ph, TREE[NODE[w].bi].color, '#0c0a08');
+  Object.assign(fichaBox, { x, y, w: pw, h: ph });
+  if (touchMode) {
+    const by = y + ph - 48, ok = canRank(w) && points > 0;
+    pixButton(subirBtn, x + 12, by, 140, 36, ok ? (on ? 'SUBIR' : 'DESBLOQUEAR') : level[w] >= 5 ? 'MAXIMO' : 'SIN PUNTOS');
+    if (!ok) subirBtn.w = 0;
+    if (on) for (let k = 0; k < 5; k++) {
+      pixButton(slotBtns[k], x + 164 + k * 42, by, 36, 36, String(k + 1));
+      if (slots[k] === w) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(slotBtns[k].x + 4, by + 30, 28, 2); }
+    }
+  }
   text(WEAPONS[w].name.toUpperCase(), x + 12, y + 24, 16, '#ffd23f');
   text(on ? `RANGO ${L}/5` : 'BLOQUEADA · NV ' + row, x + pw - 12, y + 22, 8, on ? '#e8e0d0' : '#888', 'right');
   text(DESC[id], x + 12, y + 44, 8, '#9fc48a');
@@ -2196,6 +2343,7 @@ function spellDetail(node) {
     if (nv) text('> ' + nv, x + pw - 12, yy, 8, '#7dffd8', 'right');
     yy += 16;
   });
+  if (lo) return;
   yy += 10;
   text('MEJORAS', x + 12, yy, 8, '#888'); yy += 18;
   PERKS[id].forEach((kind, k) => {
@@ -2226,11 +2374,22 @@ function pixButton(btn, x, y, w, h, label) {
   pixFrame(btn.x, btn.y, w, h, hover ? '#ffd23f' : '#6b5232', hover ? '#2a2210' : '#120e0a');
   text(label, btn.x + w / 2, btn.y + Math.round(h / 2) + 5, 8, hover ? '#ffd23f' : '#e8e0d0', 'center');
 }
-// La tabla de MEJORES MAGOS (pantalla final y menú). by: línea del título; ocupa de by - 20 a by + 256.
+// Pantalla baja (celular acostado, ventana chica): todo más apretado para que entre.
+const bajo = () => H < 560;
+const filaTabla = () => (bajo() ? 16 : 22);
+// Con teclado se muestra la tecla delante de la acción; en táctil, sólo la acción.
+const tecla = (k, label) => (touchMode ? label : k + '  ' + label);
+// Una fila de botones centrada; cada uno se achica si no entra.
+function botonera(lista, y, maxW = 260) {
+  const gap = 16, n = lista.length, bw = Math.min(maxW, Math.floor((W - 32 - gap * (n - 1)) / n));
+  let x = (W - n * bw - (n - 1) * gap) / 2;
+  for (const [btn, label] of lista) { pixButton(btn, x, y, bw, 40, label); x += bw + gap; }
+}
+// La tabla de MEJORES MAGOS (pantalla final y menú). by: línea del título; ocupa de by - 20 a by + 46 + 10 filas.
 function drawTabla(top, mine, cx, by) {
-  text('MEJORES MAGOS', cx, by + 10, 24, '#ffd23f', 'center');
+  text('MEJORES MAGOS', cx, by + 10, bajo() ? 16 : 24, '#ffd23f', 'center');
   top.forEach((t, k) => {
-    const y = by + 46 + k * 22, col = k === mine ? '#ffd23f' : '#e0dccf';
+    const y = by + 46 + k * filaTabla(), col = k === mine ? '#ffd23f' : '#e0dccf';
     text(String(k + 1) + '.', cx - 150, y, 8, col, 'right');
     text(t.nombre || t.id, cx - 130, y, 8, col);
     text(String(t.puntos), cx + 60, y, 8, col, 'right');
@@ -2238,10 +2397,11 @@ function drawTabla(top, mine, cx, by) {
   });
   if (!top.length) text('TODAVIA NO HAY PUNTAJES', cx, by + 50, 8, '#888', 'center');
 }
-const TABLA_H = 330;   // alto del panel de la tabla en el menú
+const tablaH = () => 44 + 46 + 10 * filaTabla() + 20;   // alto del panel de la tabla en el menú (330 en pantallas normales)
 function drawHud() {
   ctx.imageSmoothingEnabled = false;
-  volverBtn.w = 0; tablaBtn.w = 0; nombreBtn.w = 0;   // los botones sólo responden en el cuadro en que se dibujan
+  // Los botones sólo responden en el cuadro en que se dibujan.
+  for (const b of [volverBtn, tablaBtn, nombreBtn, jugarBtn, seguirBtn, arbolBtn, pausaBtn, subirBtn, fichaBox, ...slotBoxes, ...slotBtns]) b.w = 0;
   if (state === 'menu') {
     // Bosque de noche de fondo, luciérnagas que titilan, el logo de piedra y APRETÁ ENTER.
     ctx.imageSmoothingEnabled = false;
@@ -2263,7 +2423,7 @@ function drawHud() {
     ctx.drawImage(LOGO, lx, ly, LOGO.width * ls, LOGO.height * ls);
     const lb = ly + LOGO.height * ls;
     // La tabla va debajo del logo si entra; si no (pantallas bajas), en un panel encima del menú.
-    const below = menuTop.open && lb + 24 + TABLA_H + 24 + 40 + 16 <= H;
+    const TABLA_H = tablaH(), below = menuTop.open && lb + 24 + TABLA_H + 24 + 40 + 16 <= H;
     let btnY = Math.min(H - 56, lb + 112);
     if (menuTop.open) {
       let py;
@@ -2274,93 +2434,157 @@ function drawHud() {
       if (menuTop.phase === 'cargando') text('CARGANDO LA TABLA...', W / 2, by + 60, 8, '#888', 'center');
       else if (menuTop.phase === 'error') text('NO SE PUDO CONECTAR CON LA TABLA', W / 2, by + 60, 8, '#e5534b', 'center');
       else drawTabla(menuTop.top, menuTop.mine, W / 2, by);
-      text('ENTER: JUGAR    M O ESC: CERRAR', W / 2, py + TABLA_H - 14, 8, '#c9b89a', 'center');
+      text(touchMode ? 'TOCA AFUERA PARA CERRAR' : 'ENTER: JUGAR    M O ESC: CERRAR', W / 2, py + TABLA_H - 14, 8, '#c9b89a', 'center');
     } else if (((animT * 2) | 0) & 1) {
       // Embebido en un iframe, el juego no recibe teclas hasta que se le hace clic.
-      text(document.hasFocus() ? 'APRETA ENTER' : 'HACE CLIC', W / 2, Math.min(btnY - 24, lb + 80), 24, '#ffd23f', 'center');
+      text(touchMode ? 'TOCA PARA JUGAR' : document.hasFocus() ? 'APRETA ENTER' : 'HACE CLIC', W / 2, Math.min(btnY - 24, lb + 80), 24, '#ffd23f', 'center');
     }
     // Con sesión hay un tercer botón para el nombre de la tabla.
-    const gap = 16, n = board.logueado ? 3 : 2, bw = Math.min(240, Math.floor((W - 32 - gap * (n - 1)) / n));
-    let bx = (W - n * bw - (n - 1) * gap) / 2;
-    pixButton(tablaBtn, bx, btnY, bw, 40, menuTop.open ? 'M  CERRAR LA TABLA' : 'M  MEJORES MAGOS'); bx += bw + gap;
-    if (board.logueado) { pixButton(nombreBtn, bx, btnY, bw, 40, board.nombre ? 'N  CAMBIAR NOMBRE' : 'N  TU NOMBRE'); bx += bw + gap; }
-    pixButton(volverBtn, bx, btnY, bw, 40, 'ESC  VOLVER A TXT');
+    botonera([
+      [tablaBtn, tecla('M', menuTop.open ? 'CERRAR LA TABLA' : 'MEJORES MAGOS')],
+      ...(board.logueado ? [[nombreBtn, tecla('N', board.nombre ? 'CAMBIAR NOMBRE' : 'TU NOMBRE')]] : []),
+      [volverBtn, tecla('ESC', 'VOLVER A TXT')],
+    ], btnY, 240);
+    if (vertical()) girar();
     return;
   }
-  text('OLEADA ' + wave, 16, 28, 16, '#fff');
-  text('PUNTOS ' + score, 16, 52, 8, '#e0dccf');
+  // En táctil las esferas van arriba, en las esquinas, y más chicas: abajo están los pulgares.
+  const R = touchMode ? 28 : Math.min(76, Math.max(48, H * 0.09)), oy = touchMode ? R + 12 : H - R - 26;
+  const hx = touchMode ? 2 * R + 40 : 16;
+  text('OLEADA ' + wave, hx, 28, 16, '#fff');
+  text('PUNTOS ' + score, hx, 52, 8, '#e0dccf');
   if (combo > 1) {
-    text('x' + combo, 16, 84, 24, '#ffd23f');
-    pixBar(16, 92, 100, 12, Math.max(0, comboT / 1.3), '#ffd23f');
+    text('x' + combo, hx, 84, 24, '#ffd23f');
+    pixBar(hx, 92, 100, 12, Math.max(0, comboT / 1.3), '#ffd23f');
   }
-  const R = Math.min(76, Math.max(48, H * 0.09));
-  orb(R + 24, H - R - 26, R, Math.min(1, player.hp / 100), ['#ff6a5a', '#c41e22', '#6a0a0e'], `VIDA ${Math.ceil(Math.min(player.hp, 999))}`, player.hp < 35);
+  orb(R + (touchMode ? 16 : 24), oy, R, Math.min(1, player.hp / 100), ['#ff6a5a', '#c41e22', '#6a0a0e'], `VIDA ${Math.ceil(Math.min(player.hp, 999))}`, player.hp < 35);
   const wc = WEAPONS[player.weapon].cost;
-  orb(W - R - 24, H - R - 26, R, player.mana / MANA_MAX, ['#8fc4ff', '#2f62e8', '#122a7a'], `MANA ${Math.floor(player.mana)}`, player.noMana > 0,
+  orb(W - R - (touchMode ? 16 : 24), oy, R, player.mana / MANA_MAX, ['#8fc4ff', '#2f62e8', '#122a7a'], `MANA ${Math.floor(player.mana)}`, player.noMana > 0,
       wc ? Math.max(0, player.mana - wc) / MANA_MAX : null);
   spellBar(R);
+  if (touchMode && state === 'play') {
+    // Pausa: al lado de la esfera de maná.
+    Object.assign(pausaBtn, { x: Math.round(W - 2 * R - 32 - 52), y: 12, w: 48, h: 48 });
+    pixFrame(pausaBtn.x, pausaBtn.y, 48, 48, '#6b5232', '#120e0a');
+    ctx.fillStyle = '#e8e0d0'; ctx.fillRect(pausaBtn.x + 16, pausaBtn.y + 14, 6, 20); ctx.fillRect(pausaBtn.x + 27, pausaBtn.y + 14, 6, 20);
+    drawSticks();
+  }
   if (showStats) {
-    text(`${fps.toFixed(0)} FPS  SIM ${updMs.toFixed(2)}MS`, W - 16, 24, 8, '#9ad', 'right');
-    text(`${nE} ENEMIGOS  ${nB} BALAS`, W - 16, 40, 8, '#9ad', 'right');
+    const fx = touchMode ? W - 2 * R - 32 : W - 16, fy = touchMode ? 80 : 24;   // en táctil, debajo de la pausa
+    text(`${fps.toFixed(0)} FPS  SIM ${updMs.toFixed(2)}MS`, fx, fy, 8, '#9ad', 'right');
+    text(`${nE} ENEMIGOS  ${nB} BALAS`, fx, fy + 16, 8, '#9ad', 'right');
   }
   for (let i = 0; i < nE; i++) if (et[i] === 3 && ehp[i] > 0) {
-    const bw = Math.min(520, W - 80), f = ehp[i] / bossMax;
+    const bw = touchMode ? Math.max(120, Math.min(360, W - 2 * 260)) : Math.min(520, W - 80), f = ehp[i] / bossMax;
     text('REY DEL BOSQUE', W / 2, 28, 16, f < 0.5 ? '#ff7a5a' : '#cfe8b0', 'center');
     pixBar((W - bw) / 2, 38, bw, 16, f, f < 0.5 ? '#d6452f' : '#5fbf3a');
     break;
   }
-  if (waveT > 0) {
+  // Los carteles (oleada, avisos) sólo jugando o en pausa: no tapan el árbol ni la pantalla final.
+  const cartel = state === 'play' || state === 'pause';
+  if (cartel && waveT > 0) {
     ctx.globalAlpha = Math.ceil(Math.min(1, waveT / 0.5, (2.6 - waveT) / 0.3) * 4) / 4;   // aparece y se va por pasos
     text('OLEADA ' + wave, W / 2, H / 2 - 110, 48, '#fff', 'center');
     ctx.globalAlpha = 1;
-  } else if (bannerT > 0) text(banner.toUpperCase(), W / 2, H / 3, 16, '#fff', 'center');
+  } else if (cartel && bannerT > 0) text(banner.toUpperCase(), W / 2, H / 3, 16, '#fff', 'center');
   if (state === 'tree') treeMenu();
   if (state === 'pause') {
     ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
     text('PAUSA', W / 2, H / 2 - 110, 64, '#fff', 'center');
-    text('ESC O P  SEGUIR     T  ARBOL DE HABILIDADES     V  VOLVER A TXT', W / 2, H / 2 - 54, 8, '#e0dccf', 'center');
-    pixButton(volverBtn, W / 2 - 130, H / 2 - 24, 260, 40, 'V  VOLVER A TXT');
+    if (touchMode) botonera([[seguirBtn, 'SEGUIR'], [arbolBtn, 'HABILIDADES'], [volverBtn, 'VOLVER A TXT']], H / 2 - 24, 220);
+    else {
+      text('ESC O P  SEGUIR     T  ARBOL DE HABILIDADES     V  VOLVER A TXT', W / 2, H / 2 - 54, 8, '#e0dccf', 'center');
+      pixButton(volverBtn, W / 2 - 130, H / 2 - 24, 260, 40, 'V  VOLVER A TXT');
+    }
   }
   if (state === 'over') {
     ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(0, 0, W, H);
-    const top0 = Math.max(70, H / 2 - 250);
-    text('TE COMIERON', W / 2, top0, 48, '#ff7a6a', 'center');
-    text(`OLEADA ${wave}  ${kills} BAJAS  ${score} PUNTOS`, W / 2, top0 + 40, 8, '#e0dccf', 'center');
-    const by = top0 + 100;
+    const top0 = bajo() ? 34 : Math.max(70, H / 2 - 250), fila = filaTabla();
+    text('TE COMIERON', W / 2, top0, bajo() ? 24 : 48, '#ff7a6a', 'center');
+    text(`OLEADA ${wave}  ${kills} BAJAS  ${score} PUNTOS`, W / 2, top0 + (bajo() ? 24 : 40), 8, '#e0dccf', 'center');
+    const by = top0 + (bajo() ? 56 : 100);
     if (board.phase === 'cargando' || board.phase === 'enviando') text(board.phase === 'cargando' ? 'CARGANDO LA TABLA...' : 'GUARDANDO...', W / 2, by, 8, '#888', 'center');
     else if (board.phase === 'error') text(board.aviso || 'NO SE PUDO CONECTAR CON LA TABLA', W / 2, by, 8, '#e5534b', 'center');
     else if (board.phase === 'listo' || board.phase === 'entrar') {
       // La tabla: el ID pseudoanónimo de HORDA de cada cuenta (el propio, resaltado).
       drawTabla(board.top, board.mine, W / 2, by);
-      if (board.phase === 'listo' && board.mine < 0 && board.puesto > 0) text('TU MEJOR PUNTAJE ESTA EN EL PUESTO ' + board.puesto, W / 2, by + 46 + 10 * 22 + 6, 8, '#ffd23f', 'center');
+      if (board.phase === 'listo' && board.mine < 0 && board.puesto > 0) text('TU MEJOR PUNTAJE ESTA EN EL PUESTO ' + board.puesto, W / 2, by + 46 + 10 * fila + 6, 8, '#ffd23f', 'center');
       if (board.phase === 'entrar') {
-        Object.assign(entrarBtn, { x: Math.round(W / 2 - 230), y: Math.round(by + 46 + 10 * 22 - 8), w: 460, h: 40 });
+        Object.assign(entrarBtn, { x: Math.round(W / 2 - 230), y: Math.round(by + 46 + 10 * fila - 8), w: 460, h: 40 });
         const hover = inBox(entrarBtn);
         pixFrame(entrarBtn.x, entrarBtn.y, entrarBtn.w, entrarBtn.h, hover ? '#ffd23f' : '#6b5232', hover ? '#2a2210' : '#120e0a');
-        text('ENTRA A TXT PARA GUARDAR TU PUNTAJE · E: ENTRAR', W / 2, entrarBtn.y + 25, 8, hover ? '#ffd23f' : '#e8e0d0', 'center');
+        text(touchMode ? 'ENTRA A TXT PARA GUARDAR TU PUNTAJE' : 'ENTRA A TXT PARA GUARDAR TU PUNTAJE · E: ENTRAR', W / 2, entrarBtn.y + 25, 8, hover ? '#ffd23f' : '#e8e0d0', 'center');
       }
     }
-    const vy = Math.min(H - 52, by + 346);
-    if (board.phase !== 'enviando' && ((animT * 2) | 0) & 1) text('APRETA ENTER', W / 2, vy - 16, 24, '#ffd23f', 'center');
+    const vy = Math.min(H - 52, by + 46 + 10 * fila + 80);
+    if (board.phase !== 'enviando' && !touchMode && ((animT * 2) | 0) & 1) text('APRETA ENTER', W / 2, vy - 16, bajo() ? 8 : 24, '#ffd23f', 'center');
     if (board.phase !== 'enviando') {
-      if (board.logueado) {
-        // Sin nombre, la invitación a ponerse uno; con nombre, para cambiarlo.
-        pixButton(nombreBtn, W / 2 - 268, vy, 260, 40, board.nombre ? 'N  CAMBIAR NOMBRE' : 'N  PONETE UN NOMBRE');
-        pixButton(volverBtn, W / 2 + 8, vy, 260, 40, 'ESC  VOLVER A TXT');
-      } else pixButton(volverBtn, W / 2 - 130, vy, 260, 40, 'ESC  VOLVER A TXT');
+      // En táctil, JUGAR es un botón más. Con sesión, el del nombre (sin nombre, la invitación a ponerse uno).
+      botonera([
+        ...(touchMode ? [[jugarBtn, 'JUGAR DE NUEVO']] : []),
+        ...(board.logueado ? [[nombreBtn, tecla('N', board.nombre ? 'CAMBIAR NOMBRE' : 'PONETE UN NOMBRE')]] : []),
+        [volverBtn, tecla('ESC', 'VOLVER A TXT')],
+      ], vy);
     }
   }
+  if (vertical()) girar();
+}
+// Táctil en vertical: el juego se pausa y pide girar el teléfono.
+function girar() {
+  ctx.fillStyle = '#0b0b0d'; ctx.fillRect(0, 0, W, H);
+  text('GIRA EL', W / 2, H / 2 - 40, 24, '#ffd23f', 'center');
+  text('TELEFONO', W / 2, H / 2, 24, '#ffd23f', 'center');
+  text('HORDA SE JUEGA ACOSTADO', W / 2, H / 2 + 40, 8, '#e0dccf', 'center');
+}
+// Joysticks: aro de piedra donde se apoyó el pulgar y la perilla donde está. Sin dedo, durante los primeros
+// segundos de la partida, una guía tenue de dónde van.
+const STICK_RING = (() => {
+  const n = 30, c = makeCanvas(n, n), g = c.getContext('2d');
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2);
+    if (d > 14.5 || d < 12) continue;
+    g.fillStyle = d > 14 ? '#000' : d > 13 ? '#c9a463' : '#6b5232'; g.fillRect(x, y, 1, 1);
+  }
+  return c;
+})();
+const STICK_KNOB = (() => {
+  const n = 12, c = makeCanvas(n, n), g = c.getContext('2d');
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2);
+    if (d > 6) continue;
+    g.fillStyle = d > 5 ? '#000' : x < 5 && y < 5 ? '#ffe9a0' : '#ffd23f'; g.fillRect(x, y, 1, 1);
+  }
+  return c;
+})();
+function drawStick(st, gx, gy, label) {
+  ctx.imageSmoothingEnabled = false;
+  const ox = st ? st.ox : gx, oy = st ? st.oy : gy, rs = 4 * STICK_RING.width;
+  if (!st) ctx.globalAlpha = 0.5;
+  ctx.drawImage(STICK_RING, Math.round(ox - rs / 2), Math.round(oy - rs / 2), rs, rs);
+  const v = st ? stickVec(st) : { x: 0, y: 0 }, kx = ox + v.x * STICK_R, ky = oy + v.y * STICK_R, ks = 4 * STICK_KNOB.width;
+  ctx.drawImage(STICK_KNOB, Math.round(kx - ks / 2), Math.round(ky - ks / 2), ks, ks);
+  if (!st) { text(label, gx, gy + rs / 2 + 16, 8, '#e0dccf', 'center'); ctx.globalAlpha = 1; }
+}
+function drawSticks() {
+  const guia = playTime < 10;
+  if (sticks.move || guia) drawStick(sticks.move, 104, H - 104, 'MOVER');
+  if (sticks.aim || guia) drawStick(sticks.aim, W - 104, H - 104, 'APUNTAR');
 }
 
 // ---------- Bucle (paso fijo de 60 Hz) ----------
 const DT = 1 / 60;
-let last = performance.now(), acc = 0, fpsAcc = 0, fpsN = 0;
+let last = performance.now(), acc = 0, fpsAcc = 0, fpsN = 0, lentos = 0;
 function frame(now) {
   let el = (now - last) / 1000; last = now;
   if (el > 0.25) el = 0.25;
   fpsAcc += el; fpsN++;
-  if (fpsAcc >= 0.5) { fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
+  if (fpsAcc >= 0.5) {
+    fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0;
+    // Táctil: medio segundo jugando por debajo de ~45 FPS dos veces seguidas → menos esqueletos (y queda así).
+    if (touchMode && state === 'play' && vidaEsq === CORPSE_LIFE) { lentos = fps < 45 ? lentos + 1 : 0; if (lentos >= 2) vidaEsq = 6; }
+  }
+  if (vertical() && state === 'play') state = 'pause';
   if (state === 'play') {
     acc += el;
     let steps = 0;
