@@ -10,12 +10,14 @@ const googleFalso = {
   canjearCodigo: async ({ code }) => ({ sub: `sub-${code}`, email: `${code}@gmail.com` }),
 };
 
-async function montar({ horda = true } = {}) {
+const aprobar = async () => ({ decision: 'approve', rule: 'ninguna', reason: '', model: 'falso', input_tokens: 1, output_tokens: 1, grave: 'ninguna' });
+
+async function montar({ horda = true, moderar = aprobar } = {}) {
   const db = openDb(':memory:');
   const reloj = { t: 1_800_000_000_000 };
   const app = createApp({
     db,
-    moderar: async () => ({ decision: 'approve', rule: 'ninguna', reason: '', model: 'falso', input_tokens: 1, output_tokens: 1, grave: 'ninguna' }),
+    moderar,
     google: googleFalso,
     secret: 'secreto-de-prueba',
     baseUrl: 'http://prueba',
@@ -81,7 +83,7 @@ test('HORDA: estado sin y con sesión', async (t) => {
   const r = await s.pedir('/horda/estado.json');
   assert.equal(r.status, 200);
   assert.match(r.headers.get('cache-control'), /no-store/);
-  assert.deepEqual(await r.json(), { logueado: false, csrf: null, yo: null });
+  assert.deepEqual(await r.json(), { logueado: false, csrf: null, yo: null, nombre: null });
   const ana = await s.entrar('ana');
   const e = await (await s.pedir('/horda/estado.json', { sesion: ana })).json();
   assert.equal(e.logueado, true);
@@ -132,7 +134,7 @@ test('HORDA: un envío válido aparece con el ID pseudoanónimo, una fila por cu
   assert.equal(r.status, 200);
   const d = await r.json();
   assert.equal(d.puesto, 1);
-  assert.deepEqual(d.top, [{ id: ana.yo, puntos: 1000, oleada: 3 }]);
+  assert.deepEqual(d.top, [{ id: ana.yo, nombre: null, puntos: 1000, oleada: 3 }]);
   const crudo = await (await s.pedir('/horda/top.json')).text();
   assert.ok(!crudo.includes('user_id'));
   const anaId = s.db.prepare("SELECT id FROM users WHERE identidad = 'google:sub-ana'").get().id;
@@ -145,8 +147,8 @@ test('HORDA: un envío válido aparece con el ID pseudoanónimo, una fila por cu
   const a = await (await s.pedir('/horda/puntaje', { sesion: ana, datos: { ...PARTIDA, puntos: '3000', oleada: '5', segundos: '90' } })).json();
   assert.equal(a.puesto, 1);
   assert.deepEqual(a.top, [
-    { id: ana.yo, puntos: 3000, oleada: 5 },
-    { id: beto.yo, puntos: 2000, oleada: 4 },
+    { id: ana.yo, nombre: null, puntos: 3000, oleada: 5 },
+    { id: beto.yo, nombre: null, puntos: 2000, oleada: 4 },
   ]);
   // El peor de ana sigue guardando su puesto según su mejor.
   const peor = await (await s.pedir('/horda/puntaje', { sesion: ana, datos: { ...PARTIDA, puntos: '10' } })).json();
@@ -237,4 +239,85 @@ test('HORDA: un mod ve los puntajes en /mod y borra uno trucho; queda en el regi
   const log = s.db.prepare("SELECT * FROM mod_log WHERE accion = 'horda-borrar'").get();
   assert.equal(log.nota, '200000 puntos');
   assert.deepEqual((await (await s.pedir('/horda/top.json')).json()).top, []);
+});
+
+test('HORDA: nombre único para la tabla, en mayúsculas, con formato, filtro y un cambio por día', async (t) => {
+  const vistos = [];
+  const s = await montar({
+    moderar: async (datos) => {
+      vistos.push(datos);
+      return datos.cuerpo === 'FEO' ? { decision: 'reject', rule: 'respeto' } : aprobar();
+    },
+  });
+  t.after(s.cerrar);
+  assert.equal((await s.pedir('/horda/nombre', { datos: { nombre: 'ANA' } })).status, 401);
+  const ana = await s.entrar('ana');
+  const beto = await s.entrar('beto');
+  assert.equal((await s.pedir('/horda/nombre', { sesion: ana, datos: { nombre: 'ANA', _csrf: 'otro' } })).status, 403);
+
+  for (const malo of ['AB', 'MUY-LARGO-PARA-HORDA', 'CON ESPACIO', 'ÁNGEL', '<B>', '---', 'ADMIN', 'mod', 'DEADBEEF', '12AB34CD']) {
+    const r = await s.pedir('/horda/nombre', { sesion: ana, datos: { nombre: malo } });
+    assert.equal(r.status, 400, malo);
+    assert.deepEqual(await r.json(), { error: 'invalido' });
+  }
+  assert.equal(vistos.length, 0, 'lo inválido no gasta filtro');
+
+  const feo = await s.pedir('/horda/nombre', { sesion: ana, datos: { nombre: 'feo' } });
+  assert.equal(feo.status, 400);
+  assert.deepEqual(await feo.json(), { error: 'rechazado' });
+  assert.equal(vistos.at(-1).tablon, 'HORDA');
+
+  // Se guarda en mayúsculas y sale en la tabla, el estado y el panel.
+  await s.pedir('/horda/puntaje', { sesion: ana, datos: PARTIDA });
+  const ok = await s.pedir('/horda/nombre', { sesion: ana, datos: { nombre: ' ñandu_1 ' } });
+  assert.equal(ok.status, 200);
+  const d = await ok.json();
+  assert.equal(d.nombre, 'ÑANDU_1');
+  assert.deepEqual(d.top, [{ id: ana.yo, nombre: 'ÑANDU_1', puntos: 1000, oleada: 3 }]);
+  assert.equal((await (await s.pedir('/horda/estado.json', { sesion: ana })).json()).nombre, 'ÑANDU_1');
+
+  // Único, sin importar mayúsculas.
+  const ocupado = await s.pedir('/horda/nombre', { sesion: beto, datos: { nombre: 'ñandu_1' } });
+  assert.equal(ocupado.status, 409);
+  assert.deepEqual(await ocupado.json(), { error: 'ocupado' });
+
+  // Repetir el propio no cuenta como cambio; otro, recién al día siguiente, y el viejo queda libre.
+  assert.equal((await s.pedir('/horda/nombre', { sesion: ana, datos: { nombre: 'ÑANDU_1' } })).status, 200);
+  const pronto = await s.pedir('/horda/nombre', { sesion: ana, datos: { nombre: 'OTRO' } });
+  assert.equal(pronto.status, 429);
+  assert.deepEqual(await pronto.json(), { error: 'cambio' });
+  s.avanzar(24 * 3600 + 1);
+  assert.equal((await s.pedir('/horda/nombre', { sesion: ana, datos: { nombre: 'OTRO' } })).status, 200);
+  assert.equal((await s.pedir('/horda/nombre', { sesion: beto, datos: { nombre: 'ÑANDU_1' } })).status, 200);
+
+  // Suspendida no elige.
+  const caro = await s.entrar('caro');
+  s.db.prepare("UPDATE users SET banned_until = ? WHERE identidad = 'google:sub-caro'").run(1_900_000_000_000);
+  assert.equal((await s.pedir('/horda/nombre', { sesion: caro, datos: { nombre: 'CARO' } })).status, 403);
+});
+
+test('HORDA: un mod borra un nombre; queda en el registro; borrar la cuenta lo libera', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/horda/puntaje', { sesion: ana, datos: PARTIDA });
+  await s.pedir('/horda/nombre', { sesion: ana, datos: { nombre: 'TRUCHO' } });
+  const fila = s.db.prepare('SELECT id FROM horda_puntajes').get();
+
+  const mod = await s.entrar('mod');
+  const panel = await (await s.pedir('/mod', { cookie: mod.cookie })).text();
+  assert.ok(panel.includes(`TRUCHO (${ana.yo})`));
+  assert.ok(panel.includes(`action="/mod/horda/${fila.id}/nombre/borrar"`));
+  const beto = await s.entrar('beto');
+  assert.equal((await s.pedir(`/mod/horda/${fila.id}/nombre/borrar`, { sesion: beto, datos: {} })).status, 404);
+  const r = await s.pedir(`/mod/horda/${fila.id}/nombre/borrar`, { sesion: mod, datos: {} });
+  assert.equal(r.status, 303);
+  assert.equal(s.db.prepare("SELECT nota FROM mod_log WHERE accion = 'horda-nombre-borrar'").get().nota, 'TRUCHO');
+  assert.equal((await (await s.pedir('/horda/top.json')).json()).top[0].nombre, null);
+  // Puede elegir otro en el momento.
+  assert.equal((await s.pedir('/horda/nombre', { sesion: ana, datos: { nombre: 'ANA' } })).status, 200);
+
+  await s.pedir('/cuenta/borrar', { sesion: ana, datos: { confirmar: '1' } });
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM horda_nombres').get().n, 0);
+  assert.equal((await s.pedir('/horda/nombre', { sesion: beto, datos: { nombre: 'ANA' } })).status, 200);
 });

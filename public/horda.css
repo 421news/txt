@@ -14,3 +14,28 @@
 
 html, body { margin: 0; height: 100%; background: #0b0b0d; overflow: hidden; }
 canvas { display: block; cursor: crosshair; }
+
+/* Nombre para la tabla (2026-10-31): formulario HTML encima del canvas, con la misma estética que
+   los botones de píxel del juego (marco de 2 px, sin bordes redondeados ni sombras). */
+.nombre[hidden] { display: none; }
+.nombre {
+  position: fixed; inset: 0; margin: auto; width: min(460px, calc(100vw - 32px)); height: fit-content; box-sizing: border-box;
+  padding: 20px; background: #0c0a08; border: 4px solid #6b5232; color: #e0dccf;
+  font: 8px/1.8 'Press Start 2P', monospace; text-align: center;
+}
+.nombre label { display: block; color: #ffd23f; font-size: 12px; margin-bottom: 14px; }
+.nombre input {
+  width: 100%; box-sizing: border-box; padding: 10px; background: #120e0a; color: #ffd23f; border: 2px solid #6b5232; border-radius: 0;
+  font: 16px 'Press Start 2P', monospace; text-align: center; text-transform: uppercase; outline: none;
+}
+.nombre input:focus { border-color: #ffd23f; }
+.nombre p { margin: 12px 0 0; }
+.nombre-ayuda { color: #c9b89a; }
+.nombre-aviso { color: #e5534b; min-height: 1.8em; }
+.nombre-botones { display: flex; gap: 12px; justify-content: center; margin-top: 8px; }
+.nombre button {
+  flex: 1; padding: 12px 8px; background: #120e0a; color: #e8e0d0; border: 2px solid #6b5232; border-radius: 0; cursor: pointer;
+  font: 8px 'Press Start 2P', monospace;
+}
+.nombre button:hover, .nombre button:focus-visible { color: #ffd23f; border-color: #ffd23f; background: #2a2210; outline: none; }
+.nombre button:disabled { opacity: .5; cursor: wait; }

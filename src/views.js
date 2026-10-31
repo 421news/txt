@@ -693,7 +693,7 @@ export function privacidad(ctx) {
   <li><strong>Las publicaciones que guardás</strong>, para que las encuentres en Guardados. Solo las ves vos.</li>
   <li><strong>Lo que ignorás</strong> (una publicación, un mensaje o un autor dentro de una publicación), con la fecha, para mostrártelo colapsado y al final. Solo lo ves vos: a quien ignorás no le llega nada. De un autor se guarda el código con el que aparece en esa publicación, no su cuenta. Se borra al borrar la tuya.</li>
   <li><strong>Si escribís desde Gemini</strong>, la huella del certificado de tu programa de Gemini, vinculada a tu cuenta, y la fecha en que lo usaste por última vez. Podés desvincularlo en Mi cuenta.</li>
-  ${ctx.horda ? html`<li><strong>Tus puntajes de HORDA</strong> (el juego de <a href="/horda">/horda</a>), si los guardás: puntos, oleada, bajas, duración de la partida y fecha. En la tabla pública aparecés con un código propio del juego, que no se puede cruzar con lo que publicás. Se borran al borrar tu cuenta.</li>` : ''}
+  ${ctx.horda ? html`<li><strong>Tus puntajes de HORDA</strong> (el juego de <a href="/horda">/horda</a>), si los guardás: puntos, oleada, bajas, duración de la partida y fecha. En la tabla pública aparecés con un código propio del juego, que no se puede cruzar con lo que publicás, o con el nombre que elijas para el juego (si lo elegís, lo ve todo el mundo en la tabla; no aparece en lo que publicás). Se borran al borrar tu cuenta.</li>` : ''}
   <li><strong>Estadísticas de uso, sin rastreo.</strong> Contamos cuántas páginas se ven por día y cuántas personas distintas, sin cookies ni IP guardadas: para no contar dos veces a la misma persona usamos un código anónimo que se descarta al día siguiente. Si tenés cuenta, registramos qué días entraste, solo para saber cuántos usuarios activos hay.</li>
   <li><strong>Una cookie de sesión</strong> (dura 30 días o hasta que salgas) otra de un solo uso durante el ingreso con Google y otra con la hora de tu última visita, que queda en tu navegador y sirve solo para marcar lo nuevo. Si elegís un tema o una vista de los listados, se guardan en dos cookies más (<code>tema</code> y <code>vista</code>). No usamos cookies de publicidad ni de analítica.</li>
 </ul>
@@ -1205,10 +1205,10 @@ ${cola.length ? cola.map((p) => itemMod(ctx, p)) : html`<p class="ayuda">Nada pe
 ${reportados.length ? reportados.map((p) => itemMod(ctx, p)) : html`<p class="ayuda">Sin reportes abiertos.</p>`}
 ${hordaPuntajes
   ? html`<h2 id="horda">HORDA: puntajes más altos</h2>
-<p class="ayuda">El juego corre en el navegador: un puntaje inflado pero posible pasa la validación. Si uno no cierra (muchos puntos para pocas bajas o pocos segundos), borralo. Queda en el registro.</p>
+<p class="ayuda">El juego corre en el navegador: un puntaje inflado pero posible pasa la validación. Si uno no cierra (muchos puntos para pocas bajas o pocos segundos), borralo. Si un nombre es ofensivo o se hace pasar por alguien, borrá el nombre: la cuenta vuelve a aparecer con su ID y puede elegir otro. Las dos cosas quedan en el registro.</p>
 ${hordaPuntajes.length
   ? html`<table class="cruce"><tr><th>Jugador</th><th>Puntos</th><th>Oleada</th><th>Bajas</th><th>Segundos</th><th>Cuándo</th><th></th></tr>
-${hordaPuntajes.map((h) => html`<tr><td>${h.jugador}</td><td>${h.puntos}</td><td>${h.oleada}</td><td>${h.bajas}</td><td>${h.segundos}</td><td>${hora(h.created_at)}</td><td><form method="post" action="/mod/horda/${h.id}/borrar" class="en-linea"><input type="hidden" name="_csrf" value="${ctx.csrf}"><button>Borrar</button></form></td></tr>`)}
+${hordaPuntajes.map((h) => html`<tr><td>${h.nombre ? html`${h.nombre} (${h.jugador}) <form method="post" action="/mod/horda/${h.id}/nombre/borrar" class="en-linea"><input type="hidden" name="_csrf" value="${ctx.csrf}"><button>Borrar nombre</button></form>` : h.jugador}</td><td>${h.puntos}</td><td>${h.oleada}</td><td>${h.bajas}</td><td>${h.segundos}</td><td>${hora(h.created_at)}</td><td><form method="post" action="/mod/horda/${h.id}/borrar" class="en-linea"><input type="hidden" name="_csrf" value="${ctx.csrf}"><button>Borrar</button></form></td></tr>`)}
 </table>`
   : html`<p class="ayuda">Todavía no hay puntajes.</p>`}`
   : ''}`;
@@ -1230,6 +1230,13 @@ export function horda(ctx) {
 </head>
 <body>
 <canvas id="c"></canvas>
+<form id="nombre" class="nombre" hidden>
+<label for="nombre-campo">TU NOMBRE PARA LA TABLA</label>
+<input id="nombre-campo" name="nombre" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done">
+<p class="nombre-ayuda">DE 3 A 12: LETRAS, NUMEROS, PUNTO, GUION O GUION BAJO. ES UNICO Y LO VE TODO EL MUNDO. SE PUEDE CAMBIAR UNA VEZ POR DIA.</p>
+<p id="nombre-aviso" class="nombre-aviso" role="status"></p>
+<div class="nombre-botones"><button type="submit" id="nombre-guardar">GUARDAR</button><button type="button" id="nombre-cancelar">ESC  CANCELAR</button></div>
+</form>
 <script src="${estatico('horda.js')}"></script>
 </body>
 </html>`}`;

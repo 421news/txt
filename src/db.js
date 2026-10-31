@@ -139,6 +139,14 @@ CREATE TABLE IF NOT EXISTS horda_puntajes (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS horda_usuario ON horda_puntajes (user_id, created_at);
+
+-- Nombre de HORDA (2026-10-31): lo elige cada cuenta para la tabla pública, en mayúsculas y único
+-- (UNIQUE sobre el texto ya normalizado). Sin nombre se muestra el ID de HORDA. Se borra con la cuenta.
+CREATE TABLE IF NOT EXISTS horda_nombres (
+  user_id INTEGER PRIMARY KEY REFERENCES users (id),
+  nombre TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL
+);
 `;
 
 export function openDb(archivo) {

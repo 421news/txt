@@ -50,6 +50,8 @@ const wallAt = (x, y) => {
   return tx < 0 || ty < 0 || tx >= MW || ty >= MH || map[ty * MW + tx] === 1 || map[ty * MW + tx] === 2;
 };
 const blocked = (x, y, r) => solid(x - r, y - r) || solid(x + r, y - r) || solid(x - r, y + r) || solid(x + r, y + r);
+// Igual, pero sólo con árboles, rocas y el borde (sin barricadas): para salir si el mago quedó adentro de un muro.
+const blockedByWalls = (x, y, r) => wallAt(x - r, y - r) || wallAt(x + r, y - r) || wallAt(x - r, y + r) || wallAt(x + r, y + r);
 
 // Proyección isométrica 2:1. ISO_OX corre todo a la derecha para que no haya x negativas.
 const ISO_OX = MH * T, GUN_Z = 15;   // altura del pecho del mago: de ahí salen los hechizos
@@ -503,11 +505,12 @@ function spawnFromEdge(type) {
 // y se manda solo al volver a /horda después de entrar.
 const PENDIENTE = 'horda:pendiente';
 // phase: cargando → enviando (si entra al top) → listo; entrar (sin sesión); o error si no hay conexión.
-const board = { phase: 'idle', top: [], mine: -1, puesto: 0, yo: null, csrf: null, logueado: false, aviso: '' };
+const board = { phase: 'idle', top: [], mine: -1, puesto: 0, yo: null, nombre: null, csrf: null, logueado: false, aviso: '' };
 let playTime = 0;
 const entrarBtn = { x: 0, y: 0, w: 0, h: 0 };   // botón de entrar a txt (sin sesión)
 const volverBtn = { x: 0, y: 0, w: 0, h: 0 };   // VOLVER A TXT (menú, pausa y final); w = 0 cuando no está a la vista
 const tablaBtn = { x: 0, y: 0, w: 0, h: 0 };    // MEJORES MAGOS (menú)
+const nombreBtn = { x: 0, y: 0, w: 0, h: 0 };   // TU NOMBRE (menú y final, con sesión)
 // Tabla en el menú de inicio (M o el botón): se pide cada vez que se abre.
 const menuTop = { open: false, phase: 'idle', top: [], mine: -1 };
 function volverATxt() { location.href = '/'; }
@@ -529,7 +532,7 @@ function pedirJSON(url, opts) {
     }));
 }
 function leerEstado() {
-  return pedirJSON('/horda/estado.json').then((d) => { board.logueado = !!d.logueado; board.csrf = d.csrf; board.yo = d.yo; });
+  return pedirJSON('/horda/estado.json').then((d) => { board.logueado = !!d.logueado; board.csrf = d.csrf; board.yo = d.yo; board.nombre = d.nombre || null; });
 }
 function leerPendiente() { try { return JSON.parse(sessionStorage.getItem(PENDIENTE) || 'null'); } catch (e) { return null; } }
 // Si ya había uno pendiente (otra partida sin entrar), queda el mejor de los dos.
@@ -541,6 +544,59 @@ function guardarPendiente(p) {
 function borrarPendiente() { try { sessionStorage.removeItem(PENDIENTE); } catch (e) { /* nada */ } }
 function marcarMio() { board.mine = board.yo ? board.top.findIndex((t) => t.id === board.yo) : -1; }
 function irAEntrar() { location.href = '/entrar?volver=' + encodeURIComponent('/horda'); }
+// Nombre para la tabla: un formulario HTML encima del canvas (así anda el teclado del celular). Mientras
+// está abierto, el juego no atiende teclas ni clics.
+const NOMBRE_AVISOS = {
+  invalido: 'DE 3 A 12: LETRAS, NUMEROS, PUNTO, GUION O GUION BAJO',
+  ocupado: 'ESE NOMBRE YA LO TIENE OTRO MAGO',
+  rechazado: 'ESE NOMBRE NO SE PUEDE USAR',
+  cambio: 'EL NOMBRE SE PUEDE CAMBIAR UNA VEZ POR DIA',
+  suspendida: 'TU CUENTA DE TXT ESTA SUSPENDIDA',
+  sesion: 'SE VENCIO LA SESION: RECARGA LA PAGINA',
+  csrf: 'SE VENCIO LA SESION: RECARGA LA PAGINA',
+};
+const nombreForm = document.getElementById('nombre'), nombreCampo = document.getElementById('nombre-campo');
+const nombreAviso = document.getElementById('nombre-aviso'), nombreGuardar = document.getElementById('nombre-guardar');
+const nombreAbierto = () => !!nombreForm && !nombreForm.hidden;
+function abrirNombre() {
+  if (!nombreForm || !board.logueado) return;
+  keys.clear(); shooting = false; clickQueued = false;
+  nombreForm.hidden = false; nombreCampo.value = board.nombre || ''; nombreAviso.textContent = ''; nombreGuardar.disabled = false;
+  nombreCampo.focus();
+}
+function cerrarNombre() { if (nombreForm) { nombreForm.hidden = true; nombreCampo.blur(); } }
+function ponerNombreEnTablas(top) {
+  if (top) {
+    if (state === 'over') { board.top = top; marcarMio(); }
+    if (menuTop.open) { menuTop.top = top; menuTop.mine = board.yo ? top.findIndex((t) => t.id === board.yo) : -1; }
+  }
+}
+if (nombreForm) {
+  nombreCampo.addEventListener('input', () => {
+    const v = nombreCampo.value.toUpperCase();
+    if (v !== nombreCampo.value) nombreCampo.value = v;
+  });
+  // Las teclas del formulario no llegan al juego (si no, el Esc que lo cierra también saldría a txt).
+  nombreForm.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); cerrarNombre(); }
+  });
+  document.getElementById('nombre-cancelar').addEventListener('click', cerrarNombre);
+  nombreForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const nombre = nombreCampo.value.trim().toUpperCase();
+    if (!/^[A-Z0-9Ñ._-]{3,12}$/.test(nombre)) { nombreAviso.textContent = NOMBRE_AVISOS.invalido; return; }
+    nombreGuardar.disabled = true; nombreAviso.textContent = 'REVISANDO...';
+    pedirJSON('/horda/nombre', { method: 'POST', body: new URLSearchParams({ _csrf: board.csrf || '', nombre }) }).then((d) => {
+      board.nombre = d.nombre;
+      ponerNombreEnTablas(d.top);
+      cerrarNombre();
+    }).catch((err) => {
+      nombreGuardar.disabled = false;
+      nombreAviso.textContent = NOMBRE_AVISOS[err.codigo] || 'NO SE PUDO GUARDAR: PROBA DE NUEVO EN UN MINUTO';
+    });
+  });
+}
 function gameOver() {
   const p = { puntos: score, oleada: wave, bajas: kills, segundos: Math.round(playTime) };
   Object.assign(board, { phase: 'cargando', top: [], mine: -1, puesto: 0, aviso: '' });
@@ -683,9 +739,16 @@ function fire() {
       throws.push({ x0: player.x, y0: player.y, x1: tx + ox, y1: ty + oy, t: 0, dur: 0.45 + dd / 700 + k * 0.08, h: 30 + dd * 0.15, R: 70 * rad, dmg: 13 * m, self: 15 });
     }
   } else if (id === 'muro') {
-    const x = player.x + Math.cos(a) * 26, y = player.y + Math.sin(a) * 26;
-    const t = Math.floor(y / T) * MW + Math.floor(x / T);
-    if (map[t] !== 0 || barricades.length >= 20 || Math.hypot((t % MW + 0.5) * T - player.x, (((t / MW) | 0) + 0.5) * T - player.y) < PR + 13) return;
+    // El casillero no puede tocar el cuadrado con que choca el mago (PR por lado, más 2 de margen). Antes se
+    // medía la distancia al centro del casillero: en diagonal el muro quedaba encima y el mago no podía
+    // moverse hasta que lo rompían. Si el primero queda muy cerca, se prueba un poco más lejos.
+    const pisa = (t) => Math.abs((t % MW + 0.5) * T - player.x) < T / 2 + PR + 2 && Math.abs((((t / MW) | 0) + 0.5) * T - player.y) < T / 2 + PR + 2;
+    let t = -1;
+    for (const d of [26, 34, 42]) {
+      const c = Math.floor((player.y + Math.sin(a) * d) / T) * MW + Math.floor((player.x + Math.cos(a) * d) / T);
+      if (!pisa(c)) { t = c; break; }
+    }
+    if (t < 0 || map[t] !== 0 || barricades.length >= 20) return;
     map[t] = 3; bhp[t] = 120 * hpm; barricades.push(t);
   } else if (id === 'rayos') addBullet(mx, my, aa + (Math.random() - 0.5) * 0.14, 800, 1.1 * m, 0.8, 3, 0, 0, pierce);
   else if (id === 'bola') fan(multi, (b) => rockets.push({ x: mx, y: my, vox: 0, voy: 0, vx: Math.cos(b) * 430, vy: Math.sin(b) * 430, life: 2, dmg: 18 * m, R: 75 * rad }));
@@ -710,6 +773,7 @@ function fire() {
 const keys = new Set();
 let mouseX = W / 2, mouseY = H / 2, usingMouse = false, shooting = false, clickQueued = false;   // clickQueued: un tiro pendiente para los hechizos de a uno
 addEventListener('keydown', (e) => {
+  if (nombreAbierto()) return;
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   if (e.code === 'Space' && !e.repeat) clickQueued = true;
   keys.add(e.code);
@@ -728,6 +792,7 @@ addEventListener('keydown', (e) => {
     }
     if (e.code === 'KeyV' && state === 'pause') { volverATxt(); return; }
     if (e.code === 'KeyM' && state === 'menu') { alternarTablaMenu(); return; }
+    if (e.code === 'KeyN' && board.logueado && (state === 'menu' || (state === 'over' && board.phase !== 'enviando'))) { e.preventDefault(); abrirNombre(); return; }
     if (e.code === 'Enter' && (state === 'menu' || (state === 'over' && board.phase !== 'enviando'))) { menuTop.open = false; reset(); state = 'play'; }
     if (e.code === 'KeyP' && (state === 'play' || state === 'pause')) state = state === 'play' ? 'pause' : 'play';
   }
@@ -753,10 +818,11 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; usingMouse = true; });
 addEventListener('mousedown', (e) => {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || nombreAbierto()) return;
   if (state === 'over' && board.phase === 'entrar' && inBox(entrarBtn)) { irAEntrar(); return; }
   if ((state === 'menu' || state === 'pause' || (state === 'over' && board.phase !== 'enviando')) && inBox(volverBtn)) { volverATxt(); return; }
   if (state === 'menu' && inBox(tablaBtn)) { alternarTablaMenu(); return; }
+  if ((state === 'menu' || (state === 'over' && board.phase !== 'enviando')) && inBox(nombreBtn)) { abrirNombre(); return; }
   if (state === 'tree') {
     if (inBox(backBtn)) { state = treeFrom; return; }
     const c = treeHit(); if (c) spendPoint(c.idx); return;
@@ -784,8 +850,10 @@ function update(dt) {
     const mx = sy + sx / 2, my = sy - sx / 2;
     const l = Math.hypot(mx, my), sp = 150 * dt;
     const nx = player.x + mx / l * sp, ny = player.y + my / l * sp;
-    if (!blocked(nx, player.y, PR)) player.x = nx;
-    if (!blocked(player.x, ny, PR)) player.y = ny;
+    // Si ya está pisando una barricada (no debería pasar), las barricadas no lo frenan hasta que sale.
+    const choca = blocked(player.x, player.y, PR) ? blockedByWalls : blocked;
+    if (!choca(nx, player.y, PR)) player.x = nx;
+    if (!choca(player.x, ny, PR)) player.y = ny;
     if (!usingMouse) player.aim = Math.atan2(my, mx);
   }
   if (usingMouse) {
@@ -2164,7 +2232,7 @@ function drawTabla(top, mine, cx, by) {
   top.forEach((t, k) => {
     const y = by + 46 + k * 22, col = k === mine ? '#ffd23f' : '#e0dccf';
     text(String(k + 1) + '.', cx - 150, y, 8, col, 'right');
-    text(t.id, cx - 130, y, 8, col);
+    text(t.nombre || t.id, cx - 130, y, 8, col);
     text(String(t.puntos), cx + 60, y, 8, col, 'right');
     text('OLEADA ' + t.oleada, cx + 150, y, 8, k === mine ? col : '#888', 'right');
   });
@@ -2173,7 +2241,7 @@ function drawTabla(top, mine, cx, by) {
 const TABLA_H = 330;   // alto del panel de la tabla en el menú
 function drawHud() {
   ctx.imageSmoothingEnabled = false;
-  volverBtn.w = 0; tablaBtn.w = 0;   // los botones sólo responden en el cuadro en que se dibujan
+  volverBtn.w = 0; tablaBtn.w = 0; nombreBtn.w = 0;   // los botones sólo responden en el cuadro en que se dibujan
   if (state === 'menu') {
     // Bosque de noche de fondo, luciérnagas que titilan, el logo de piedra y APRETÁ ENTER.
     ctx.imageSmoothingEnabled = false;
@@ -2211,9 +2279,12 @@ function drawHud() {
       // Embebido en un iframe, el juego no recibe teclas hasta que se le hace clic.
       text(document.hasFocus() ? 'APRETA ENTER' : 'HACE CLIC', W / 2, Math.min(btnY - 24, lb + 80), 24, '#ffd23f', 'center');
     }
-    const bw = 240, gap = 16;
-    pixButton(tablaBtn, W / 2 - bw - gap / 2, btnY, bw, 40, menuTop.open ? 'M  CERRAR LA TABLA' : 'M  MEJORES MAGOS');
-    pixButton(volverBtn, W / 2 + gap / 2, btnY, bw, 40, 'ESC  VOLVER A TXT');
+    // Con sesión hay un tercer botón para el nombre de la tabla.
+    const gap = 16, n = board.logueado ? 3 : 2, bw = Math.min(240, Math.floor((W - 32 - gap * (n - 1)) / n));
+    let bx = (W - n * bw - (n - 1) * gap) / 2;
+    pixButton(tablaBtn, bx, btnY, bw, 40, menuTop.open ? 'M  CERRAR LA TABLA' : 'M  MEJORES MAGOS'); bx += bw + gap;
+    if (board.logueado) { pixButton(nombreBtn, bx, btnY, bw, 40, board.nombre ? 'N  CAMBIAR NOMBRE' : 'N  TU NOMBRE'); bx += bw + gap; }
+    pixButton(volverBtn, bx, btnY, bw, 40, 'ESC  VOLVER A TXT');
     return;
   }
   text('OLEADA ' + wave, 16, 28, 16, '#fff');
@@ -2272,7 +2343,13 @@ function drawHud() {
     }
     const vy = Math.min(H - 52, by + 346);
     if (board.phase !== 'enviando' && ((animT * 2) | 0) & 1) text('APRETA ENTER', W / 2, vy - 16, 24, '#ffd23f', 'center');
-    if (board.phase !== 'enviando') pixButton(volverBtn, W / 2 - 130, vy, 260, 40, 'ESC  VOLVER A TXT');
+    if (board.phase !== 'enviando') {
+      if (board.logueado) {
+        // Sin nombre, la invitación a ponerse uno; con nombre, para cambiarlo.
+        pixButton(nombreBtn, W / 2 - 268, vy, 260, 40, board.nombre ? 'N  CAMBIAR NOMBRE' : 'N  PONETE UN NOMBRE');
+        pixButton(volverBtn, W / 2 + 8, vy, 260, 40, 'ESC  VOLVER A TXT');
+      } else pixButton(volverBtn, W / 2 - 130, vy, 260, 40, 'ESC  VOLVER A TXT');
+    }
   }
 }
 
@@ -2308,7 +2385,7 @@ reset();
 // un tope de 3 s para no quedar en negro si falla.
 const fuenteLista = document.fonts && document.fonts.load ? document.fonts.load('8px "Press Start 2P"').catch(() => {}) : Promise.resolve();
 Promise.race([fuenteLista, new Promise((r) => setTimeout(r, 3000))]).then(() => {
-  retomarPendiente();
+  if (leerPendiente()) retomarPendiente(); else leerEstado().catch(() => {});
   last = performance.now();
   requestAnimationFrame(frame);
 });

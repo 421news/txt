@@ -1420,8 +1420,9 @@ export function createApp({
       .map((g) => ({ ...g, board_nombre: boardBySlug(g.board)?.nombre ?? g.board, contexto: contextoMod(g.thread_id, g.body, g.created_at) }));
     // HORDA: los 20 puntajes más altos (todas las filas, no el mejor por cuenta) para poder borrar uno trucho.
     const hordaPuntajes = horda
-      ? db.prepare('SELECT id, user_id, puntos, oleada, bajas, segundos, created_at FROM horda_puntajes ORDER BY puntos DESC, created_at LIMIT 20').all()
-          .map((r) => ({ id: r.id, jugador: hordaId(r.user_id), puntos: r.puntos, oleada: r.oleada, bajas: r.bajas, segundos: r.segundos, created_at: r.created_at }))
+      ? db.prepare(`SELECT p.id, p.user_id, p.puntos, p.oleada, p.bajas, p.segundos, p.created_at, n.nombre FROM horda_puntajes p
+          LEFT JOIN horda_nombres n ON n.user_id = p.user_id ORDER BY p.puntos DESC, p.created_at LIMIT 20`).all()
+          .map((r) => ({ id: r.id, jugador: hordaId(r.user_id), nombre: r.nombre, puntos: r.puntos, oleada: r.oleada, bajas: r.bajas, segundos: r.segundos, created_at: r.created_at }))
       : null;
     const cuerpo = V.mod(res.locals.ctx, { cola: q.colaMod.all().map(nombrar), reportados: q.reportadosMod.all().map(nombrar), graves, hordaPuntajes });
     enviar(res, { titulo: 'Moderación', indexar: false, cuerpo });
@@ -1546,6 +1547,18 @@ export function createApp({
     if (!fila) return noEncontrado(res);
     db.prepare('DELETE FROM horda_puntajes WHERE id = ?').run(fila.id);
     q.log.run(req.user.id, 'horda-borrar', null, fila.user_id, `${fila.puntos} puntos`, now());
+    res.redirect(303, '/mod#horda');
+  });
+
+  // HORDA: un mod borra un nombre ofensivo o que se hace pasar por otro. La cuenta puede elegir otro.
+  app.post('/mod/horda/:id/nombre/borrar', (req, res) => {
+    if (!horda) return noEncontrado(res);
+    if (!exigirMod(req, res)) return;
+    const fila = db.prepare('SELECT n.user_id, n.nombre FROM horda_puntajes p JOIN horda_nombres n ON n.user_id = p.user_id WHERE p.id = ?').get(Number(req.params.id));
+    if (fila) {
+      db.prepare('DELETE FROM horda_nombres WHERE user_id = ?').run(fila.user_id);
+      q.log.run(req.user.id, 'horda-nombre-borrar', null, fila.user_id, fila.nombre, now());
+    }
     res.redirect(303, '/mod#horda');
   });
 
@@ -1691,6 +1704,7 @@ export function createApp({
     db.prepare('DELETE FROM guardados WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM ignorados WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM horda_puntajes WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM horda_nombres WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
     db.prepare("UPDATE users SET identidad = 'borrada:' || id, role = 'user', ban_reason = NULL WHERE id = ?").run(userId);
     q.log.run(null, 'borrar-cuenta', null, userId, null, now());
@@ -1763,8 +1777,13 @@ export function createApp({
       delante: db.prepare(`SELECT COUNT(*) AS n FROM (${MEJORES}) WHERE puntos > ?`),
       recientes: db.prepare('SELECT COUNT(*) AS n FROM horda_puntajes WHERE user_id = ? AND created_at > ?'),
       guardar: db.prepare('INSERT INTO horda_puntajes (user_id, puntos, oleada, bajas, segundos, created_at) VALUES (?, ?, ?, ?, ?, ?)'),
+      nombre: db.prepare('SELECT nombre, created_at FROM horda_nombres WHERE user_id = ?'),
+      nombreDe: db.prepare('SELECT user_id FROM horda_nombres WHERE nombre = ?'),
+      ponerNombre: db.prepare(`INSERT INTO horda_nombres (user_id, nombre, created_at) VALUES (?, ?, ?)
+        ON CONFLICT (user_id) DO UPDATE SET nombre = excluded.nombre, created_at = excluded.created_at`),
     };
-    const topHorda = () => qh.top.all().map((r) => ({ id: hordaId(r.user_id), puntos: r.puntos, oleada: r.oleada }));
+    // La tabla muestra el nombre si la cuenta eligió uno; `id` (el ID de HORDA) sigue yendo para marcar la fila propia.
+    const topHorda = () => qh.top.all().map((r) => ({ id: hordaId(r.user_id), nombre: qh.nombre.get(r.user_id)?.nombre ?? null, puntos: r.puntos, oleada: r.oleada }));
     const json = (res, status, datos) => res.status(status).set('Cache-Control', 'private, no-store').json(datos);
     // Solo dígitos: Number('') y Number(' 1e3 ') pasarían por números válidos.
     const entero = (v, max) => (/^\d{1,9}$/.test(String(v ?? '')) && Number(v) <= max ? Number(v) : null);
@@ -1780,7 +1799,12 @@ export function createApp({
     });
 
     app.get('/horda/estado.json', (req, res) =>
-      json(res, 200, { logueado: !!req.user, csrf: req.csrf, yo: req.user ? hordaId(req.user.id) : null }),
+      json(res, 200, {
+        logueado: !!req.user,
+        csrf: req.csrf,
+        yo: req.user ? hordaId(req.user.id) : null,
+        nombre: req.user ? qh.nombre.get(req.user.id)?.nombre ?? null : null,
+      }),
     );
 
     app.get('/horda/top.json', (req, res) => json(res, 200, { top: topHorda() }));
@@ -1802,6 +1826,50 @@ export function createApp({
       qh.guardar.run(req.user.id, puntos, oleada, bajas, segundos, now());
       const mejor = qh.mejor.get(req.user.id).m;
       json(res, 200, { top: topHorda(), puesto: qh.delante.get(mejor).n + 1 });
+    });
+
+    // Nombre para la tabla (2026-10-31): 3 a 12 letras (A-Z, Ñ), números, punto, guion o guion bajo, en
+    // mayúsculas (la letra pixelada no tiene minúsculas) y único. Se puede cambiar una vez por día; el
+    // viejo queda libre. Es público, así que pasa por el mismo filtro que los mensajes. No puede tener la
+    // forma de un ID de HORDA (8 de hexa), para no hacerse pasar por alguien que todavía no eligió.
+    const HORDA_CAMBIO_NOMBRE = 24 * 3600_000;
+    const RESERVADOS = new Set(['ADMIN', 'ADMINISTRADOR', 'MOD', 'MODERADOR', 'MODERACION', 'TXT', '421', 'HORDA', 'SISTEMA', 'ANONIMO', 'PSEUDOANONIMO']);
+    const enModeracion = new Set();
+    app.post('/horda/nombre', async (req, res) => {
+      if (!req.user) return json(res, 401, { error: 'sesion' });
+      if (!iguales(req.body?._csrf, req.csrf)) return json(res, 403, { error: 'csrf' });
+      if (suspendido(req.user)) return json(res, 403, { error: 'suspendida' });
+      const nombre = String(req.body?.nombre ?? '').trim().toUpperCase();
+      if (!/^[A-Z0-9Ñ._-]{3,12}$/.test(nombre) || !/[A-Z0-9Ñ]/.test(nombre) || /^[0-9A-F]{8}$/.test(nombre) || RESERVADOS.has(nombre.replace(/[._-]/g, ''))) {
+        return json(res, 400, { error: 'invalido' });
+      }
+      const actual = qh.nombre.get(req.user.id);
+      if (actual?.nombre === nombre) return json(res, 200, { nombre });
+      if (actual && now() - actual.created_at < HORDA_CAMBIO_NOMBRE) return json(res, 429, { error: 'cambio' });
+      if (qh.nombreDe.get(nombre)) return json(res, 409, { error: 'ocupado' });
+      if (enModeracion.has(req.user.id)) return json(res, 429, { error: 'espera' });
+      if (!hayCupo()) return json(res, 503, { error: 'ocupado-servidor' });
+      enModeracion.add(req.user.id);
+      let v;
+      try {
+        v = req.user.role === 'admin'
+          ? { decision: 'approve' }
+          : await moderar({ tablon: 'HORDA', asunto: 'Nombre de jugador para la tabla pública de puntajes del juego', cuerpo: nombre, esHilo: false });
+      } catch {
+        v = { decision: 'queue' };
+      } finally {
+        enModeracion.delete(req.user.id);
+      }
+      if (v.decision !== 'approve') return json(res, 400, { error: 'rechazado' });
+      if (!cuentaVigente(req.user.id)) return json(res, 403, { error: 'suspendida' });
+      try {
+        qh.ponerNombre.run(req.user.id, nombre, now());
+      } catch (err) {
+        // Otro lo tomó mientras se moderaba.
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') return json(res, 409, { error: 'ocupado' });
+        throw err;
+      }
+      json(res, 200, { nombre, top: topHorda() });
     });
   }
 
