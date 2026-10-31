@@ -56,9 +56,10 @@ const blockedByWalls = (x, y, r) => wallAt(x - r, y - r) || wallAt(x + r, y - r)
 // Proyección isométrica 2:1. ISO_OX corre todo a la derecha para que no haya x negativas.
 const ISO_OX = MH * T, GUN_Z = 15;   // altura del pecho del mago: de ahí salen los hechizos
 // Cámara más cerca: el mundo se dibuja agrandado, el HUD no. En pantallas bajas (un celular acostado tiene
-// ~390 px de alto) se aleja, para ver al menos ~440 px de mundo de alto. Se calcula en render().
+// ~390 px de alto) se aleja, para ver al menos ~440 px de mundo de alto. En táctil, 10% más cerca (pedido
+// del usuario al probarlo en el teléfono). Se calcula en render().
 let ZOOM = 1.25;
-const zoomPara = (h) => Math.min(1.25, Math.max(0.8, h / 440));
+const zoomPara = (h) => Math.min(1.25, Math.max(0.8, h / 440)) * (touchMode ? 1.1 : 1);
 const isoX = (x, y) => x - y + ISO_OX;
 const isoY = (x, y) => (x + y) / 2;
 
@@ -874,7 +875,7 @@ addEventListener('mousedown', (e) => {
 // dispara) y siguen al dedo si se pasa del borde. En el resto de los estados un toque es un clic. Se pasa a
 // modo táctil con el primer toque y se vuelve con el mouse. preventDefault en pointerdown evita los eventos
 // de mouse de compatibilidad (si no, cada toque también sería un clic).
-let touchMode = false, touchAiming = false, pedirPantalla = false;
+let touchMode = false, touchAiming = false, pedirPantalla = false, tiroT = 0, pantallaT = 0;
 const STICK_R = 56;                       // recorrido del joystick, en píxeles de pantalla
 const sticks = { move: null, aim: null }; // { id, ox, oy, x, y }
 function stickVec(st) {
@@ -898,6 +899,7 @@ cv.addEventListener('pointerdown', (e) => {
   if (state === 'play') {
     if (clickUI()) return;
     const lado = e.clientX < W / 2 ? 'move' : 'aim';
+    if (lado === 'aim') tiroT = 0.4;
     if (!sticks[lado]) sticks[lado] = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY };
     return;
   }
@@ -918,9 +920,11 @@ function soltarDedo(e) {
   if (e.pointerType === 'mouse') return;
   for (const lado of ['move', 'aim']) if (sticks[lado] && sticks[lado].id === e.pointerId) sticks[lado] = null;
   mouseX = mouseY = -999;   // sin dedo no hay "mouse encima"
-  // Pantalla completa (Android; el iPhone no la tiene): sólo se puede pedir al levantar el dedo.
-  if (pedirPantalla) {
-    pedirPantalla = false;
+  // Pantalla completa (Android; el iPhone no la tiene): sólo se puede pedir al levantar el dedo. Se pide al
+  // empezar a jugar y, mientras no esté, en cada toque (como mucho una vez por segundo): si el navegador la
+  // negó o se salió con el gesto de volver, la barra del navegador tapa el juego.
+  if (pedirPantalla || (!document.fullscreenElement && performance.now() - pantallaT > 1000)) {
+    pedirPantalla = false; pantallaT = performance.now();
     const de = document.documentElement;
     if (de.requestFullscreen && !document.fullscreenElement) {
       de.requestFullscreen({ navigationUI: 'hide' }).then(() => {
@@ -985,13 +989,17 @@ function update(dt) {
     player.aim = Math.atan2(wy, wx);
     player.tx = player.x + wx / l * reach; player.ty = player.y + wy / l * reach;
   }
-  if (touchMode) { shooting = !!sticks.aim; if (shooting) clickQueued = true; }
+  // Un toque del lado derecho deja un tiro pendiente (0,4 s): así sale aunque el dedo se levante antes del
+  // próximo cuadro o el hechizo esté recargando, como el botón de un joystick.
+  if (touchMode) { tiroT -= dt; shooting = !!sticks.aim || tiroT > 0; if (shooting) clickQueued = true; }
+  const cdAntes = player.cd;
   player.cd -= dt; player.hurt -= dt; player.noMana -= dt; player.castT -= dt;
   player.mana = Math.min(MANA_MAX, player.mana + MANA_REGEN * dt);
   // Los hechizos de a uno (varita) disparan una vez por clic; si se hace clic durante la recarga, sale apenas puede.
   // Con la mejora de repetición pasan a disparar solos mientras se mantiene apretado.
   if (WEAPONS[player.weapon].semi && !perk(player.weapon, 'auto')) { if (clickQueued && player.cd <= 0) { fire(); clickQueued = false; } }
   else { clickQueued = false; if ((shooting || keys.has('Space')) && player.cd <= 0) fire(); }
+  if (player.cd > cdAntes) tiroT = 0;   // salió el tiro pendiente
   comboT -= dt; if (comboT <= 0) combo = 1;
   if (nE > 0) lootT += dt;
   bannerT -= dt; waveT -= dt;
