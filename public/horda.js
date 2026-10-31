@@ -76,7 +76,7 @@ function vnoise(x, y) {
   return a + (b - a) * u + (cc - a) * v + (a - b - cc + dd) * u * v;
 }
 // Calcomanías del piso en pixel art (cada letra un color, '.' transparente), a PX por píxel.
-const DECAL_PAL = { a: '#3a3d2c', b: '#4a4a36', c: '#5b5640', l: '#4a3626', L: '#5e432c', W: '#a8a090', w: '#7d766a', k: '#14130f',
+const DECAL_PAL = { a: '#3a3d2c', b: '#4a4a36', c: '#5b5640', l: '#4a3626', L: '#5e432c', W: '#6e695d', w: '#55514a', k: '#14130f',
   s: '#3b3d3f', S: '#55585b', m: '#8d8778', M: '#b9b3a2', r: '#5a1c1c', g: '#2a3020' };
 const DECALS = {
   tuft: [['a.a.', '.a.b', 'aab.'], ['.b..', 'a.a.', 'ab.a'], ['c..', '.a.', 'aa.']],
@@ -84,8 +84,6 @@ const DECALS = {
   pebble: [['sS', 'ss']],
   shroom: [['.M.', 'MMm', '.w.']],
   bone: [['W...', '.ww.', '..wW'], ['...W', '.ww.', 'Ww..']],
-  skull: [['.WW.', 'WkWk', '.WW.', '.w.w']],
-  ribs: [['W.W.W', 'wwwww', 'W.W.W']],
   grave: [['.SS.', 'SSSS', '.Ss.', '.Ss.', 'gggg'], ['.S.', 'SSS', '.S.', '.s.', 'ggg']],
 };
 function decal(rows, x, y) {
@@ -114,7 +112,7 @@ function paintFloor() {
   }
   fctx.putImageData(img, 0, 0);
   seed = 77;
-  // Pasto seco, hojas podridas, piedritas, hongos pálidos, huesos, calaveras y alguna tumba (plano: no tapa nada).
+  // Pasto seco, hojas podridas, piedritas, hongos pálidos, algún hueso suelto (oscuro, para no confundirse con los esqueletos) y alguna tumba (plano: no tapa nada).
   for (let k = 0; k < 2600; k++) {
     const x = rnd() * WW, y = rnd() * WH, r = rnd(), v = rnd();
     if (map[((y / T) | 0) * MW + ((x / T) | 0)] && r > 0.5) continue;
@@ -124,8 +122,8 @@ function paintFloor() {
     else if (r < 0.78) decal(pick(DECALS.leaf), px, py);
     else if (r < 0.87) decal(DECALS.pebble[0], px, py);
     else if (r < 0.92) decal(DECALS.shroom[0], px, py - 4);
-    else if (r < 0.97) decal(pick(DECALS.bone), px, py);
-    else if (r < 0.99) decal(r < 0.98 ? DECALS.skull[0] : DECALS.ribs[0], px, py - 4);
+    else if (r < 0.935) decal(pick(DECALS.bone), px, py);
+    else if (r < 0.99) decal(DECALS.pebble[0], px, py);
     else if (!map[((y / T) | 0) * MW + ((x / T) | 0)]) decal(pick(DECALS.grave), px, py - 8);
   }
 }
@@ -233,8 +231,8 @@ function compactEnemies() {
   nE = w;
 }
 
-// ---------- Cadáveres ----------
-// Los enemigos de a pie dejan el cuerpo en el piso CORPSE_LIFE segundos (de juego) y se van tramándose
+// ---------- Cadáveres (esqueletos) ----------
+// Los enemigos de a pie dejan su esqueleto en el piso CORPSE_LIFE segundos (de juego) y se van tramándose
 // en los últimos 4. Anillo de MC: si se llena, el más viejo deja su lugar al nuevo.
 const MC = 300, CORPSE_LIFE = 20;
 const cxw = new Float32Array(MC), cyw = new Float32Array(MC), ctm = new Float32Array(MC);
@@ -1243,49 +1241,60 @@ function buildSprites() {
     }
   }
 }
-// Cadáveres: el diseño de cada enemigo acostado (girado y achatado contra el piso), pasado a la grilla
-// de PX sin suavizado, con colores apagados, contorno y un charco debajo.
+// Esqueletos: lo que queda de cada enemigo de a pie (pixel art propio, con contorno oscuro y sin charco).
+// Cada letra es un color; '.' es transparente. La capa "top" pisa la base (cuernos, casco, hacha...).
 // CORPSE[tipo][flip * 4 + nivel]: nivel 3 entero, 2/1/0 tramado al 75/50/25% (para irse de a poco).
+const BONE_PAL = { W: '#ddd6c2', w: '#a39b86', k: '#1a1714', h: '#2e2620', H: '#cbbf9e', v: '#4a2d6a', S: '#6d737b', R: '#a3241c',
+  r: '#b8352c', B: '#5a3d24', A: '#8f969e', G: '#4f7a3a', D: '#5c4630', O: '#8fe0a0' };
+const SKEL_MAN = [
+  '......W...............',
+  '.WWW...W.w.w.w.w......',
+  'WkWkW....W.W.W.W..WW..',
+  'WWWWWWwwwwwwwwwwwWWWW.',
+  'WWWWW....W.W.W.W..WW.W',
+  '.W.W...W.w.w.w.w...W..',
+  '......W............W..',
+  '...................W..',
+];
+const SKEL = {
+  0: { s: 2, base: SKEL_MAN, top: ['', '', '', '', '', '', 'r.r', 'rrr'] },                                   // zombi: el hongo rojo al lado
+  1: { s: 2, base: SKEL_MAN, top: ['h...h', 'h...h', '', '', '', '', '........vvvvvv', '.......vv.v..v'] },  // cuernudo: cuernos y harapos violetas
+  5: { s: 2, base: SKEL_MAN, top: ['.R', '.SSS.', 'S...S', '', '', '', '...B', '..BAA', '...AA'] },              // caballero: casco con penacho y hacha
+  2: { s: 2, top: [], base: [                                                                                    // macho cabrío: cráneo con cuernos y cuatro patas
+    'HH........................',
+    '.HH.HH....................',
+    '..WWWWW....W.W.W.W.W......',
+    '.WkWWWW....w.w.w.w.w......',
+    'WWWWWWWWwwwwwwwwwwwwwwWWW.',
+    '.WWW.......w.w.w.w.w..WWWW',
+    '...........W.W.W.W.W..W..W',
+    '...........W.......W..W..W',
+    '..........W.......W..W..W.',
+    '..........W.......W..W..W.',
+  ] },
+  3: { s: 3, base: SKEL_MAN, top: ['D.D.D', 'G...G', '', '', '', '', '......BBBBBBBO', '.............O'] },     // Rey del Bosque: corona de ramas y báculo
+};
 const CORPSE = [];
 function buildCorpses() {
-  const tmp = makeCanvas(PW, PH), tg = tmp.getContext('2d');
-  for (const type of [0, 1, 2, 3, 5]) {
-    const k = type === 3 ? 1.6 : 1, L = Math.ceil(PH * k * 1.1 / PX) * PX;
-    tg.setTransform(1, 0, 0, 1, 0, 0); tg.clearRect(0, 0, PW, PH);
-    tg.setTransform(SC, 0, 0, SC, 0, 0); DESIGNS[type](tg, AX, AY, 0, 0); tg.setTransform(1, 0, 0, 1, 0, 0);
-    const big = makeCanvas(L, L), bg = big.getContext('2d');
-    bg.translate(L / 2, L / 2); bg.scale(1, 0.55); bg.rotate(-1.35); bg.scale(k, k); bg.translate(-PAX, -(PAY - 18 * SC));
-    bg.drawImage(tmp, 0, 0);
-    const n = L / PX, sm = makeCanvas(n, n), sg = sm.getContext('2d');
-    sg.imageSmoothingEnabled = true; sg.drawImage(big, 0, 0, n, n);
-    const src = sg.getImageData(0, 0, n, n).data, body = new Uint8Array(n * n);
-    for (let q = 0; q < n * n; q++) body[q] = src[q * 4 + 3] >= 110 ? 1 : 0;
-    const base = new Uint8ClampedArray(n * n * 4);
-    const puddle = type === 0 ? [34, 42, 18] : [58, 12, 18], rx = n * 0.36, ry = n * 0.16;
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const q = y * n + x, o = q * 4;
-      const dx = (x + 0.5 - n / 2) / rx, dy = (y + 0.5 - n / 2 - n * 0.04) / ry, dd = dx * dx + dy * dy;
-      if (body[q]) {
-        const r = src[o], g = src[o + 1], b = src[o + 2], gray = (r + g + b) / 3;
-        base[o] = r * 0.55 + gray * 0.15; base[o + 1] = g * 0.55 + gray * 0.15; base[o + 2] = b * 0.5 + gray * 0.15; base[o + 3] = 255;
-      } else if ((x > 0 && body[q - 1]) || (x < n - 1 && body[q + 1]) || (y > 0 && body[q - n]) || (y < n - 1 && body[q + n])) {
-        base[o] = 12; base[o + 1] = 12; base[o + 2] = 10; base[o + 3] = 255;
-      } else if (dd <= 1 && (dd < 0.55 || bayer(x, y) < 0.5)) {
-        base[o] = puddle[0]; base[o + 1] = puddle[1]; base[o + 2] = puddle[2]; base[o + 3] = 255;
-      }
-    }
+  for (const [type, def] of Object.entries(SKEL)) {
+    const h0 = Math.max(def.base.length, def.top.length);
+    const w = Math.max(...def.base.map((r) => r.length), ...def.top.map((r) => r.length)) + 2, h = h0 + 2;
+    const g0 = Array.from({ length: h }, () => Array(w).fill('.'));
+    for (const layer of [def.base, def.top]) layer.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') g0[y + 1][x + 1] = ch; }));
+    // Contorno oscuro de un píxel alrededor de los huesos (para que se lean sobre el piso).
+    const solidAt = (x, y) => x >= 0 && y >= 0 && x < w && y < h && g0[y][x] !== '.' && g0[y][x] !== '#';
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++)
+      if (g0[y][x] === '.' && (solidAt(x - 1, y) || solidAt(x + 1, y) || solidAt(x, y - 1) || solidAt(x, y + 1))) g0[y][x] = '#';
+    const sc = def.s;   // píxeles del mundo por píxel del arte (2 = la grilla de los efectos; el jefe, 3)
     CORPSE[type] = [];
     for (let flip = 0; flip < 2; flip++) for (let lvl = 0; lvl < 4; lvl++) {
-      const cell = makeCanvas(n, n), cg = cell.getContext('2d'), img = cg.createImageData(n, n);
-      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-        const o = (y * n + x) * 4;
-        if (!base[o + 3] || bayer(x, y) >= (lvl + 1) / 4) continue;
-        const t = (y * n + (flip ? n - 1 - x : x)) * 4;
-        img.data[t] = base[o]; img.data[t + 1] = base[o + 1]; img.data[t + 2] = base[o + 2]; img.data[t + 3] = 255;
+      const c = makeCanvas(w * sc, h * sc), g = c.getContext('2d');
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const ch = g0[y][x];
+        if (ch === '.' || bayer(x, y) >= (lvl + 1) / 4) continue;
+        g.fillStyle = ch === '#' ? '#0e0c0a' : BONE_PAL[ch];
+        g.fillRect((flip ? w - 1 - x : x) * sc, y * sc, sc, sc);
       }
-      cg.putImageData(img, 0, 0);
-      const c = makeCanvas(L, L), g = c.getContext('2d');
-      g.imageSmoothingEnabled = false; g.drawImage(cell, 0, 0, L, L);
       CORPSE[type][flip * 4 + lvl] = c;
     }
   }
@@ -1486,44 +1495,6 @@ function indexScenery() {
 }
 const depth = (x, y) => Math.min(NBK - 1, Math.max(0, Math.floor((x + y) / DK)));
 
-// Niebla: una textura repetible de manchas tramadas (bloques de PX), dibujada con un solo nivel de
-// transparencia y corrida de a PX. Viñeta: bloques negros cada vez más tupidos hacia los bordes.
-const FOG_N = 96, FOG_P = 8;
-let FOG = null, VIGNETTE = null;
-const VIG_S = 5;   // 2 píxeles del mundo con el zoom de 1,25
-function buildFog() {
-  const pn = (x, y, P) => {   // ruido de valor periódico (período P celdas): la textura empalma sin costura
-    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
-    const h = (a, b) => hash2(((a % P) + P) % P, ((b % P) + P) % P + 31);
-    const a = h(xi, yi), b = h(xi + 1, yi), c = h(xi, yi + 1), d = h(xi + 1, yi + 1);
-    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-  };
-  FOG = makeCanvas(FOG_N * PX, FOG_N * PX);
-  const g = FOG.getContext('2d');
-  g.fillStyle = '#8a958e';
-  for (let y = 0; y < FOG_N; y++) for (let x = 0; x < FOG_N; x++) {
-    const n = pn(x / (FOG_N / FOG_P), y / (FOG_N / FOG_P), FOG_P) * 0.7 + pn(x / (FOG_N / 16), y / (FOG_N / 16), 16) * 0.3;
-    if (bayer(x, y) < Math.min(0.75, Math.max(0, (n - 0.42) * 2.4))) g.fillRect(x * PX, y * PX, PX, PX);
-  }
-}
-function drawFog(cx, cy, vw, vh) {
-  const S = FOG.width, ox = snap(animT * 7) % S, oy = snap(animT * 3) % S;
-  ctx.globalAlpha = 0.16;
-  for (let y = Math.floor((cy - oy) / S) * S + oy; y < cy + vh; y += S)
-    for (let x = Math.floor((cx - ox) / S) * S + ox; x < cx + vw; x += S) ctx.drawImage(FOG, x, y);
-  ctx.globalAlpha = 1;
-}
-function buildVignette() {
-  const w = Math.ceil(W / VIG_S), h = Math.ceil(H / VIG_S);
-  VIGNETTE = makeCanvas(w, h);
-  const g = VIGNETTE.getContext('2d');
-  g.fillStyle = '#050605';
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const dx = (x + 0.5) / w * 2 - 1, dy = (y + 0.5) / h * 2 - 1, d = Math.sqrt(dx * dx * 0.85 + dy * dy);
-    if (bayer(x, y) < Math.min(0.5, Math.max(0, (d - 0.8) * 1.4))) g.fillRect(x, y, 1, 1);
-  }
-}
-
 let animT = 0;
 function render() {
   animT += 1 / 60;
@@ -1630,8 +1601,6 @@ function render() {
     }
   }
 
-  // Niebla que se arrastra entre los árboles (debajo de los hechizos, para que se lean).
-  drawFog(camX, camY, VW, VH);
   ctx.imageSmoothingEnabled = false;
   // Piedras del macho cabrío: marca roja que titila donde van a caer, y la piedra en arco con su sombra.
   for (const b of boulders) {
@@ -1709,9 +1678,6 @@ function render() {
     ctx.drawImage(fr, snap(sx - fr.width * s / 2), snap(sy - fr.height * s / 2), fr.width * s, fr.height * s);
   }
   ctx.restore();
-  // Bordes oscuros por pasos (tramado de bloques negros que se espesa hacia afuera).
-  if (!VIGNETTE || VIGNETTE.width !== Math.ceil(W / VIG_S) || VIGNETTE.height !== Math.ceil(H / VIG_S)) buildVignette();
-  ctx.drawImage(VIGNETTE, 0, 0, VIGNETTE.width * VIG_S, VIGNETTE.height * VIG_S);
 
   // Daño: rojo en dos pasos (no un desvanecido continuo).
   if (player.hurt > 0) { ctx.fillStyle = player.hurt > 0.12 ? 'rgba(160,0,0,.22)' : 'rgba(160,0,0,.1)'; ctx.fillRect(0, 0, W, H); }
@@ -1942,14 +1908,14 @@ function buildLogo() {
   // Bosque muerto de noche: niebla gris con ruido en varias escalas (tramada), una luna enferma, pinos
   // ralos al fondo, árboles pelados en el medio y troncos retorcidos con cruces al frente.
   const RW = 240, RH = 135, sky = makeCanvas(RW, RH), sg = sky.getContext('2d'), si = sg.createImageData(RW, RH);
-  const MIST = [[3, 4, 4], [7, 8, 8], [11, 12, 12], [16, 18, 17], [22, 24, 23], [30, 32, 30], [40, 42, 39], [54, 56, 51]];
+  const MIST = [[5, 6, 6], [9, 10, 10], [13, 14, 14], [17, 19, 18], [22, 24, 23], [28, 30, 28]];
   const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
   const put = (x, y, c) => { if (x < 0 || y < 0 || x >= RW || y >= RH) return; const o = (y * RW + x) * 4; si.data[o] = c[0]; si.data[o + 1] = c[1]; si.data[o + 2] = c[2]; si.data[o + 3] = 255; };
+  // Cielo liso por franjas (sin tramado): más claro alrededor de la luna, oscuro hacia los bordes.
   for (let y = 0; y < RH; y++) for (let x = 0; x < RW; x++) {
-    const n = vnoise(x / 30, y / 16) * 0.55 + vnoise(x / 12 + 9, y / 7) * 0.3 + vnoise(x / 5 + 3, y / 4) * 0.15;
-    const vx = (x - RW / 2) / (RW / 2), vy = (y - RH * 0.3) / (RH * 0.8), vig = Math.max(0, 1 - (vx * vx * 0.7 + vy * vy));
-    const val = Math.min(0.999, Math.max(0, n * 1.05 * vig + 0.03)), t = (BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
-    put(x, y, MIST[Math.min(MIST.length - 1, Math.floor(val * (MIST.length - 1) + t))]);
+    const glow = Math.hypot((x - 212) / 1.6, y - 20), dy = Math.abs(y - 60) / 60;
+    const lv = Math.max(0, Math.min(MIST.length - 1, 5 - Math.floor(glow / 22) - Math.floor(dy * 2)));
+    put(x, y, MIST[lv]);
   }
   // Luna: disco pálido con borde tramado y dos manchas, medio tapada por la niebla.
   const MX = 212, MY = 20, MR = 8;
@@ -2337,7 +2303,6 @@ buildIcons();
 buildFx();
 buildOrnaments();
 buildLogo();
-buildFog();
 reset();
 // La letra de la interfaz es propia (horda.css): se espera a que cargue antes del primer dibujo, con
 // un tope de 3 s para no quedar en negro si falla.
