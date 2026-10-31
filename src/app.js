@@ -68,12 +68,19 @@ export function createApp({
   umbralJev = null,
   // Título de la última nota de 421 para el link de la barra (src/nota421.js); null = sin título.
   ultimaNota421 = () => null,
+  // Últimas notas de 421 para el zócalo de arriba de todo (src/nota421.js); [] = sin zócalo.
+  notas421 = () => [],
+  // HORDA (/horda): el juego y su tabla de puntajes. false (env HORDA=off) apaga las rutas y el link.
+  horda = true,
 }) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
 
   const hmac = (s) => crypto.createHmac('sha256', secret).update(s).digest('base64url');
+  // ID de HORDA (/horda): estable por cuenta y distinto de los IDs por publicación. En hexa y mayúsculas: con
+  // base64url salían cosas como "I16I1SvF" (I, l y 1 se confunden en la letra pixelada del juego).
+  const hordaId = (userId) => Buffer.from(hmac(`horda:${userId}`), 'base64url').toString('hex').slice(0, 8).toUpperCase();
   const anonId = (userId, threadId) => hmac(`anon:${userId}:${threadId}`).slice(0, 8);
   // posts.author_id guarda ese mismo ID (para ignorar autores); al arrancar se completa lo que falte.
   completarAutores(db, anonId);
@@ -403,7 +410,7 @@ export function createApp({
     if (req.method !== 'GET') return;
     const ua = req.get('user-agent') ?? '';
     if (!ua || BOT.test(ua)) return;
-    if (/^\/(static|auth)\/|\.(txt|xml)$|\/nuevos$|^\/(robots\.txt|favicon|tema|vista)/.test(req.path)) return;
+    if (/^\/(static|auth)\/|\.(txt|xml|json)$|\/nuevos$|^\/(robots\.txt|favicon|tema|vista)/.test(req.path)) return;
     try {
       const dia = diaDe(now());
       if (sal.dia !== dia) {
@@ -478,7 +485,7 @@ export function createApp({
     const pendientesMod = esMod(req.user) && !suspendido(req.user) ? q.contarPendientesMod.get().n : 0;
     const cookies = leerCookies(req.headers.cookie);
     const tema = TEMAS.includes(cookies.tema) ? cookies.tema : null;
-    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, pendientesMod, tema, vista: vistaDe(req), ruta: req.originalUrl, codigoUrl, nota421: ultimaNota421(), sombraActiva: !!sombra, jevActivo };
+    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, pendientesMod, tema, vista: vistaDe(req), ruta: req.originalUrl, codigoUrl, nota421: ultimaNota421(), notas421: notas421(), sombraActiva: !!sombra, jevActivo, horda };
     if (req.method === 'POST') {
       const origen = req.get('origin');
       if (origen && origen !== `${req.protocol}://${req.get('host')}`) return res.status(403).send('Origen no permitido');
@@ -1411,7 +1418,12 @@ export function createApp({
         FROM rechazos r JOIN users u ON u.id = r.user_id WHERE r.grave IS NOT NULL ORDER BY r.id DESC LIMIT 50`)
       .all()
       .map((g) => ({ ...g, board_nombre: boardBySlug(g.board)?.nombre ?? g.board, contexto: contextoMod(g.thread_id, g.body, g.created_at) }));
-    const cuerpo = V.mod(res.locals.ctx, { cola: q.colaMod.all().map(nombrar), reportados: q.reportadosMod.all().map(nombrar), graves });
+    // HORDA: los 20 puntajes más altos (todas las filas, no el mejor por cuenta) para poder borrar uno trucho.
+    const hordaPuntajes = horda
+      ? db.prepare('SELECT id, user_id, puntos, oleada, bajas, segundos, created_at FROM horda_puntajes ORDER BY puntos DESC, created_at LIMIT 20').all()
+          .map((r) => ({ id: r.id, jugador: hordaId(r.user_id), puntos: r.puntos, oleada: r.oleada, bajas: r.bajas, segundos: r.segundos, created_at: r.created_at }))
+      : null;
+    const cuerpo = V.mod(res.locals.ctx, { cola: q.colaMod.all().map(nombrar), reportados: q.reportadosMod.all().map(nombrar), graves, hordaPuntajes });
     enviar(res, { titulo: 'Moderación', indexar: false, cuerpo });
   });
 
@@ -1525,6 +1537,18 @@ export function createApp({
     res.redirect(303, `/h/${thread.id}`);
   });
 
+  // HORDA: un mod borra un puntaje trucho (el juego corre en el navegador: un número inflado pero posible pasa
+  // la validación). Queda en mod_log con la cuenta y los puntos.
+  app.post('/mod/horda/:id/borrar', (req, res) => {
+    if (!horda) return noEncontrado(res);
+    if (!exigirMod(req, res)) return;
+    const fila = db.prepare('SELECT id, user_id, puntos FROM horda_puntajes WHERE id = ?').get(Number(req.params.id));
+    if (!fila) return noEncontrado(res);
+    db.prepare('DELETE FROM horda_puntajes WHERE id = ?').run(fila.id);
+    q.log.run(req.user.id, 'horda-borrar', null, fila.user_id, `${fila.puntos} puntos`, now());
+    res.redirect(303, '/mod#horda');
+  });
+
   // Levantar una suspensión (por ejemplo, una automática que fue un error del filtro).
   app.post('/mod/u/:id/levantar', (req, res) => {
     if (!exigirMod(req, res)) return;
@@ -1588,55 +1612,63 @@ export function createApp({
     return sid;
   });
 
-  function entrarCon(res, identidad, esAdmin) {
+  // `volver` (2026-10-31, para HORDA): adónde se vuelve después de entrar. Solo rutas del sitio, por
+  // volverSeguro; cualquier otra cosa vuelve a la portada.
+  function entrarCon(req, res, identidad, esAdmin, volver) {
     const sid = iniciarSesion(identidad, esAdmin);
     res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', secure: production, maxAge: 30 * DIA, path: '/' });
-    res.redirect(303, '/');
+    res.redirect(303, volverSeguro(req, volver || '/'));
   }
 
-  const paginaEntrar = (res, error, status = 200) =>
+  const paginaEntrar = (req, res, error, status = 200) =>
     enviar(
       res,
-      { titulo: 'Entrar', indexar: false, cuerpo: V.entrar(res.locals.ctx, { google: !!google, prueba: loginDePrueba, error }) },
+      {
+        titulo: 'Entrar',
+        indexar: false,
+        cuerpo: V.entrar(res.locals.ctx, { google: !!google, prueba: loginDePrueba, error, volver: volverSeguro(req, req.query.volver ?? req.body?.volver) }),
+      },
       status,
     );
 
-  app.get('/entrar', (req, res) => paginaEntrar(res));
+  app.get('/entrar', (req, res) => paginaEntrar(req, res));
 
   app.get('/auth/google', (req, res) => {
     if (!google) return noEncontrado(res);
     const state = crypto.randomBytes(24).toString('base64url');
     const verifier = crypto.randomBytes(32).toString('base64url');
     const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
-    res.cookie('oauth', `${state}.${verifier}`, cookieOauth);
+    // La vuelta viaja en la misma cookie (base64url, así no choca con los puntos que la separan).
+    const volver = volverSeguro(req);
+    res.cookie('oauth', `${state}.${verifier}${volver !== '/' ? `.${Buffer.from(volver).toString('base64url')}` : ''}`, cookieOauth);
     res.redirect(302, google.urlAutorizacion({ redirectUri: REDIRECT_GOOGLE, state, codeChallenge: challenge }));
   });
 
   app.get('/auth/google/callback', async (req, res) => {
     if (!google) return noEncontrado(res);
-    const [state, verifier] = (leerCookies(req.headers.cookie).oauth ?? '').split('.');
+    const [state, verifier, vuelta] = (leerCookies(req.headers.cookie).oauth ?? '').split('.');
     res.clearCookie('oauth', { path: '/auth' });
-    if (req.query.error) return paginaEntrar(res, 'No se completó el ingreso con Google.', 400);
+    if (req.query.error) return paginaEntrar(req, res, 'No se completó el ingreso con Google.', 400);
     if (!state || !verifier || !req.query.code || !iguales(String(req.query.state ?? ''), state)) {
-      return paginaEntrar(res, 'El ingreso venció. Probá de nuevo.', 400);
+      return paginaEntrar(req, res, 'El ingreso venció. Probá de nuevo.', 400);
     }
     let perfil;
     try {
       perfil = await google.canjearCodigo({ code: String(req.query.code), redirectUri: REDIRECT_GOOGLE, codeVerifier: verifier });
     } catch (err) {
       console.error('[google]', err);
-      return paginaEntrar(res, 'Google no respondió bien. Probá de nuevo en un momento.', 502);
+      return paginaEntrar(req, res, 'Google no respondió bien. Probá de nuevo en un momento.', 502);
     }
     const esAdmin = !!perfil.email && adminEmails.includes(perfil.email.toLowerCase());
-    entrarCon(res, `google:${perfil.sub}`, esAdmin);
+    entrarCon(req, res, `google:${perfil.sub}`, esAdmin, vuelta ? Buffer.from(vuelta, 'base64url').toString() : '/');
   });
 
   // Solo en desarrollo y sin credenciales de Google: sirve para probar el sitio sin configurar nada.
   app.post('/entrar/prueba', (req, res) => {
     if (!loginDePrueba) return noEncontrado(res);
     const nombre = limpiarTexto(req.body?.nombre).slice(0, 40);
-    if (!nombre) return paginaEntrar(res, 'Poné un nombre de prueba.', 422);
-    entrarCon(res, `prueba:${nombre.toLowerCase()}`, req.body.admin === '1');
+    if (!nombre) return paginaEntrar(req, res, 'Poné un nombre de prueba.', 422);
+    entrarCon(req, res, `prueba:${nombre.toLowerCase()}`, req.body.admin === '1', req.body.volver);
   });
 
   // Borrar la cuenta: se vacía todo lo que escribió y se reemplaza el identificador de Google, así
@@ -1658,6 +1690,7 @@ export function createApp({
     db.prepare('DELETE FROM gemini_llaves WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM guardados WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM ignorados WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM horda_puntajes WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
     db.prepare("UPDATE users SET identidad = 'borrada:' || id, role = 'user', ban_reason = NULL WHERE id = ?").run(userId);
     q.log.run(null, 'borrar-cuenta', null, userId, null, now());
@@ -1708,6 +1741,69 @@ export function createApp({
     res.clearCookie('sid', { path: '/' });
     res.redirect(303, '/');
   });
+
+  // --- HORDA (2026-10-31) --------------------------------------------------------------------
+  // El juego de 421 (antes en el webhook de Render, rama `horda` de 421news/web) con la tabla de
+  // puntajes en esta base. Se guarda con la cuenta de txt; en la tabla cada cuenta aparece con un ID
+  // pseudoanónimo propio de HORDA (mismo estilo que los IDs por publicación, otro HMAC: no se puede
+  // cruzar con lo que publica). No hay forma real de evitar trampas en un juego que corre en el
+  // navegador: se filtran los valores imposibles y se limita la frecuencia por cuenta.
+
+  if (horda) {
+    const HORDA_TOP = 10;
+    const HORDA_POR_MINUTO = 6;
+    // El mejor puntaje de cada cuenta; a igual puntaje, el que llegó primero.
+    const MEJORES = `SELECT user_id, puntos, oleada, created_at, id FROM (
+        SELECT user_id, puntos, oleada, created_at, id,
+          ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY puntos DESC, created_at, id) AS n
+        FROM horda_puntajes) WHERE n = 1`;
+    const qh = {
+      top: db.prepare(`${MEJORES} ORDER BY puntos DESC, created_at, id LIMIT ${HORDA_TOP}`),
+      mejor: db.prepare('SELECT MAX(puntos) AS m FROM horda_puntajes WHERE user_id = ?'),
+      delante: db.prepare(`SELECT COUNT(*) AS n FROM (${MEJORES}) WHERE puntos > ?`),
+      recientes: db.prepare('SELECT COUNT(*) AS n FROM horda_puntajes WHERE user_id = ? AND created_at > ?'),
+      guardar: db.prepare('INSERT INTO horda_puntajes (user_id, puntos, oleada, bajas, segundos, created_at) VALUES (?, ?, ?, ?, ?, ?)'),
+    };
+    const topHorda = () => qh.top.all().map((r) => ({ id: hordaId(r.user_id), puntos: r.puntos, oleada: r.oleada }));
+    const json = (res, status, datos) => res.status(status).set('Cache-Control', 'private, no-store').json(datos);
+    // Solo dígitos: Number('') y Number(' 1e3 ') pasarían por números válidos.
+    const entero = (v, max) => (/^\d{1,9}$/.test(String(v ?? '')) && Number(v) <= max ? Number(v) : null);
+
+    // CSP propia del juego: es la de todo el sitio más la fuente auto-hospedada, data: en imágenes
+    // (por las dudas del canvas) y fetch al propio sitio. Sin scripts ni estilos inline.
+    app.get('/horda', (req, res) => {
+      res.set({
+        'Content-Security-Policy':
+          "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+      });
+      res.send(V.horda(res.locals.ctx));
+    });
+
+    app.get('/horda/estado.json', (req, res) =>
+      json(res, 200, { logueado: !!req.user, csrf: req.csrf, yo: req.user ? hordaId(req.user.id) : null }),
+    );
+
+    app.get('/horda/top.json', (req, res) => json(res, 200, { top: topHorda() }));
+
+    app.post('/horda/puntaje', (req, res) => {
+      if (!req.user) return json(res, 401, { error: 'sesion' });
+      if (!iguales(req.body?._csrf, req.csrf)) return json(res, 403, { error: 'csrf' });
+      if (suspendido(req.user)) return json(res, 403, { error: 'suspendida' });
+      const b = req.body ?? {};
+      const puntos = entero(b.puntos, 50_000_000);
+      const oleada = entero(b.oleada, 500);
+      const bajas = entero(b.bajas, 500_000);
+      const segundos = entero(b.segundos, 86_400);
+      if (puntos === null || oleada === null || bajas === null || segundos === null) return json(res, 400, { error: 'valores' });
+      // Imposibles (los mismos topes que la versión de Render): una oleada dura varios segundos y cada
+      // baja da como mucho 5000 por el combo.
+      if (oleada < 1 || segundos < oleada * 5 || puntos > bajas * 5000 * 50) return json(res, 400, { error: 'valores' });
+      if (qh.recientes.get(req.user.id, now() - 60_000).n >= HORDA_POR_MINUTO) return json(res, 429, { error: 'limite' });
+      qh.guardar.run(req.user.id, puntos, oleada, bajas, segundos, now());
+      const mejor = qh.mejor.get(req.user.id).m;
+      json(res, 200, { top: topHorda(), puesto: qh.delante.get(mejor).n + 1 });
+    });
+  }
 
   // --- Errores -------------------------------------------------------------------------------
 

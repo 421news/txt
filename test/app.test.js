@@ -12,7 +12,7 @@ const googleFalso = {
   canjearCodigo: async ({ code }) => ({ sub: `sub-${code}`, email: `${code}@gmail.com` }),
 };
 
-async function montar({ google = googleFalso, sombra = null, production = false, alcanceKey = null, ultimaNota421 } = {}) {
+async function montar({ google = googleFalso, sombra = null, production = false, alcanceKey = null, ultimaNota421, notas421 } = {}) {
   const db = openDb(':memory:');
   const reloj = { t: 1_800_000_000_000 };
   const filtro = { decision: 'approve' };
@@ -40,6 +40,7 @@ async function montar({ google = googleFalso, sombra = null, production = false,
     production,
     alcanceKey,
     ultimaNota421,
+    notas421,
   });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -1499,6 +1500,34 @@ test('Leé 421: la última nota se pide a Ghost y va escapada en el title; si Gh
   const s = await montar({ ultimaNota421: titulo });
   t.after(s.cerrar);
   assert.ok((await s.texto('/')).includes('title="Última nota: Nota &lt;con&gt; &quot;comillas&quot;">Leé 421 ↗</a>'));
+});
+
+test('zócalo de 421: últimas notas arriba de todo, escapadas, con la copia oculta; sin notas no se dibuja', async (t) => {
+  const { crearUltimasNotas } = await import('../src/nota421.js');
+  const pedidos = [];
+  const errores = t.mock.method(console, 'error', () => {});
+  const posts = [
+    { title: 'Nota <uno>', url: 'https://www.421.news/es/uno/' },
+    { title: 'Dos', url: 'https://www.421.news/es/dos/' },
+    { title: 'Afuera', url: 'https://otro.sitio/x/' },
+  ];
+  const notas = crearUltimasNotas({ pedir: async (url) => (pedidos.push(url), { ok: true, json: async () => ({ posts }) }), cada: 60_000 });
+  await new Promise((r) => setImmediate(r));
+  assert.match(pedidos[0], /limit=10&fields=title,url&filter=tag:hash-es%2Btag:-hash-oculta/);
+  assert.deepEqual(notas().map((n) => n.titulo), ['Nota <uno>', 'Dos'], 'solo links de 421');
+  assert.equal(errores.mock.callCount(), 0);
+
+  const s = await montar({ notas421: notas });
+  t.after(s.cerrar);
+  const pagina = await s.texto('/');
+  assert.ok(pagina.indexOf('class="zocalo"') < pagina.indexOf('class="cabecera"'), 'arriba de la barra');
+  assert.equal(pagina.split('Nota &lt;uno&gt;').length - 1, 2, 'la lista va dos veces');
+  assert.ok(pagina.includes('href="https://www.421.news/es/uno/?utm_source=txt&amp;utm_medium=zocalo"'));
+  assert.ok(pagina.includes('<ul class="zocalo-lista" aria-hidden="true"><li><a href="https://www.421.news/es/uno/?utm_source=txt&amp;utm_medium=zocalo" tabindex="-1">'));
+
+  const sin = await montar();
+  t.after(sin.cerrar);
+  assert.ok(!(await sin.texto('/')).includes('class="zocalo"'));
 });
 
 test('fijar: un mod fija una publicación y queda primera en la portada y en su sección; nadie más puede', async (t) => {

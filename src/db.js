@@ -126,6 +126,19 @@ CREATE TABLE IF NOT EXISTS ignorados (
   ignored_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, entity_type, entity_id)
 );
+
+-- HORDA (/horda, 2026-10-31): cada partida que se guardó. La tabla pública muestra el mejor puntaje de
+-- cada cuenta con su ID pseudoanónimo de HORDA, nunca user_id. Se borra con la cuenta.
+CREATE TABLE IF NOT EXISTS horda_puntajes (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users (id),
+  puntos INTEGER NOT NULL,
+  oleada INTEGER NOT NULL,
+  bajas INTEGER NOT NULL,
+  segundos INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS horda_usuario ON horda_puntajes (user_id, created_at);
 `;
 
 export function openDb(archivo) {

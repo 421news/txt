@@ -114,6 +114,44 @@ input[type='checkbox']:focus-visible {
   outline-offset: 2px;
 }
 
+/* --- Zócalo de 421: últimas notas corriendo de costado, arriba de todo ----------------------- */
+
+.zocalo {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--borde);
+  background: var(--caja);
+  font-size: 0.78rem;
+  line-height: 1;
+  overflow: hidden;
+}
+.zocalo-marca {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0.45rem 0.7rem;
+  background: var(--fosforo);
+  color: var(--fondo);
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: 0.04em;
+}
+.zocalo-marca:hover, .zocalo-marca:focus-visible { background: var(--fosforo); color: var(--fondo); }
+.zocalo-pista { flex: 1; min-width: 0; overflow: hidden; }
+.zocalo-cinta { display: flex; width: max-content; animation: zocalo 120s linear infinite; }
+.zocalo:hover .zocalo-cinta, .zocalo:focus-within .zocalo-cinta { animation-play-state: paused; }
+.zocalo-lista { display: flex; margin: 0; padding: 0; list-style: none; }
+.zocalo-lista li { display: flex; align-items: center; white-space: nowrap; }
+.zocalo-lista li::after { content: '·'; color: var(--tenue); padding: 0 0.9rem; }
+.zocalo-lista a { display: block; padding: 0.45rem 0; color: var(--texto); text-decoration: none; }
+.zocalo-lista a:hover, .zocalo-lista a:focus-visible { color: var(--fosforo); background: transparent; text-decoration: underline; }
+@keyframes zocalo { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .zocalo-cinta { animation: none; }
+  .zocalo-pista { overflow-x: auto; scrollbar-width: none; }
+  .zocalo-lista[aria-hidden] { display: none; }
+}
+
 /* --- Barra superior -------------------------------------------------------------------- */
 
 .cabecera {

@@ -8,7 +8,7 @@ import { crearModerador, crearModeradorEscalonado, MODELO_RAPIDO } from './moder
 import { crearGoogle } from './google.js';
 import { crearCapsula } from './gemini.js';
 import { crearSombra, crearFiltroMixto, UMBRAL_LIMPIO } from './sombra.js';
-import { crearUltimaNota } from './nota421.js';
+import { crearUltimaNota, crearUltimasNotas } from './nota421.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
 const production = process.env.NODE_ENV === 'production';
@@ -57,6 +57,7 @@ const umbralJev = (() => { const u = Number(process.env.JEV_UMBRAL); return u >=
 const app = createApp({
   db,
   ultimaNota421: crearUltimaNota(),
+  notas421: crearUltimasNotas(),
   secret,
   baseUrl,
   siteName,
@@ -68,6 +69,8 @@ const app = createApp({
   jevActivo: !!jev,
   umbralJev,
   alcanceKey: process.env.ALCANCE_KEY || null,
+  // HORDA=off apaga el juego (/horda) y su tabla de puntajes.
+  horda: String(process.env.HORDA || 'on').toLowerCase() !== 'off',
   geminiUrl: process.env.GEMINI_URL || null,
   codigoUrl: process.env.CODIGO_URL || null,
   adminEmails: (process.env.ADMIN_EMAILS || '')

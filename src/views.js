@@ -76,6 +76,9 @@ function botonTema(ruta, tema) {
 const leer421 = (ctx) =>
   html`<a class="leer-421" href="${URL_421}"${ctx.nota421 ? html` title="Última nota: ${ctx.nota421}"` : ''}>Leé 421 ↗</a>`;
 
+// HORDA (2026-10-31): el juego de 421, en los menús (≡ Menú de escritorio y Secciones del celular).
+const linkHorda = (ctx) => (ctx.horda ? html`<a href="/horda" title="El juego de 421">HORDA</a>` : '');
+
 // Barra de secciones de escritorio, a lo 4chan (2026-10-24): [MADRE / cod / cod] por grupo, el nombre
 // completo en el title, y al final el índice. Termina abierta: el que la llama agrega "Leé 421" y cierra el <nav>.
 function barraSecciones(ruta) {
@@ -95,7 +98,7 @@ function barraAbajo(ctx) {
   return html`<nav class="abajo" aria-label="Navegación">
   <a href="/"${activa(camino === '/')}><b>⌂</b>Inicio</a>
   <details class="abajo-menu"><summary${activa(!!seccion)}><b>☰</b>Secciones</summary>
-    <div class="menu-abajo">${GRUPOS.map(({ madre, hijas }) => html`<a class="madre" href="/b/${madre.slug}">${madre.nombre}</a>${hijas.map((b) => html`<a class="hija" href="/b/${b.slug}">${b.nombre}</a>`)}`)}<a class="todas" href="/secciones">Todas las secciones</a><a href="/top">Más comentadas</a>${leer421(ctx)}</div>
+    <div class="menu-abajo">${GRUPOS.map(({ madre, hijas }) => html`<a class="madre" href="/b/${madre.slug}">${madre.nombre}</a>${hijas.map((b) => html`<a class="hija" href="/b/${b.slug}">${b.nombre}</a>`)}`)}<a class="todas" href="/secciones">Todas las secciones</a><a href="/top">Más comentadas</a>${linkHorda(ctx)}${leer421(ctx)}</div>
   </details>
   <a href="${publicar}"><b>+</b>Publicar</a>
   ${user
@@ -130,6 +133,20 @@ export const DESCRIPCION_SITIO =
 // SEO: cada página lleva descripción, canonical y Open Graph. `indexar: false` para lo que no
 // tiene que aparecer en buscadores (entrar, cuenta, moderación, vistas duplicadas, errores).
 // `canonical` es la ruta sin dominio; si falta, no se emite. `jsonLd` es un objeto que va tal cual.
+// Zócalo con las últimas notas de 421 (2026-10-31), arriba de todo y fuera de la barra fija: corre de costado
+// solo con CSS (se frena al pasar el mouse o con el foco, y queda quieto con "reducir movimiento", que deja
+// desplazarlo a mano). La lista va dos veces para que el giro no tenga corte; la copia no la leen ni el
+// lector de pantalla ni el tabulador.
+function zocalo421(notas) {
+  if (!notas?.length) return '';
+  const lista = (copia) =>
+    html`<ul class="zocalo-lista"${copia ? raw(' aria-hidden="true"') : ''}>${notas.map(
+      (n) => html`<li><a href="${n.url}"${copia ? raw(' tabindex="-1"') : ''}>${n.titulo}</a></li>`,
+    )}</ul>`;
+  return html`<nav class="zocalo" aria-label="Últimas notas de 421"><a class="zocalo-marca" href="https://www.421.news/es/?utm_source=txt&amp;utm_medium=zocalo">421</a><div class="zocalo-pista"><div class="zocalo-cinta">${lista(false)}${lista(true)}</div></div></nav>
+`;
+}
+
 export function pagina(ctx, { titulo, cuerpo, aviso, descripcion = DESCRIPCION_SITIO, canonical, indexar = true, tipo = 'website', jsonLd }) {
   const { user, csrf, siteName, baseUrl, tema, ruta = '/' } = ctx;
   const tituloCompleto = titulo ? `${titulo} · ${siteName}` : `${siteName} · foro de texto de 421`;
@@ -174,7 +191,7 @@ ${tema
 ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
 </head>
 <body>
-<header class="cabecera">
+${zocalo421(ctx.notas421)}<header class="cabecera">
   <div class="cab-fila">
     <a class="marca" href="/">${siteName}</a>
     <div class="cab-der">
@@ -194,6 +211,7 @@ ${user ? html`<script src="${estatico('formularios.js')}" defer></script>` : ''}
           ${user ? html`<a href="/respuestas">Respuestas${ctx.novedades ? ` (${ctx.novedades})` : ''}</a><a href="/guardados">Guardados</a><a href="/cuenta">Mi cuenta</a>` : html`<a href="/entrar">Entrar</a>`}
           ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas y costos</a>` : ''}
           <a href="/top">Más comentadas</a>
+          ${linkHorda(ctx)}
           <a href="/normas">Normas</a>
           <a href="/formato">Formato</a>
           ${user ? html`<form method="post" action="/salir"><input type="hidden" name="_csrf" value="${csrf}"><button class="enlace">Salir</button></form>` : ''}
@@ -675,6 +693,7 @@ export function privacidad(ctx) {
   <li><strong>Las publicaciones que guardás</strong>, para que las encuentres en Guardados. Solo las ves vos.</li>
   <li><strong>Lo que ignorás</strong> (una publicación, un mensaje o un autor dentro de una publicación), con la fecha, para mostrártelo colapsado y al final. Solo lo ves vos: a quien ignorás no le llega nada. De un autor se guarda el código con el que aparece en esa publicación, no su cuenta. Se borra al borrar la tuya.</li>
   <li><strong>Si escribís desde Gemini</strong>, la huella del certificado de tu programa de Gemini, vinculada a tu cuenta, y la fecha en que lo usaste por última vez. Podés desvincularlo en Mi cuenta.</li>
+  ${ctx.horda ? html`<li><strong>Tus puntajes de HORDA</strong> (el juego de <a href="/horda">/horda</a>), si los guardás: puntos, oleada, bajas, duración de la partida y fecha. En la tabla pública aparecés con un código propio del juego, que no se puede cruzar con lo que publicás. Se borran al borrar tu cuenta.</li>` : ''}
   <li><strong>Estadísticas de uso, sin rastreo.</strong> Contamos cuántas páginas se ven por día y cuántas personas distintas, sin cookies ni IP guardadas: para no contar dos veces a la misma persona usamos un código anónimo que se descarta al día siguiente. Si tenés cuenta, registramos qué días entraste, solo para saber cuántos usuarios activos hay.</li>
   <li><strong>Una cookie de sesión</strong> (dura 30 días o hasta que salgas) otra de un solo uso durante el ingreso con Google y otra con la hora de tu última visita, que queda en tu navegador y sirve solo para marcar lo nuevo. Si elegís un tema o una vista de los listados, se guardan en dos cookies más (<code>tema</code> y <code>vista</code>). No usamos cookies de publicidad ni de analítica.</li>
 </ul>
@@ -1102,14 +1121,16 @@ function preferencias(tema, vista) {
 <p class="opciones">${vistas.map(([valor, nombre]) => html`<a href="/vista?v=${valor}&amp;volver=%2Fcuenta" rel="nofollow"${vista === valor ? raw(' aria-current="true"') : ''}>${nombre}</a>`)}</p>`;
 }
 
-export function entrar(ctx, { google, prueba, error } = {}) {
+export function entrar(ctx, { google, prueba, error, volver = '/' } = {}) {
+  const conVuelta = volver !== '/';
   return html`<h1>Entrar</h1>
 <p>En el foro nadie ve con qué cuenta entraste: todos los mensajes son pseudoanónimos. De tu cuenta de Google solo se guarda un identificador, para poder suspenderla si no respeta las normas. El correo no se guarda. <a href="/privacidad">Privacidad</a></p>
 ${error ? html`<p class="error">${error}</p>` : ''}
-${google ? html`<p><a class="boton" href="/auth/google">Entrar con Google</a></p>` : ''}
+${google ? html`<p><a class="boton" href="/auth/google${conVuelta ? `?volver=${encodeURIComponent(volver)}` : ''}">Entrar con Google</a></p>` : ''}
 ${prueba
   ? html`<form class="form-post" method="post" action="/entrar/prueba">
   <p class="aviso">Modo desarrollo: no hay credenciales de Google cargadas. Este acceso de prueba no existe en producción.</p>
+  ${conVuelta ? html`<input type="hidden" name="volver" value="${volver}">` : ''}
   <label>Nombre de prueba <input type="text" name="nombre" required maxlength="40"></label>
   <label class="ayuda"><input type="checkbox" name="admin" value="1"> Entrar como admin</label>
   <p><button>Entrar</button></p>
@@ -1161,7 +1182,7 @@ function itemMod(ctx, p) {
 </article>`;
 }
 
-export function mod(ctx, { cola, reportados, graves = [] }) {
+export function mod(ctx, { cola, reportados, graves = [], hordaPuntajes = null }) {
   const graveTexto = { menores: 'abuso infantil (permanente)', abuso: 'abuso (30 días)', violencia_explicita: 'violencia explícita (30 días)' };
   return html`<h1>Moderación</h1>
 <h2>Suspensiones automáticas (${graves.length})</h2>
@@ -1181,5 +1202,35 @@ ${graves.length
 <h2>En revisión (${cola.length})</h2>
 ${cola.length ? cola.map((p) => itemMod(ctx, p)) : html`<p class="ayuda">Nada pendiente.</p>`}
 <h2>Reportados (${reportados.length})</h2>
-${reportados.length ? reportados.map((p) => itemMod(ctx, p)) : html`<p class="ayuda">Sin reportes abiertos.</p>`}`;
+${reportados.length ? reportados.map((p) => itemMod(ctx, p)) : html`<p class="ayuda">Sin reportes abiertos.</p>`}
+${hordaPuntajes
+  ? html`<h2 id="horda">HORDA: puntajes más altos</h2>
+<p class="ayuda">El juego corre en el navegador: un puntaje inflado pero posible pasa la validación. Si uno no cierra (muchos puntos para pocas bajas o pocos segundos), borralo. Queda en el registro.</p>
+${hordaPuntajes.length
+  ? html`<table class="cruce"><tr><th>Jugador</th><th>Puntos</th><th>Oleada</th><th>Bajas</th><th>Segundos</th><th>Cuándo</th><th></th></tr>
+${hordaPuntajes.map((h) => html`<tr><td>${h.jugador}</td><td>${h.puntos}</td><td>${h.oleada}</td><td>${h.bajas}</td><td>${h.segundos}</td><td>${hora(h.created_at)}</td><td><form method="post" action="/mod/horda/${h.id}/borrar" class="en-linea"><input type="hidden" name="_csrf" value="${ctx.csrf}"><button>Borrar</button></form></td></tr>`)}
+</table>`
+  : html`<p class="ayuda">Todavía no hay puntajes.</p>`}`
+  : ''}`;
+}
+
+// HORDA (/horda): el juego ocupa toda la ventana con un canvas. Sin la barra del sitio: el juego usa
+// el teclado entero. JS y CSS en public/ (CSP sin inline); la fuente es propia (public/press-start-2p.woff2).
+export function horda(ctx) {
+  return `<!doctype html>${html`<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HORDA · ${ctx.siteName}</title>
+<meta name="description" content="HORDA, el juego de 421: un mago contra la horda. Guardá tu puntaje con tu cuenta de ${ctx.siteName}.">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="preload" href="/static/press-start-2p.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="${estatico('horda.css')}">
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="${estatico('horda.js')}"></script>
+</body>
+</html>`}`;
 }

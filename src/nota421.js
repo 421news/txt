@@ -25,3 +25,26 @@ export function crearUltimaNota({ pedir = fetch, cada = 3_600_000 } = {}) {
   setInterval(actualizar, cada).unref();
   return () => titulo;
 }
+
+// Zócalo de arriba de todo (2026-10-31, pedido del usuario): las últimas notas de 421 en castellano corriendo
+// de costado. Mismo esquema que la última nota: Content API una vez por hora, en memoria, y si falla queda la
+// lista anterior (o vacía: sin notas no se dibuja el zócalo). Las notas ocultas (#oculta) no entran.
+export function crearUltimasNotas({ pedir = fetch, cada = 3_600_000, limite = 10 } = {}) {
+  let notas = [];
+  async function actualizar() {
+    try {
+      const url = `${API}?key=${CLAVE}&limit=${limite}&fields=title,url&filter=tag:hash-es%2Btag:-hash-oculta`;
+      const r = await pedir(url, { signal: AbortSignal.timeout(10_000) });
+      if (!r.ok) throw new Error(`Ghost ${r.status}`);
+      const nuevas = ((await r.json()).posts ?? [])
+        .filter((p) => typeof p?.title === 'string' && p.title.trim() && /^https:\/\/www\.421\.news\//.test(p?.url ?? ''))
+        .map((p) => ({ titulo: p.title.trim().slice(0, 200), url: `${p.url}?utm_source=txt&utm_medium=zocalo` }));
+      if (nuevas.length) notas = nuevas;
+    } catch (err) {
+      console.error('[421] No se pudieron traer las últimas notas:', err?.message ?? err);
+    }
+  }
+  actualizar();
+  setInterval(actualizar, cada).unref();
+  return () => notas;
+}
