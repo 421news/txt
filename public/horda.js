@@ -58,39 +58,96 @@ const isoX = (x, y) => x - y + ISO_OX;
 const isoY = (x, y) => (x + y) / 2;
 
 // Piso pintado una sola vez; la sangre y las quemaduras se pintan encima y quedan.
+// Todo en bloques de PX píxeles del mundo (la grilla de los efectos), sin trazos suaves.
+const PX = 2;
+const snap = (v) => Math.round(v / PX) * PX;
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+const bayer = (x, y) => (BAYER4[(y & 3) * 4 + (x & 3)] + 0.5) / 16;   // umbral del tramado, en celdas
 const floor = document.createElement('canvas');
 floor.width = (MW + MH) * T; floor.height = (MW + MH) * T / 2;
 const fctx = floor.getContext('2d');
-function diamond(g, tx, ty, color) {
-  const x = tx * T, y = ty * T;
-  g.fillStyle = color; g.beginPath();
-  g.moveTo(isoX(x, y), isoY(x, y)); g.lineTo(isoX(x + T, y), isoY(x + T, y));
-  g.lineTo(isoX(x + T, y + T), isoY(x + T, y + T)); g.lineTo(isoX(x, y + T), isoY(x, y + T));
-  g.closePath(); g.fill();
+// Bosque grim dark: pasto muerto gris oliva, barro, y casi negro debajo de los árboles.
+const GRASS = [[24, 27, 21], [29, 32, 25], [34, 36, 29], [40, 41, 33]];
+const MUD = [[33, 28, 23], [40, 34, 27], [47, 40, 32]];
+const UNDER = [[16, 18, 15], [20, 22, 18]];
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), cc = hash2(xi, yi + 1), dd = hash2(xi + 1, yi + 1);
+  return a + (b - a) * u + (cc - a) * v + (a - b - cc + dd) * u * v;
+}
+// Calcomanías del piso en pixel art (cada letra un color, '.' transparente), a PX por píxel.
+const DECAL_PAL = { a: '#3a3d2c', b: '#4a4a36', c: '#5b5640', l: '#4a3626', L: '#5e432c', W: '#a8a090', w: '#7d766a', k: '#14130f',
+  s: '#3b3d3f', S: '#55585b', m: '#8d8778', M: '#b9b3a2', r: '#5a1c1c', g: '#2a3020' };
+const DECALS = {
+  tuft: [['a.a.', '.a.b', 'aab.'], ['.b..', 'a.a.', 'ab.a'], ['c..', '.a.', 'aa.']],
+  leaf: [['lL'], ['L.', '.l']],
+  pebble: [['sS', 'ss']],
+  shroom: [['.M.', 'MMm', '.w.']],
+  bone: [['W...', '.ww.', '..wW'], ['...W', '.ww.', 'Ww..']],
+  skull: [['.WW.', 'WkWk', '.WW.', '.w.w']],
+  ribs: [['W.W.W', 'wwwww', 'W.W.W']],
+  grave: [['.SS.', 'SSSS', '.Ss.', '.Ss.', 'gggg'], ['.S.', 'SSS', '.S.', '.s.', 'ggg']],
+};
+function decal(rows, x, y) {
+  x = snap(x); y = snap(y);
+  rows.forEach((row, yy) => { for (let xx = 0; xx < row.length; xx++) if (row[xx] !== '.') { fctx.fillStyle = DECAL_PAL[row[xx]]; fctx.fillRect(x + xx * PX, y + yy * PX, PX, PX); } });
 }
 function paintFloor() {
-  fctx.fillStyle = '#10140d'; fctx.fillRect(0, 0, floor.width, floor.height);
-  seed = 77;
-  for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
-    const i = ty * MW + tx;
-    const dirt = Math.sin(tx * 0.35) + Math.cos(ty * 0.42 + tx * 0.1) > 1.2;
-    const g = 52 + (rnd() * 10 | 0);
-    let color = dirt ? `rgb(${88 + (rnd() * 8 | 0)},${70 + (rnd() * 6 | 0)},${46})` : `rgb(${g - 16},${g + 36},${g - 20})`;
-    if (map[i]) color = '#2c3d22';
-    diamond(fctx, tx, ty, color);
+  const FW = floor.width, FH = floor.height, img = fctx.createImageData(FW, FH), d = img.data;
+  for (let by = 0; by < FH; by += PX) for (let bx = 0; bx < FW; bx += PX) {
+    const sx = bx + 1 - ISO_OX, sy = by + 1, wx = sy + sx / 2, wy = sy - sx / 2;
+    const cx = bx / PX, cy = by / PX;
+    let c;
+    if (wx < 0 || wy < 0 || wx >= WW || wy >= WH) c = UNDER[0];
+    else {
+      const tx = (wx / T) | 0, ty = (wy / T) | 0, i = ty * MW + tx;
+      const n = vnoise(wx / 70, wy / 70) * 0.6 + vnoise(wx / 18 + 5, wy / 18) * 0.3 + hash2(tx, ty) * 0.1;
+      const th = bayer(cx, cy);
+      if (map[i]) c = UNDER[n + th * 0.5 > 0.75 ? 1 : 0];
+      else if (vnoise(wx / 110 + 11, wy / 90) > 0.62) c = MUD[Math.min(2, Math.floor(n * 2.2 + th))];
+      else c = GRASS[Math.min(3, Math.floor(n * 3 + th * 1.2))];
+    }
+    for (let yy = 0; yy < PX; yy++) for (let xx = 0; xx < PX; xx++) {
+      const o = ((by + yy) * FW + bx + xx) * 4;
+      d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
+    }
   }
-  // Pasto alto, flores y hojas caídas (decoración plana, no tapa nada).
+  fctx.putImageData(img, 0, 0);
+  seed = 77;
+  // Pasto seco, hojas podridas, piedritas, hongos pálidos, huesos, calaveras y alguna tumba (plano: no tapa nada).
   for (let k = 0; k < 2600; k++) {
-    const x = rnd() * WW, y = rnd() * WH, px = isoX(x, y), py = isoY(x, y), r = rnd();
-    if (r < 0.7) { fctx.strokeStyle = r < 0.35 ? '#5f8f3e' : '#4b7532'; fctx.lineWidth = 1; fctx.beginPath(); fctx.moveTo(px, py); fctx.lineTo(px - 1, py - 4); fctx.moveTo(px + 2, py); fctx.lineTo(px + 3, py - 3); fctx.stroke(); }
-    else if (r < 0.8) { fctx.fillStyle = ['#e9d66b', '#f2f2f2', '#c96fbf'][(rnd() * 3) | 0]; fctx.fillRect(px, py - 1, 2, 2); }
-    else { fctx.fillStyle = ['#8a5a2b', '#a8742f', '#6d4b26'][(rnd() * 3) | 0]; fctx.fillRect(px, py, 3, 1.5); }
+    const x = rnd() * WW, y = rnd() * WH, r = rnd(), v = rnd();
+    if (map[((y / T) | 0) * MW + ((x / T) | 0)] && r > 0.5) continue;
+    const px = isoX(x, y), py = isoY(x, y);
+    const pick = (list) => list[(v * list.length) | 0];
+    if (r < 0.62) decal(pick(DECALS.tuft), px, py - 4);
+    else if (r < 0.78) decal(pick(DECALS.leaf), px, py);
+    else if (r < 0.87) decal(DECALS.pebble[0], px, py);
+    else if (r < 0.92) decal(DECALS.shroom[0], px, py - 4);
+    else if (r < 0.97) decal(pick(DECALS.bone), px, py);
+    else if (r < 0.99) decal(r < 0.98 ? DECALS.skull[0] : DECALS.ribs[0], px, py - 4);
+    else if (!map[((y / T) | 0) * MW + ((x / T) | 0)]) decal(pick(DECALS.grave), px, py - 8);
   }
 }
+// Mancha en el piso: bloques de PX con el borde tramado; la transparencia va por pasos de 1/4.
+// Cada combinación de color, radio y paso se arma una vez y después es un solo drawImage (hay cientos por segundo).
+const STAMPS = new Map();
 function stain(x, y, r, color, alpha) {
-  fctx.globalAlpha = alpha; fctx.fillStyle = color;
-  fctx.beginPath(); fctx.ellipse(isoX(x, y), isoY(x, y), r * 1.4, r * 0.7, 0, 0, 6.2832); fctx.fill();
-  fctx.globalAlpha = 1;
+  const ri = Math.max(1, Math.round(r)), lv = Math.max(1, Math.round(alpha * 4)), key = color + ri + '|' + lv;
+  let c = STAMPS.get(key);
+  if (!c) {
+    const rx = snap(ri * 1.4) + PX, ry = Math.max(PX, snap(ri * 0.7)) + PX;
+    c = makeCanvas(rx * 2, ry * 2);
+    const g = c.getContext('2d');
+    g.globalAlpha = lv / 4; g.fillStyle = color;
+    for (let py = 0; py < ry * 2; py += PX) for (let px = 0; px < rx * 2; px += PX) {
+      const dx = (px + 1 - rx) / (rx - PX), dy = (py + 1 - ry) / (ry - PX), dd = dx * dx + dy * dy;
+      if (dd > 1 || (dd > 0.5 && bayer(px / PX, py / PX) > 0.5)) continue;
+      g.fillRect(px, py, PX, PX);
+    }
+    STAMPS.set(key, c);
+  }
+  fctx.drawImage(c, snap(isoX(x, y) - c.width / 2), snap(isoY(x, y) - c.height / 2));
 }
 
 // ---------- Campo de flujo ----------
@@ -176,6 +233,19 @@ function compactEnemies() {
   nE = w;
 }
 
+// ---------- Cadáveres ----------
+// Los enemigos de a pie dejan el cuerpo en el piso CORPSE_LIFE segundos (de juego) y se van tramándose
+// en los últimos 4. Anillo de MC: si se llena, el más viejo deja su lugar al nuevo.
+const MC = 300, CORPSE_LIFE = 20;
+const cxw = new Float32Array(MC), cyw = new Float32Array(MC), ctm = new Float32Array(MC);
+const cty = new Uint8Array(MC), cfl = new Uint8Array(MC);
+let nC = 0, cHead = 0;
+function addCorpse(type, x, y, flip) {
+  const i = cHead;
+  cHead = (cHead + 1) % MC; if (nC < MC) nC++;
+  cxw[i] = x; cyw[i] = y; cty[i] = type; cfl[i] = flip; ctm[i] = playTime;
+}
+
 // ---------- Grilla espacial ----------
 const GC = 32, GW = Math.ceil(WW / GC), GH = Math.ceil(WH / GC);
 const cellStart = new Int32Array(GW * GH + 1), cellFill = new Int32Array(GW * GH);
@@ -201,6 +271,7 @@ const bc = new Uint8Array(MB);
 const bp = new Uint8Array(MB), bhl = new Int32Array(MB);   // enemigos que todavía puede atravesar, y el último que tocó
 const bvox = new Float32Array(MB), bvoy = new Float32Array(MB);   // desfase de dibujo: arranca en la vara y se apaga   // color: 0 varita, 1 chispas, 2 ráfaga, 3 rayos, 4 tótem
 const BCOLORS = ['#9fd8ff', '#ffb347', '#c08bff', '#fff27a', '#7dffd8'];
+const BDARK = ['#4a8cff', '#c0601a', '#7a48d8', '#c0a020', '#2fa890'];
 const bl = new Float32Array(MB), bd = new Float32Array(MB);
 let nB = 0;
 function addBullet(x, y, a, speed, dmg, life, color = 0, vox = 0, voy = 0, pierce = 0) {
@@ -278,7 +349,7 @@ function reset() {
   player.mana = MANA_MAX; player.noMana = 0;
   unlocked.fill(false); unlocked[0] = true;
   level.fill(0); lootT = 0; xp = 0; plevel = 1; points = 0; slots.splice(0, 5, 0, -1, -1, -1, -1);
-  nE = nB = nF = 0; barrels = []; crates = []; booms = [];
+  nE = nB = nF = 0; nC = 0; cHead = 0; barrels = []; crates = []; booms = [];
   boulders = []; quakes = [];
   throws = []; rockets = []; turrets = []; barricades = []; storms = [];
   wave = 0; score = 0; kills = 0; combo = 1; comboT = 0; playTime = 0;
@@ -437,6 +508,21 @@ const PENDIENTE = 'horda:pendiente';
 const board = { phase: 'idle', top: [], mine: -1, puesto: 0, yo: null, csrf: null, logueado: false, aviso: '' };
 let playTime = 0;
 const entrarBtn = { x: 0, y: 0, w: 0, h: 0 };   // botón de entrar a txt (sin sesión)
+const volverBtn = { x: 0, y: 0, w: 0, h: 0 };   // VOLVER A TXT (menú, pausa y final); w = 0 cuando no está a la vista
+const tablaBtn = { x: 0, y: 0, w: 0, h: 0 };    // MEJORES MAGOS (menú)
+// Tabla en el menú de inicio (M o el botón): se pide cada vez que se abre.
+const menuTop = { open: false, phase: 'idle', top: [], mine: -1 };
+function volverATxt() { location.href = '/'; }
+function abrirTablaMenu() {
+  Object.assign(menuTop, { open: true, phase: 'cargando', top: [], mine: -1 });
+  Promise.all([leerEstado().catch(() => {}), pedirJSON('/horda/top.json')]).then(([, d]) => {
+    if (!menuTop.open) return;
+    menuTop.top = d.top || [];
+    menuTop.mine = board.yo ? menuTop.top.findIndex((t) => t.id === board.yo) : -1;
+    menuTop.phase = 'listo';
+  }).catch(() => { if (menuTop.open) menuTop.phase = 'error'; });
+}
+function alternarTablaMenu() { if (menuTop.open) menuTop.open = false; else abrirTablaMenu(); }
 function pedirJSON(url, opts) {
   return fetch(url, Object.assign({ credentials: 'same-origin', cache: 'no-store' }, opts)).then((r) =>
     r.json().catch(() => ({})).then((d) => {
@@ -513,13 +599,14 @@ function onKill(j) {
   score += E.pts * combo;
   if (et[j] === 3) {
     booms.push({ x: ex[j], y: ey[j], t: 0 });
-    stain(ex[j], ey[j], 30, '#1e3a14', 0.7);
+    stain(ex[j], ey[j], 30, '#18240f', 0.75);
     for (let k = 0; k < 4; k++) {
       const a = k / 4 * 6.2832, x = ex[j] + Math.cos(a) * 30, y = ey[j] + Math.sin(a) * 30;
       if (!blocked(x, y, 8)) crates.push({ x, y, kind: k & 1, life: 25 });
     }
   }
-  stain(ex[j], ey[j], 5 + Math.random() * 6, et[j] ? '#5a0f1a' : '#3d4a17', 0.5);
+  stain(ex[j], ey[j], 5 + Math.random() * 6, et[j] ? '#4a0c14' : '#2e3812', 0.5);
+  if (!ETYPES[et[j]].fly) addCorpse(et[j], ex[j], ey[j], (player.x - ex[j]) - (player.y - ey[j]) > 0 ? 1 : 0);
   // Cajas con ritmo: la chance crece con el tiempo sin que caiga ninguna, y a los 8 s cae seguro.
   if (crates.length < 6 && (lootT >= 8 || Math.random() < 0.03 + lootT * 0.02)) {
     const health = Math.random() < (player.hp < 50 ? 0.5 : 0.15);
@@ -553,7 +640,7 @@ function damageEnemy(j, dmg, kx, ky) {
 
 function explode(x, y, R = 85, dmg = 14, self = 18, ice = false) {
   booms.push({ x, y, t: 0, ice, R });
-  if (ice) stain(x, y, R * 0.35, '#dff3ff', 0.25); else stain(x, y, 26, '#110d0a', 0.6);
+  if (ice) stain(x, y, R * 0.35, '#5d6b72', 0.25); else stain(x, y, 26, '#0e0b09', 0.5);
   const c0x = Math.max(0, ((x - R) / GC) | 0), c1x = Math.min(GW - 1, ((x + R) / GC) | 0);
   const c0y = Math.max(0, ((y - R) / GC) | 0), c1y = Math.min(GH - 1, ((y + R) / GC) | 0);
   for (let cy = c0y; cy <= c1y; cy++) for (let cx = c0x; cx <= c1x; cx++) {
@@ -629,11 +716,23 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Space' && !e.repeat) clickQueued = true;
   keys.add(e.code);
   if (state === 'over' && board.phase === 'entrar' && e.code === 'KeyE') { irAEntrar(); return; }
-  // Esc vuelve a txt (el árbol de habilidades usa Esc para cerrarse, pero se atiende antes y sale con return).
-  if (e.code === 'Escape' && (state === 'menu' || state === 'pause' || (state === 'over' && board.phase !== 'enviando'))) { location.href = '/'; return; }
-  if (e.code === 'Enter' && (state === 'menu' || (state === 'over' && board.phase !== 'enviando'))) { reset(); state = 'play'; }
-  if (e.code === 'KeyP' && (state === 'play' || state === 'pause')) state = state === 'play' ? 'pause' : 'play';
   if (e.code === 'KeyF') showStats = !showStats;
+  // El árbol de habilidades va primero: ahí T o Esc lo cierran (vuelve a donde estaba).
+  if (state !== 'tree') {
+    // Esc: jugando pausa, en pausa sigue. En el menú cierra la tabla si está abierta y si no vuelve a
+    // txt; en la pantalla final vuelve a txt. V (en pausa) también vuelve a txt.
+    if (e.code === 'Escape') {
+      if (state === 'play') state = 'pause';
+      else if (state === 'pause') state = 'play';
+      else if (state === 'menu') { if (menuTop.open) menuTop.open = false; else volverATxt(); }
+      else if (state === 'over' && board.phase !== 'enviando') volverATxt();
+      return;
+    }
+    if (e.code === 'KeyV' && state === 'pause') { volverATxt(); return; }
+    if (e.code === 'KeyM' && state === 'menu') { alternarTablaMenu(); return; }
+    if (e.code === 'Enter' && (state === 'menu' || (state === 'over' && board.phase !== 'enviando'))) { menuTop.open = false; reset(); state = 'play'; }
+    if (e.code === 'KeyP' && (state === 'play' || state === 'pause')) state = state === 'play' ? 'pause' : 'play';
+  }
   if (state === 'tree') {
     // Con el mouse sobre una habilidad, 1-5 la pone en esa casilla. T o Esc cierran.
     const k = '12345'.indexOf(e.key), node = treeHit();
@@ -658,6 +757,8 @@ addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; u
 addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   if (state === 'over' && board.phase === 'entrar' && inBox(entrarBtn)) { irAEntrar(); return; }
+  if ((state === 'menu' || state === 'pause' || (state === 'over' && board.phase !== 'enviando')) && inBox(volverBtn)) { volverATxt(); return; }
+  if (state === 'menu' && inBox(tablaBtn)) { alternarTablaMenu(); return; }
   if (state === 'tree') {
     if (inBox(backBtn)) { state = treeFrom; return; }
     const c = treeHit(); if (c) spendPoint(c.idx); return;
@@ -1098,6 +1199,25 @@ const DESIGNS = {
 const SC = 1.15, SW = 80, SH = 96, AX = 40, AY = 84;         // medidas en unidades de diseño
 const PW = SW * SC, PH = SH * SC, PAX = AX * SC, PAY = AY * SC; // medidas reales del canvas
 function makeCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+// Sin antialiasing: cada píxel queda opaco o transparente (corte a la mitad). Opcional: tramado que deja
+// sólo una fracción de los bloques de PX (transparencia por pasos, sin degradé).
+function binarize(c, keep = 1) {
+  const g = c.getContext('2d'), img = g.getImageData(0, 0, c.width, c.height), d = img.data;
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+    const o = (y * c.width + x) * 4;
+    d[o + 3] = d[o + 3] >= 128 && (keep >= 1 || bayer((x / PX) | 0, (y / PX) | 0) < keep) ? 255 : 0;
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+// Elipse de bloques de PX (sombras), con un solo nivel de transparencia.
+function pixEllipse(g, cx, cy, rx, ry, color) {
+  g.fillStyle = color;
+  for (let y = -ry; y < ry; y += PX) for (let x = -rx; x < rx; x += PX) {
+    const dx = (x + PX / 2) / rx, dy = (y + PX / 2) / ry;
+    if (dx * dx + dy * dy <= 1) g.fillRect(Math.round(cx + x), Math.round(cy + y), PX, PX);
+  }
+}
 // SPR[tipo][back*8 + flip*4 + flash*2 + frame]
 const SPR = [];
 function buildSprites() {
@@ -1116,10 +1236,57 @@ function buildSprites() {
       sg.globalCompositeOperation = 'source-in'; sg.fillStyle = '#0c0e0a'; sg.fillRect(0, 0, PW, PH);
       const c = makeCanvas(PW, PH), g = c.getContext('2d');
       const big = type === '2' || type === '3';
-      g.fillStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.ellipse(PAX, PAY, (big ? 20 : 12) * SC, (big ? 10 : 6) * SC, 0, 0, 6.2832); g.fill();
+      pixEllipse(g, Math.round(PAX), Math.round(PAY), snap((big ? 20 : 12) * SC), snap((big ? 10 : 6) * SC), 'rgba(0,0,0,.4)');
       for (const [dx, dy] of [[-1.5, 0], [1.5, 0], [0, -1.5], [0, 1.5]]) g.drawImage(sil, dx, dy);
       g.drawImage(tmp, 0, 0);
       SPR[type][back * 8 + flip * 4 + flash * 2 + fr] = c;
+    }
+  }
+}
+// Cadáveres: el diseño de cada enemigo acostado (girado y achatado contra el piso), pasado a la grilla
+// de PX sin suavizado, con colores apagados, contorno y un charco debajo.
+// CORPSE[tipo][flip * 4 + nivel]: nivel 3 entero, 2/1/0 tramado al 75/50/25% (para irse de a poco).
+const CORPSE = [];
+function buildCorpses() {
+  const tmp = makeCanvas(PW, PH), tg = tmp.getContext('2d');
+  for (const type of [0, 1, 2, 3, 5]) {
+    const k = type === 3 ? 1.6 : 1, L = Math.ceil(PH * k * 1.1 / PX) * PX;
+    tg.setTransform(1, 0, 0, 1, 0, 0); tg.clearRect(0, 0, PW, PH);
+    tg.setTransform(SC, 0, 0, SC, 0, 0); DESIGNS[type](tg, AX, AY, 0, 0); tg.setTransform(1, 0, 0, 1, 0, 0);
+    const big = makeCanvas(L, L), bg = big.getContext('2d');
+    bg.translate(L / 2, L / 2); bg.scale(1, 0.55); bg.rotate(-1.35); bg.scale(k, k); bg.translate(-PAX, -(PAY - 18 * SC));
+    bg.drawImage(tmp, 0, 0);
+    const n = L / PX, sm = makeCanvas(n, n), sg = sm.getContext('2d');
+    sg.imageSmoothingEnabled = true; sg.drawImage(big, 0, 0, n, n);
+    const src = sg.getImageData(0, 0, n, n).data, body = new Uint8Array(n * n);
+    for (let q = 0; q < n * n; q++) body[q] = src[q * 4 + 3] >= 110 ? 1 : 0;
+    const base = new Uint8ClampedArray(n * n * 4);
+    const puddle = type === 0 ? [34, 42, 18] : [58, 12, 18], rx = n * 0.36, ry = n * 0.16;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const q = y * n + x, o = q * 4;
+      const dx = (x + 0.5 - n / 2) / rx, dy = (y + 0.5 - n / 2 - n * 0.04) / ry, dd = dx * dx + dy * dy;
+      if (body[q]) {
+        const r = src[o], g = src[o + 1], b = src[o + 2], gray = (r + g + b) / 3;
+        base[o] = r * 0.55 + gray * 0.15; base[o + 1] = g * 0.55 + gray * 0.15; base[o + 2] = b * 0.5 + gray * 0.15; base[o + 3] = 255;
+      } else if ((x > 0 && body[q - 1]) || (x < n - 1 && body[q + 1]) || (y > 0 && body[q - n]) || (y < n - 1 && body[q + n])) {
+        base[o] = 12; base[o + 1] = 12; base[o + 2] = 10; base[o + 3] = 255;
+      } else if (dd <= 1 && (dd < 0.55 || bayer(x, y) < 0.5)) {
+        base[o] = puddle[0]; base[o + 1] = puddle[1]; base[o + 2] = puddle[2]; base[o + 3] = 255;
+      }
+    }
+    CORPSE[type] = [];
+    for (let flip = 0; flip < 2; flip++) for (let lvl = 0; lvl < 4; lvl++) {
+      const cell = makeCanvas(n, n), cg = cell.getContext('2d'), img = cg.createImageData(n, n);
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        const o = (y * n + x) * 4;
+        if (!base[o + 3] || bayer(x, y) >= (lvl + 1) / 4) continue;
+        const t = (y * n + (flip ? n - 1 - x : x)) * 4;
+        img.data[t] = base[o]; img.data[t + 1] = base[o + 1]; img.data[t + 2] = base[o + 2]; img.data[t + 3] = 255;
+      }
+      cg.putImageData(img, 0, 0);
+      const c = makeCanvas(L, L), g = c.getContext('2d');
+      g.imageSmoothingEnabled = false; g.drawImage(cell, 0, 0, L, L);
+      CORPSE[type][flip * 4 + lvl] = c;
     }
   }
 }
@@ -1142,7 +1309,7 @@ function outlined(w, h, draw) {
   const c = makeCanvas(w, h), g = c.getContext('2d');
   for (const [dx, dy] of [[-1.5, 0], [1.5, 0], [0, -1.5], [0, 1.5]]) g.drawImage(sil, dx, dy);
   g.drawImage(tmp, 0, 0);
-  return c;
+  return binarize(c);
 }
 // ---------- Efectos en 8 bits ----------
 // Proyectiles y explosiones son sprites de píxeles (cada píxel del mapa se dibuja de 2x2 o más), sin
@@ -1170,40 +1337,41 @@ function buildFx() {
   FX.circle = [P2(['...LLL...', '.LL...LL.', '.L.....L.', 'L...W...L', 'L..WWW..L', 'L...W...L', '.L.....L.', '.LL...LL.', '...LLL...']),
                P2(['...lLl...', '.l.....l.', '.L..W..L.', 'l...W...l', 'L.WWWWW.L', 'l...W...l', '.L..W..L.', '.l.....l.', '...lLl...'])];
   FX.star = [P2(['...L...', '...W...', '..LWL..', 'LWWWWWL', '..LWL..', '...W...', '...L...']), P2(['L.....L', '.L.W.L.', '..WWW..', '.WWWWW.', '..WWW..', '.L.W.L.', 'L.....L'])];
-  // Explosiones: 6 cuadros por tipo, una grilla de 4 px por píxel con bandas de color y ruido.
+  FX.crystal = [P2(['.T.', 'TWT', 'tTt', '.t.'])];
+  FX.flame = [P2(['.O.', 'OYO', 'RYO', '.R.']), P2(['O..', '.OO', 'ROY', '.RR'])];
+  // Explosiones: 6 cuadros por tipo en una grilla de 32x20 (ya achatada para el piso isométrico), con
+  // bandas de color y ruido. Se dibujan a escala entera; los dos últimos cuadros son humo tramado.
   const ring = (cols) => {
     const frames = [];
     for (let f = 0; f < 6; f++) {
-      const N = 32, c = makeCanvas(N * 4, N * 4), g = c.getContext('2d'), k = (f + 1) / 6, R = N / 2;
+      const N = 32, NH = 20, c = makeCanvas(N, NH), g = c.getContext('2d'), k = (f + 1) / 6;
       let seed2 = 7 + f * 31;
       const rr = () => ((seed2 = (seed2 * 1103515245 + 12345) >>> 0) / 4294967296);
-      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-        const d = Math.hypot(x + 0.5 - R, y + 0.5 - R) / R + (rr() - 0.5) * 0.18;
+      for (let y = 0; y < NH; y++) for (let x = 0; x < N; x++) {
+        const d = Math.hypot((x + 0.5 - N / 2) / (N / 2), (y + 0.5 - NH / 2) / (NH / 2)) + (rr() - 0.5) * 0.18;
         const outer = 0.35 + 0.65 * k, inner = Math.max(0, k * 1.1 - 0.35);
         if (d > outer || d < inner) continue;
+        if (f >= 4 && bayer(x, y) > (f === 4 ? 0.5 : 0.25)) continue;
         const band = (d - inner) / Math.max(0.01, outer - inner);
-        const col = f >= 4 ? cols[4] : band < 0.25 ? cols[0] : band < 0.5 ? cols[1] : band < 0.8 ? cols[2] : cols[3];
-        g.fillStyle = col; g.fillRect(x * 4, y * 4, 4, 4);
+        g.fillStyle = f >= 4 ? cols[4] : band < 0.25 ? cols[0] : band < 0.5 ? cols[1] : band < 0.8 ? cols[2] : cols[3];
+        g.fillRect(x, y, 1, 1);
       }
       frames.push(c);
     }
     return frames;
   };
-  FX.boom = ring(['#ffffff', '#fff27a', '#ff9a2a', '#e0402a', '#4a3a30']);
-  FX.ice = ring(['#ffffff', '#e8f8ff', '#8fd6ff', '#4a8cff', '#c9d6e0']);
+  FX.boom = ring(['#ffffff', '#fff27a', '#ff9a2a', '#e0402a', '#3a332d']);
+  FX.ice = ring(['#ffffff', '#e8f8ff', '#8fd6ff', '#4a8cff', '#9fb0bc']);
 }
 const BSPR = ['bolt', 'spark', 'bolt', 'zap', 'totem'];   // sprite por color de proyectil
-const fxDraw = (spr, x, y) => ctx.drawImage(spr, Math.round(x - spr.width / 2), Math.round(y - spr.height / 2));
+const fxDraw = (spr, x, y) => ctx.drawImage(spr, snap(x - spr.width / 2), snap(y - spr.height / 2));
+// Sombra o marca tramada en el piso: un bloque de PX sí y otro no (transparencia por pasos).
+function ditherBox(x, y, w, h, color, keep = 0.5) {
+  x = snap(x); y = snap(y); ctx.fillStyle = color;
+  for (let yy = 0; yy < h; yy += PX) for (let xx = 0; xx < w; xx += PX) if (bayer((x + xx) / PX, (y + yy) / PX) < keep) ctx.fillRect(x + xx, y + yy, PX, PX);
+}
 const blink = (speed = 12, salt = 0) => ((animT * speed + salt) | 0) & 1;
 
-const GLOW = {};
-function glow(color) {
-  if (GLOW[color]) return GLOW[color];
-  const c = makeCanvas(32, 32), g = c.getContext('2d'), gr = g.createRadialGradient(16, 16, 0, 16, 16, 16);
-  gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.25, color); gr.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
-  return (GLOW[color] = c);
-}
 function buildObjects() {
   const O = (w, h, ax, ay, draw) => ({ c: outlined(w, h, (g) => draw(g, ax, ay)), ax, ay });
   // Poción de maná: frasco azul, cuello de vidrio y corcho.
@@ -1253,35 +1421,55 @@ function buildObjects() {
   });
 }
 
+// Bosque muerto: pinos ralos casi negros, robles pelados y retorcidos, y un árbol ceniza sin hojas.
 function buildScenery() {
-  const pine = (g) => {
-    box(g, TAX, TAY, 0, 0, 0, 6, 6, 14, '#5a3d24');
-    box(g, TAX, TAY, 0, 0, 12, 24, 24, 12, '#2f5d2a'); box(g, TAX, TAY, 0, 0, 24, 18, 18, 11, '#386b2f');
-    box(g, TAX, TAY, 0, 0, 35, 12, 12, 10, '#43793a'); box(g, TAX, TAY, 0, 0, 45, 5, 5, 6, '#4f8a41');
+  const deadPine = (g) => {
+    box(g, TAX, TAY, 0, 0, 0, 5, 5, 16, '#2e2620');
+    box(g, TAX, TAY, 0, 0, 12, 22, 22, 9, '#1f261c'); box(g, TAX, TAY, 0, 0, 22, 17, 17, 9, '#232a1f');
+    box(g, TAX, TAY, 0, 0, 31, 10, 10, 9, '#272e22'); box(g, TAX, TAY, 0, 0, 40, 2.4, 2.4, 10, '#3a3028');
+    box(g, TAX, TAY, -6, 0, 26, 9, 1.6, 1.6, '#3a3028');   // rama seca que asoma
   };
-  const oak = (g) => {
-    box(g, TAX, TAY, 0, 0, 0, 7, 7, 22, '#634328');
-    box(g, TAX, TAY, 0, 0, 20, 28, 28, 18, '#3b6e2e'); box(g, TAX, TAY, 2, -2, 38, 18, 18, 7, '#4a8236');
+  const twisted = (g) => {
+    const bark = '#3d3229';
+    box(g, TAX, TAY, 0, 0, 0, 8, 8, 9, bark); box(g, TAX, TAY, 1.5, -1, 9, 6.5, 6.5, 9, bark);
+    box(g, TAX, TAY, -0.5, -2.5, 18, 5.5, 5.5, 9, bark); box(g, TAX, TAY, 1, -4, 27, 4.5, 4.5, 7, bark);
+    box(g, TAX, TAY, 6, -3, 22, 12, 2, 2, bark); box(g, TAX, TAY, 11, -3, 24, 2, 2, 7, bark);
+    box(g, TAX, TAY, -4, -8, 28, 2, 10, 2, bark); box(g, TAX, TAY, -4, -12, 30, 2, 2, 6, bark);
+    box(g, TAX, TAY, 3, 2, 32, 2, 8, 2, bark); box(g, TAX, TAY, 3, 6, 34, 2, 2, 5, bark);
+    box(g, TAX, TAY, 1, -4, 34, 11, 11, 5, '#262b20'); box(g, TAX, TAY, -6, -12, 35, 7, 7, 4, '#22271d');
   };
-  const birch = (g) => {
-    box(g, TAX, TAY, 0, 0, 0, 5, 5, 26, '#d9d4c7');
-    box(g, TAX, TAY, 0, 0, 8, 5.2, 5.2, 1.5, '#2b2b2b'); box(g, TAX, TAY, 0, 0, 17, 5.2, 5.2, 1.5, '#2b2b2b');
-    box(g, TAX, TAY, 0, 0, 24, 20, 20, 14, '#7a9a3a'); box(g, TAX, TAY, 0, 0, 38, 12, 12, 6, '#8fb04a');
+  const ashen = (g) => {
+    const bark = '#77736a';
+    box(g, TAX, TAY, 0, 0, 0, 5, 5, 30, bark);
+    box(g, TAX, TAY, 0, 0, 7, 5.2, 5.2, 1.5, '#1d1b18'); box(g, TAX, TAY, 0, 0, 16, 5.2, 5.2, 1.5, '#1d1b18');
+    box(g, TAX, TAY, 5, 0, 20, 9, 1.8, 1.8, bark); box(g, TAX, TAY, 9, 0, 21, 1.8, 1.8, 8, bark);
+    box(g, TAX, TAY, -5, 2, 25, 9, 1.8, 1.8, bark); box(g, TAX, TAY, -9, 2, 26, 1.8, 1.8, 6, bark);
+    box(g, TAX, TAY, 0, -4, 29, 1.8, 8, 1.8, bark); box(g, TAX, TAY, 0, -7, 30, 1.8, 1.8, 6, bark);
   };
-  for (const draw of [pine, oak, birch]) {
-    for (const alpha of [1, 0.35]) {
+  for (const draw of [deadPine, twisted, ashen]) {
+    for (const keep of [1, 0.4]) {
+      const t = makeCanvas(TW, TH); draw(t.getContext('2d')); binarize(t, keep);
       const c = makeCanvas(TW, TH), g = c.getContext('2d');
-      g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(TAX, TAY, 22, 11, 0, 0, 6.2832); g.fill();
-      g.globalAlpha = alpha; draw(g);
+      pixEllipse(g, TAX, TAY, 22, 10, 'rgba(0,0,0,.35)');
+      g.drawImage(t, 0, 0);
       TREES.push(c);
     }
   }
+  // Rocas: una pelada, una con musgo seco y una lápida de piedra con cruz.
   for (let v = 0; v < 3; v++) {
     const c = makeCanvas(TW, 60), g = c.getContext('2d');
-    box(g, TAX, 48, 0, 0, 0, 16 + v * 2, 14, 8 + v, '#7a7d80');
-    box(g, TAX, 48, 2 - v, -2, 8 + v, 9, 8, 4, '#8d9094');
-    box(g, TAX, 48, -5, 5, 0, 5, 5, 3, '#6b6e70');
-    ROCKS.push(c);
+    if (v < 2) {
+      box(g, TAX, 48, 0, 0, 0, 16 + v * 2, 14, 8 + v, '#4c4e50');
+      box(g, TAX, 48, 2 - v, -2, 8 + v, 9, 8, 4, '#5a5c5e');
+      box(g, TAX, 48, -5, 5, 0, 5, 5, 3, '#3f4143');
+      if (v) box(g, TAX, 48, 2, -2, 12, 6, 5, 1, '#3a4130');
+    } else {
+      box(g, TAX, 48, 0, 0, 0, 14, 16, 3, '#3f4143');
+      box(g, TAX, 48, 0, 0, 3, 5, 12, 18, '#5d6062');
+      box(g, TAX, 48, 0, 0, 21, 5, 8, 2, '#6a6d6f');
+      onFace(g, TAX, 48, 2.5, -0.8, 0.8, 7, 18, '#2c2d2e'); onFace(g, TAX, 48, 2.5, -3.5, 3.5, 13.5, 15, '#2c2d2e');
+    }
+    ROCKS.push(binarize(c));
   }
 }
 
@@ -1298,6 +1486,44 @@ function indexScenery() {
 }
 const depth = (x, y) => Math.min(NBK - 1, Math.max(0, Math.floor((x + y) / DK)));
 
+// Niebla: una textura repetible de manchas tramadas (bloques de PX), dibujada con un solo nivel de
+// transparencia y corrida de a PX. Viñeta: bloques negros cada vez más tupidos hacia los bordes.
+const FOG_N = 96, FOG_P = 8;
+let FOG = null, VIGNETTE = null;
+const VIG_S = 5;   // 2 píxeles del mundo con el zoom de 1,25
+function buildFog() {
+  const pn = (x, y, P) => {   // ruido de valor periódico (período P celdas): la textura empalma sin costura
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const h = (a, b) => hash2(((a % P) + P) % P, ((b % P) + P) % P + 31);
+    const a = h(xi, yi), b = h(xi + 1, yi), c = h(xi, yi + 1), d = h(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+  FOG = makeCanvas(FOG_N * PX, FOG_N * PX);
+  const g = FOG.getContext('2d');
+  g.fillStyle = '#8a958e';
+  for (let y = 0; y < FOG_N; y++) for (let x = 0; x < FOG_N; x++) {
+    const n = pn(x / (FOG_N / FOG_P), y / (FOG_N / FOG_P), FOG_P) * 0.7 + pn(x / (FOG_N / 16), y / (FOG_N / 16), 16) * 0.3;
+    if (bayer(x, y) < Math.min(0.75, Math.max(0, (n - 0.42) * 2.4))) g.fillRect(x * PX, y * PX, PX, PX);
+  }
+}
+function drawFog(cx, cy, vw, vh) {
+  const S = FOG.width, ox = snap(animT * 7) % S, oy = snap(animT * 3) % S;
+  ctx.globalAlpha = 0.16;
+  for (let y = Math.floor((cy - oy) / S) * S + oy; y < cy + vh; y += S)
+    for (let x = Math.floor((cx - ox) / S) * S + ox; x < cx + vw; x += S) ctx.drawImage(FOG, x, y);
+  ctx.globalAlpha = 1;
+}
+function buildVignette() {
+  const w = Math.ceil(W / VIG_S), h = Math.ceil(H / VIG_S);
+  VIGNETTE = makeCanvas(w, h);
+  const g = VIGNETTE.getContext('2d');
+  g.fillStyle = '#050605';
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = (x + 0.5) / w * 2 - 1, dy = (y + 0.5) / h * 2 - 1, d = Math.sqrt(dx * dx * 0.85 + dy * dy);
+    if (bayer(x, y) < Math.min(0.5, Math.max(0, (d - 0.8) * 1.4))) g.fillRect(x, y, 1, 1);
+  }
+}
+
 let animT = 0;
 function render() {
   animT += 1 / 60;
@@ -1312,6 +1538,15 @@ function render() {
   ctx.drawImage(floor, 0, 0);
 
   const x0 = camX - 60, x1 = camX + VW + 60, y0 = camY - 20, y1 = camY + VH + 140;
+  // Cadáveres: en el piso, debajo de todo lo que está de pie. Los últimos 4 s se van tramándose.
+  for (let i = 0; i < nC; i++) {
+    const age = playTime - ctm[i];
+    if (age >= CORPSE_LIFE) continue;
+    const sx = isoX(cxw[i], cyw[i]), sy = isoY(cxw[i], cyw[i]);
+    if (sx < x0 || sx > x1 || sy < y0 || sy > y1) continue;
+    const lvl = Math.min(3, Math.floor(CORPSE_LIFE - age)), spr = CORPSE[cty[i]][cfl[i] * 4 + lvl];
+    ctx.drawImage(spr, snap(sx - spr.width / 2), snap(sy - spr.height / 2));
+  }
   headE.fill(-1);
   for (let i = 0; i < nE; i++) {
     const sx = isoX(ex[i], ey[i]), sy = isoY(ex[i], ey[i]);
@@ -1334,15 +1569,15 @@ function render() {
   }
   for (const tu of turrets) addObj(tu.x, tu.y, () => {
     const sx = isoX(tu.x, tu.y), sy = isoY(tu.x, tu.y), fh = tu.hp / tu.maxHp;
-    ctx.fillStyle = '#000'; ctx.fillRect(sx - 11, sy - 29, 22, 5);
-    ctx.fillStyle = fh < 0.35 ? '#e5534b' : '#5fbf3a'; ctx.fillRect(sx - 10, sy - 28, 20 * fh, 3);
+    const hx = snap(sx - 11), hy = snap(sy - 30);
+    ctx.fillStyle = '#000'; ctx.fillRect(hx, hy, 22, 6);
+    ctx.fillStyle = fh < 0.35 ? '#e5534b' : '#5fbf3a'; ctx.fillRect(hx + 2, hy + 2, Math.max(PX, snap(18 * fh)), 2);
     if (tu.kind === 0) {
-      ctx.drawImage(OBJ.totem.c, sx - OBJ.totem.ax, sy - OBJ.totem.ay);
-      box(ctx, sx, sy, 0, 0, 23 + Math.sin(animT * 4) * 1.5, 5, 5, 5, '#7dffd8');
+      ctx.drawImage(OBJ.totem.c, Math.round(sx - OBJ.totem.ax), Math.round(sy - OBJ.totem.ay));
+      fxDraw(FX.crystal[0], sx, sy - 28 - blink(3, tu.x) * PX);   // el cristal flota de a un píxel
     } else {
-      ctx.drawImage(OBJ.altar.c, sx - OBJ.altar.ax, sy - OBJ.altar.ay);
-      ctx.globalAlpha = 0.35 + 0.25 * Math.sin(animT * 5); ctx.fillStyle = '#ff8a3a';
-      ctx.fillRect(sx - 4, sy - 22, 8, 12); ctx.globalAlpha = 1;
+      ctx.drawImage(OBJ.altar.c, Math.round(sx - OBJ.altar.ax), Math.round(sy - OBJ.altar.ay));
+      fxDraw(FX.flame[blink(8, tu.x)], sx, sy - 18);
     }
   });
   for (const b of barrels) addObj(b.x, b.y, () => {
@@ -1395,49 +1630,52 @@ function render() {
     }
   }
 
+  // Niebla que se arrastra entre los árboles (debajo de los hechizos, para que se lean).
+  drawFog(camX, camY, VW, VH);
   ctx.imageSmoothingEnabled = false;
   // Piedras del macho cabrío: marca roja que titila donde van a caer, y la piedra en arco con su sombra.
   for (const b of boulders) {
     const k = b.t / b.dur, x = b.x0 + (b.x1 - b.x0) * k, y = b.y0 + (b.y1 - b.y0) * k, z = Math.sin(Math.PI * k) * 70 + 14 * (1 - k);
-    const tx = Math.round(isoX(b.x1, b.y1)), ty = Math.round(isoY(b.x1, b.y1));
-    ctx.fillStyle = ((animT * 10) | 0) & 1 ? '#ff3a2a' : '#8a1a12'; ctx.globalAlpha = 0.35 + 0.5 * k;
-    for (let q = 0; q < 16; q++) { const a = q / 16 * 6.2832; ctx.fillRect(Math.round(tx + Math.cos(a) * 32) - 1, Math.round(ty + Math.sin(a) * 16) - 1, 3, 3); }
-    ctx.globalAlpha = 1;
-    const sx = Math.round(isoX(x, y)), sy = Math.round(isoY(x, y));
-    ctx.fillStyle = '#000'; ctx.globalAlpha = 0.3; ctx.fillRect(sx - 5, sy - 2, 10, 4); ctx.globalAlpha = 1;
-    ctx.fillStyle = '#000'; ctx.fillRect(sx - 10, sy - z - 10, 20, 20);
-    ctx.fillStyle = '#6b665e'; ctx.fillRect(sx - 8, sy - z - 8, 16, 16);
-    ctx.fillStyle = '#8c867b'; ctx.fillRect(sx - 8, sy - z - 8, 10, 6);
-    ctx.fillStyle = '#4a4641'; ctx.fillRect(sx + 2, sy - z + 2, 6, 6);
+    const tx = isoX(b.x1, b.y1), ty = isoY(b.x1, b.y1);
+    // La marca se va completando por pasos a medida que la piedra se acerca (8, 12 y 16 cuadraditos).
+    const nq = k < 0.33 ? 8 : k < 0.66 ? 12 : 16;
+    ctx.fillStyle = ((animT * 10) | 0) & 1 ? '#ff3a2a' : '#8a1a12';
+    for (let q = 0; q < nq; q++) { const a = q / nq * 6.2832; ctx.fillRect(snap(tx + Math.cos(a) * 32) - 2, snap(ty + Math.sin(a) * 16) - 2, 4, 4); }
+    const sx = snap(isoX(x, y)), sy = snap(isoY(x, y)), zz = snap(z);
+    ditherBox(sx - 6, sy - 2, 12, 4, '#000');
+    ctx.fillStyle = '#000'; ctx.fillRect(sx - 10, sy - zz - 10, 20, 20);
+    ctx.fillStyle = '#6b665e'; ctx.fillRect(sx - 8, sy - zz - 8, 16, 16);
+    ctx.fillStyle = '#8c867b'; ctx.fillRect(sx - 8, sy - zz - 8, 10, 6);
+    ctx.fillStyle = '#4a4641'; ctx.fillRect(sx + 2, sy - zz + 2, 6, 6);
   }
   // Polvo donde cae la piedra: anillo de cuadraditos marrones que se abre.
   for (const q of quakes) {
-    const k = q.t / 0.35, tx = isoX(q.x, q.y), ty = isoY(q.x, q.y), rr = 10 + k * 28;
-    ctx.fillStyle = '#8a6a44'; ctx.globalAlpha = 1 - k;
-    for (let n = 0; n < 12; n++) { const a = n / 12 * 6.2832; ctx.fillRect(Math.round(tx + Math.cos(a) * rr) - 2, Math.round(ty + Math.sin(a) * rr * 0.5) - 2, 4, 4); }
-    ctx.globalAlpha = 1;
+    // Se abre en 3 pasos y se apaga salteando cuadraditos (sin transparencia suave).
+    const k = q.t / 0.35, st = Math.min(2, (k * 3) | 0), tx = isoX(q.x, q.y), ty = isoY(q.x, q.y), rr = 10 + st * 14;
+    ctx.fillStyle = ['#8a6a44', '#6e5538', '#4f3d29'][st];
+    for (let n = 0; n < 12; n++) { if (st === 2 && n & 1) continue; const a = n / 12 * 6.2832; ctx.fillRect(snap(tx + Math.cos(a) * rr) - 2, snap(ty + Math.sin(a) * rr * 0.5) - 2, 4, 4); }
   }
   // Frascos, meteoros y esquirlas en el aire, con sombra cuadrada en el piso.
   for (const g of throws) {
     const k = g.t / g.dur, x = g.x0 + (g.x1 - g.x0) * k, y = g.y0 + (g.y1 - g.y0) * k;
     const z = g.fall ? g.fall * (1 - k) : Math.sin(Math.PI * k) * g.h + GUN_Z * (1 - k);
-    const fade = (1 - k) ** 3, sx = Math.round(isoX(x, y) + (g.vox || 0) * fade), sy = Math.round(isoY(x, y) + (g.voy || 0) * fade);
-    ctx.fillStyle = '#000'; ctx.globalAlpha = 0.3; ctx.fillRect(sx - 4, sy - 2, 8, 4); ctx.globalAlpha = 1;
+    const fade = (1 - k) ** 3, sx = snap(isoX(x, y) + (g.vox || 0) * fade), sy = snap(isoY(x, y) + (g.voy || 0) * fade), zz = snap(z);
+    ditherBox(sx - 4, sy - 2, 8, 4, '#000');
     if (g.ice) {
-      for (let q = 1; q <= 3; q++) { ctx.fillStyle = q & 1 ? '#8fd6ff' : '#e8f8ff'; ctx.fillRect(sx - 1, sy - z - 6 - q * 6, 2, 4); }
-      fxDraw(FX.shard[0], sx, sy - z);
+      for (let q = 1; q <= 3; q++) { ctx.fillStyle = q & 1 ? '#8fd6ff' : '#e8f8ff'; ctx.fillRect(sx, sy - zz - 6 - q * 6, 2, 4); }
+      fxDraw(FX.shard[0], sx, sy - zz);
     } else if (g.fall) {
-      for (let q = 1; q <= 4; q++) { ctx.fillStyle = ['#fff27a', '#ff9a2a', '#e0402a', '#4a3a30'][q - 1]; ctx.fillRect(sx - 6 - q * 3, sy - z - 6 - q * 6, 4, 4); }
-      fxDraw(FX.meteor[0], sx, sy - z);
-    } else fxDraw(FX.flask[0], sx, sy - z);
+      for (let q = 1; q <= 4; q++) { ctx.fillStyle = ['#fff27a', '#ff9a2a', '#e0402a', '#4a3a30'][q - 1]; ctx.fillRect(sx - 6 - q * 4, sy - zz - 6 - q * 6, 4, 4); }
+      fxDraw(FX.meteor[0], sx, sy - zz);
+    } else fxDraw(FX.flask[0], sx, sy - zz);
   }
   // Bola de fuego: sprite de 2 cuadros y estela de cuadraditos que se apagan.
   for (const r of rockets) {
     const sx = isoX(r.x, r.y) + (r.vox || 0), sy = isoY(r.x, r.y) - GUN_Z + (r.voy || 0);
     for (let k = 1; k <= 5; k++) {
-      const tx = r.x - r.vx * 0.011 * k, ty = r.y - r.vy * 0.011 * k, sz = 8 - k;
+      const tx = r.x - r.vx * 0.011 * k, ty = r.y - r.vy * 0.011 * k, sz = [8, 6, 6, 4, 2][k - 1];
       ctx.fillStyle = ['#fff27a', '#ff9a2a', '#ff9a2a', '#e0402a', '#4a3a30'][k - 1];
-      ctx.fillRect(Math.round(isoX(tx, ty) + (r.vox || 0) - sz / 2 + (blink(20, k) ? 1 : -1)), Math.round(isoY(tx, ty) - GUN_Z + (r.voy || 0) - sz / 2), sz, sz);
+      ctx.fillRect(snap(isoX(tx, ty) + (r.vox || 0) - sz / 2) + (blink(20, k) ? PX : 0), snap(isoY(tx, ty) - GUN_Z + (r.voy || 0) - sz / 2), sz, sz);
     }
     fxDraw(FX.fireball[blink(14)], sx, sy);
   }
@@ -1449,15 +1687,13 @@ function render() {
       for (let k = 1; k <= 5; k++) {
         const tx = bx[i] - bvx[i] * 0.006 * k, ty = by[i] - bvy[i] * 0.006 * k;
         ctx.fillStyle = k & 1 ? '#fff27a' : '#ffffff';
-        ctx.fillRect(Math.round(isoX(tx, ty) + ox3 + ((Math.random() * 3) | 0) * 2 - 2), Math.round(isoY(tx, ty) - GUN_Z + oy3 + ((Math.random() * 3) | 0) * 2 - 2), 2, 2);
+        ctx.fillRect(snap(isoX(tx, ty) + ox3) + ((Math.random() * 3) | 0) * 2 - 2, snap(isoY(tx, ty) - GUN_Z + oy3) + ((Math.random() * 3) | 0) * 2 - 2, 2, 2);
       }
     } else {
-      for (let k = 1; k <= 2; k++) {
-        const tx = bx[i] - bvx[i] * 0.01 * k, ty = by[i] - bvy[i] * 0.01 * k;
-        ctx.fillStyle = BCOLORS[c]; ctx.globalAlpha = k === 1 ? 0.8 : 0.45;
-        ctx.fillRect(Math.round(isoX(tx, ty) + ox3) - 2, Math.round(isoY(tx, ty) - GUN_Z + oy3) - 2, 4, 4);
-      }
-      ctx.globalAlpha = 1;
+      // Estela: dos cuadraditos, el segundo más chico y más oscuro (sin transparencia).
+      const t1x = bx[i] - bvx[i] * 0.01, t1y = by[i] - bvy[i] * 0.01, t2x = bx[i] - bvx[i] * 0.02, t2y = by[i] - bvy[i] * 0.02;
+      ctx.fillStyle = BCOLORS[c]; ctx.fillRect(snap(isoX(t1x, t1y) + ox3) - 2, snap(isoY(t1x, t1y) - GUN_Z + oy3) - 2, 4, 4);
+      ctx.fillStyle = BDARK[c]; ctx.fillRect(snap(isoX(t2x, t2y) + ox3) - 1, snap(isoY(t2x, t2y) - GUN_Z + oy3) - 1, 2, 2);
     }
     fxDraw(FX[BSPR[c]][blink(16, i)], sx, sy);
   }
@@ -1466,16 +1702,19 @@ function render() {
     const sx = isoX(fx[i], fy[i]), sy = isoY(fx[i], fy[i]) - 18;
     fxDraw(fk[i] ? FX.axe[blink(14, i)] : FX.wisp[blink(10, i)], sx, sy);
   }
-  // Explosiones: 6 cuadros de pixel art, achatadas para el piso isométrico.
+  // Explosiones: 6 cuadros de pixel art ya achatados, a escala entera (cada píxel del arte, s x s).
   for (const b of booms) {
     const k = Math.min(0.999, b.t / 0.4), fr = (b.ice ? FX.ice : FX.boom)[(k * 6) | 0];
-    const size = Math.round(((b.R || 85) * 2.4) / 4) * 4, sx = isoX(b.x, b.y), sy = isoY(b.x, b.y) - 10;
-    ctx.drawImage(fr, Math.round(sx - size / 2), Math.round(sy - size * 0.3), size, Math.round(size * 0.6 / 4) * 4);
+    const s = Math.max(PX, Math.round((b.R || 85) * 2.4 / 32)), sx = isoX(b.x, b.y), sy = isoY(b.x, b.y) - 10;
+    ctx.drawImage(fr, snap(sx - fr.width * s / 2), snap(sy - fr.height * s / 2), fr.width * s, fr.height * s);
   }
-  ctx.globalAlpha = 1;
   ctx.restore();
+  // Bordes oscuros por pasos (tramado de bloques negros que se espesa hacia afuera).
+  if (!VIGNETTE || VIGNETTE.width !== Math.ceil(W / VIG_S) || VIGNETTE.height !== Math.ceil(H / VIG_S)) buildVignette();
+  ctx.drawImage(VIGNETTE, 0, 0, VIGNETTE.width * VIG_S, VIGNETTE.height * VIG_S);
 
-  if (player.hurt > 0) { ctx.fillStyle = `rgba(160,0,0,${player.hurt})`; ctx.fillRect(0, 0, W, H); }
+  // Daño: rojo en dos pasos (no un desvanecido continuo).
+  if (player.hurt > 0) { ctx.fillStyle = player.hurt > 0.12 ? 'rgba(160,0,0,.22)' : 'rgba(160,0,0,.1)'; ctx.fillRect(0, 0, W, H); }
   drawHud();
 }
 
@@ -1606,7 +1845,7 @@ const STONE_FONT = {
   '%': ['XXX....XX', 'XXX...XX.', 'XXX...XX.', '.....XX..', '....XX...', '....XX...', '...XX....', '...XX....', '..XX.....', '.XX...XXX', '.XX...XXX', 'XX....XXX', '', '', ''],
 };
 const GLYPHS = STONE_FONT;
-let LOGO = null, FOREST_BG = null;
+let LOGO = null, LOGO_SH = null, FOREST_BG = null;
 const hash2 = (x, y) => { const v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453; return v - Math.floor(v); };
 // Pinta una máscara como piedra: degradé gris, bisel con luz arriba a la izquierda, vetas, grietas con musgo y contorno negro.
 function stoneArt(mask, w, h, seed) {
@@ -1696,39 +1935,74 @@ function buildLogo() {
   });
   // Las puntas sueltas de una celda se afinan en diagonal para que corten como en las letras góticas.
   LOGO = stoneArt(mask, lw, lh, 3);
-  // Bosque de noche: niebla verde azulada con ruido en varias escalas, luz de luna arriba y tres filas de pinos en silueta.
+  // Sombra del logo: la misma silueta en negro, pintada una vez (sin filtros en cada cuadro).
+  LOGO_SH = makeCanvas(LOGO.width, LOGO.height);
+  const lg = LOGO_SH.getContext('2d');
+  lg.drawImage(LOGO, 0, 0); lg.globalCompositeOperation = 'source-in'; lg.fillStyle = '#000'; lg.fillRect(0, 0, LOGO.width, LOGO.height);
+  // Bosque muerto de noche: niebla gris con ruido en varias escalas (tramada), una luna enferma, pinos
+  // ralos al fondo, árboles pelados en el medio y troncos retorcidos con cruces al frente.
   const RW = 240, RH = 135, sky = makeCanvas(RW, RH), sg = sky.getContext('2d'), si = sg.createImageData(RW, RH);
-  const noise = (x, y) => {
-    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
-    const a = hash2(xi, yi), b = hash2(xi + 1, yi), cc = hash2(xi, yi + 1), dd = hash2(xi + 1, yi + 1);
-    return a + (b - a) * u + (cc - a) * v + (a - b - cc + dd) * u * v;
-  };
-  const MIST = [[3, 6, 8], [6, 14, 16], [10, 24, 26], [16, 36, 38], [24, 52, 52], [36, 72, 70], [56, 98, 92], [86, 130, 120]];
+  const MIST = [[3, 4, 4], [7, 8, 8], [11, 12, 12], [16, 18, 17], [22, 24, 23], [30, 32, 30], [40, 42, 39], [54, 56, 51]];
   const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-  const put = (x, y, c) => { const o = (y * RW + x) * 4; si.data[o] = c[0]; si.data[o + 1] = c[1]; si.data[o + 2] = c[2]; si.data[o + 3] = 255; };
+  const put = (x, y, c) => { if (x < 0 || y < 0 || x >= RW || y >= RH) return; const o = (y * RW + x) * 4; si.data[o] = c[0]; si.data[o + 1] = c[1]; si.data[o + 2] = c[2]; si.data[o + 3] = 255; };
   for (let y = 0; y < RH; y++) for (let x = 0; x < RW; x++) {
-    const n = noise(x / 30, y / 16) * 0.55 + noise(x / 12 + 9, y / 7) * 0.3 + noise(x / 5 + 3, y / 4) * 0.15;
+    const n = vnoise(x / 30, y / 16) * 0.55 + vnoise(x / 12 + 9, y / 7) * 0.3 + vnoise(x / 5 + 3, y / 4) * 0.15;
     const vx = (x - RW / 2) / (RW / 2), vy = (y - RH * 0.3) / (RH * 0.8), vig = Math.max(0, 1 - (vx * vx * 0.7 + vy * vy));
-    const val = Math.min(0.999, Math.max(0, n * 1.1 * vig + 0.04)), t = (BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
+    const val = Math.min(0.999, Math.max(0, n * 1.05 * vig + 0.03)), t = (BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
     put(x, y, MIST[Math.min(MIST.length - 1, Math.floor(val * (MIST.length - 1) + t))]);
   }
-  // Pinos: cada fila más oscura y más grande, del fondo al frente.
-  const ROWS = [{ base: 92, h: 30, col: [14, 30, 30], n: 26 }, { base: 108, h: 42, col: [7, 17, 17], n: 18 }, { base: 128, h: 58, col: [2, 6, 6], n: 12 }];
-  ROWS.forEach((row, ri) => {
-    for (let k = 0; k < row.n; k++) {
-      const cx = Math.round((k + hash2(k, ri) * 0.8) * RW / row.n - 6), hh = row.h * (0.7 + hash2(ri, k) * 0.5), top = row.base - hh;
-      for (let y = Math.max(0, Math.floor(top)); y < RH; y++) {
-        const f = (y - top) / hh, tier = (f * 4) % 1, half = Math.round((y < row.base ? (0.25 + f * 0.75) * (0.55 + tier * 0.45) : 0.12) * hh * 0.32);
-        for (let x = cx - half; x <= cx + half; x++) if (x >= 0 && x < RW) put(x, y, row.col);
-      }
+  // Luna: disco pálido con borde tramado y dos manchas, medio tapada por la niebla.
+  const MX = 212, MY = 20, MR = 8;
+  for (let y = -MR - 1; y <= MR + 1; y++) for (let x = -MR - 1; x <= MR + 1; x++) {
+    const d = Math.hypot(x, y) / MR, t = (BAYER[((y + 64) & 3) * 4 + ((x + 64) & 3)] + 0.5) / 16;
+    if (d > 1.08 || (d > 0.9 && t > 0.5)) continue;
+    const spot = Math.hypot(x + 2, y - 2) < 2.2 || Math.hypot(x - 3, y + 3) < 1.6;
+    put(MX + x, MY + y, spot ? [104, 106, 94] : d > 0.8 ? [118, 120, 106] : [138, 140, 124]);
+  }
+  // Rama pelada: tramos rectos de píxeles que se abren en dos, cada vez más finos.
+  const branch = (x, y, ang, len, w, col, depth, k) => {
+    for (let t = 0; t < len; t++) {
+      const px = Math.round(x + Math.cos(ang) * t), py = Math.round(y + Math.sin(ang) * t);
+      for (let q = 0; q < w; q++) put(px + q - (w >> 1), py, col);
     }
-    for (let y = row.base; y < RH; y++) for (let x = 0; x < RW; x++) put(x, y, row.col);   // suelo de la fila
-  });
+    if (depth <= 0) return;
+    const ex2 = x + Math.cos(ang) * len, ey2 = y + Math.sin(ang) * len;
+    branch(ex2, ey2, ang - 0.45 - hash2(k, depth) * 0.4, len * 0.68, Math.max(1, w - 1), col, depth - 1, k * 3 + 1);
+    branch(ex2, ey2, ang + 0.4 + hash2(depth, k) * 0.45, len * 0.62, Math.max(1, w - 1), col, depth - 1, k * 5 + 2);
+  };
+  // Fila del fondo: pinos ralos y secos (sin el contorno lleno de antes).
+  const back = { base: 92, col: [13, 15, 14] };
+  for (let k = 0; k < 26; k++) {
+    const cx = Math.round((k + hash2(k, 0) * 0.8) * RW / 26 - 6), hh = 30 * (0.7 + hash2(0, k) * 0.5), top = back.base - hh;
+    for (let y = Math.max(0, Math.floor(top)); y < back.base; y++) {
+      const f = (y - top) / hh, tier = (f * 4) % 1, half = Math.round((0.25 + f * 0.75) * (0.4 + tier * 0.5) * hh * 0.28);
+      for (let x = cx - half; x <= cx + half; x++) if (hash2(x, y) > 0.18) put(x, y, back.col);
+    }
+  }
+  for (let y = back.base; y < RH; y++) for (let x = 0; x < RW; x++) put(x, y, back.col);
+  // Fila del medio: árboles pelados.
+  const mid = { base: 108, col: [7, 8, 8] };
+  for (let k = 0; k < 11; k++) {
+    const cx = Math.round((k + 0.2 + hash2(k, 1) * 0.6) * RW / 11), hh = 26 + hash2(1, k) * 14;
+    branch(cx, mid.base, -Math.PI / 2 + (hash2(k, 7) - 0.5) * 0.2, hh * 0.55, 3, mid.col, 3, k + 1);
+  }
+  for (let y = mid.base; y < RH; y++) for (let x = 0; x < RW; x++) put(x, y, mid.col);
+  // Frente: troncos retorcidos grandes y cruces torcidas en la loma.
+  const front = { base: 126, col: [2, 3, 3] };
+  for (const [cx, hh, k] of [[14, 70, 3], [62, 46, 5], [205, 64, 7], [236, 40, 9]]) {
+    branch(cx, front.base, -Math.PI / 2 + (hash2(k, 2) - 0.5) * 0.35, hh * 0.5, 5, front.col, 4, k);
+  }
+  for (const [cx, h, lean] of [[86, 10, 0], [104, 8, 1], [150, 11, -1], [171, 7, 0], [118, 6, 1]]) {
+    for (let y = 0; y < h; y++) { put(cx + (y > h / 2 ? 0 : lean), front.base - y, front.col); put(cx + 1 + (y > h / 2 ? 0 : lean), front.base - y, front.col); }
+    for (let x = -2; x <= 3; x++) put(cx + x + lean, front.base - h + 3, front.col);
+  }
+  for (let y = front.base; y < RH; y++) for (let x = 0; x < RW; x++) put(x, y, front.col);
+  for (let x = 0; x < RW; x++) if (hash2(x, 99) > 0.6) put(x, front.base - 1, front.col);   // pasto seco en la loma
   sg.putImageData(si, 0, 0);
   FOREST_BG = sky;
 }
 // Luciérnagas que flotan sobre el bosque (en coordenadas de la imagen de fondo).
-const FIREFLIES = Array.from({ length: 46 }, (_, k) => ({ x: hash2(k, 1) * 240, y: 50 + hash2(k, 2) * 80, p: hash2(k, 3) * 6.28, s: 0.4 + hash2(k, 4) }));
+const FIREFLIES = Array.from({ length: 30 }, (_, k) => ({ x: hash2(k, 1) * 240, y: 50 + hash2(k, 2) * 80, p: hash2(k, 3) * 6.28, s: 0.4 + hash2(k, 4) }));
 
 
 // ---------- Adornos de piedra de la interfaz (pixel art propio) ----------
@@ -1911,28 +2185,69 @@ function spellDetail(node) {
   });
 }
 
+// Botón de píxel (mismo estilo que el de entrar): marco que se enciende con el mouse encima.
+function pixButton(btn, x, y, w, h, label) {
+  Object.assign(btn, { x: Math.round(x), y: Math.round(y), w, h });
+  const hover = inBox(btn);
+  pixFrame(btn.x, btn.y, w, h, hover ? '#ffd23f' : '#6b5232', hover ? '#2a2210' : '#120e0a');
+  text(label, btn.x + w / 2, btn.y + Math.round(h / 2) + 5, 8, hover ? '#ffd23f' : '#e8e0d0', 'center');
+}
+// La tabla de MEJORES MAGOS (pantalla final y menú). by: línea del título; ocupa de by - 20 a by + 256.
+function drawTabla(top, mine, cx, by) {
+  text('MEJORES MAGOS', cx, by + 10, 24, '#ffd23f', 'center');
+  top.forEach((t, k) => {
+    const y = by + 46 + k * 22, col = k === mine ? '#ffd23f' : '#e0dccf';
+    text(String(k + 1) + '.', cx - 150, y, 8, col, 'right');
+    text(t.id, cx - 130, y, 8, col);
+    text(String(t.puntos), cx + 60, y, 8, col, 'right');
+    text('OLEADA ' + t.oleada, cx + 150, y, 8, k === mine ? col : '#888', 'right');
+  });
+  if (!top.length) text('TODAVIA NO HAY PUNTAJES', cx, by + 50, 8, '#888', 'center');
+}
+const TABLA_H = 330;   // alto del panel de la tabla en el menú
 function drawHud() {
   ctx.imageSmoothingEnabled = false;
+  volverBtn.w = 0; tablaBtn.w = 0;   // los botones sólo responden en el cuadro en que se dibujan
   if (state === 'menu') {
     // Bosque de noche de fondo, luciérnagas que titilan, el logo de piedra y APRETÁ ENTER.
     ctx.imageSmoothingEnabled = false;
     const ks = Math.max(W / FOREST_BG.width, H / FOREST_BG.height), kx = Math.round((W - FOREST_BG.width * ks) / 2), ky = Math.round((H - FOREST_BG.height * ks) / 2);
     ctx.drawImage(FOREST_BG, kx, ky, Math.round(FOREST_BG.width * ks), Math.round(FOREST_BG.height * ks));
+    // Luciérnagas frías: tres brillos por pasos (sin transparencia), en la grilla del fondo.
+    const FF = ['#2c3838', '#5e7472', '#a9c2c0'];
     for (const f of FIREFLIES) {
       const a = Math.sin(animT * 2 * f.s + f.p);
-      if (a < 0.1) continue;
+      if (a < 0.2) continue;
+      const lv = a > 0.8 ? 2 : a > 0.5 ? 1 : 0;
       const fx = (f.x + Math.sin(animT * 0.4 * f.s + f.p) * 6 + 240) % 240, fy = f.y + Math.cos(animT * 0.3 * f.s + f.p * 2) * 4;
-      const px = kx + Math.round(fx) * ks, py = ky + Math.round(fy) * ks;
-      ctx.globalAlpha = a * 0.35; ctx.fillStyle = '#c8ff6a'; ctx.fillRect(Math.round(px - ks), Math.round(py - ks), Math.ceil(ks * 3), Math.ceil(ks * 3));
-      ctx.globalAlpha = a; ctx.fillStyle = '#f4ffb0'; ctx.fillRect(Math.round(px), Math.round(py), Math.ceil(ks), Math.ceil(ks));
+      const px = Math.round(kx + Math.round(fx) * ks), py = Math.round(ky + Math.round(fy) * ks), q = Math.ceil(ks);
+      if (lv === 2) { ctx.fillStyle = FF[0]; ctx.fillRect(px - q, py, q * 3, q); ctx.fillRect(px, py - q, q, q * 3); }
+      ctx.fillStyle = FF[lv]; ctx.fillRect(px, py, q, q);
     }
-    ctx.globalAlpha = 1;
     const ls = Math.max(2, Math.floor(Math.min((W - 220) / LOGO.width, (H * 0.36) / LOGO.height))), lx = Math.round((W - LOGO.width * ls) / 2), ly = Math.round(H * 0.2);
-    ctx.globalAlpha = 0.7; ctx.filter = 'brightness(0)'; ctx.drawImage(LOGO, lx + ls * 3, ly + ls * 4, LOGO.width * ls, LOGO.height * ls); ctx.filter = 'none'; ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.7; ctx.drawImage(LOGO_SH, lx + ls * 3, ly + ls * 4, LOGO.width * ls, LOGO.height * ls); ctx.globalAlpha = 1;
     ctx.drawImage(LOGO, lx, ly, LOGO.width * ls, LOGO.height * ls);
-    // Embebido en un iframe, el juego no recibe teclas hasta que se le hace clic.
-    if (((animT * 2) | 0) & 1) text(document.hasFocus() ? 'APRETA ENTER' : 'HACE CLIC', W / 2, ly + LOGO.height * ls + 80, 24, '#ffd23f', 'center');
-    text('ESC: VOLVER A TXT', W / 2, Math.min(H - 24, ly + LOGO.height * ls + 130), 8, '#e0dccf', 'center');
+    const lb = ly + LOGO.height * ls;
+    // La tabla va debajo del logo si entra; si no (pantallas bajas), en un panel encima del menú.
+    const below = menuTop.open && lb + 24 + TABLA_H + 24 + 40 + 16 <= H;
+    let btnY = Math.min(H - 56, lb + 112);
+    if (menuTop.open) {
+      let py;
+      if (below) { py = lb + 24; btnY = py + TABLA_H + 24; }
+      else { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, 0, W, H); py = Math.max(8, btnY - 20 - TABLA_H); }
+      const pw = Math.min(W - 16, 440), px = Math.round((W - pw) / 2), by = py + 44;
+      pixFrame(px, py, pw, TABLA_H, '#6b5232', '#0c0a08');
+      if (menuTop.phase === 'cargando') text('CARGANDO LA TABLA...', W / 2, by + 60, 8, '#888', 'center');
+      else if (menuTop.phase === 'error') text('NO SE PUDO CONECTAR CON LA TABLA', W / 2, by + 60, 8, '#e5534b', 'center');
+      else drawTabla(menuTop.top, menuTop.mine, W / 2, by);
+      text('ENTER: JUGAR    M O ESC: CERRAR', W / 2, py + TABLA_H - 14, 8, '#c9b89a', 'center');
+    } else if (((animT * 2) | 0) & 1) {
+      // Embebido en un iframe, el juego no recibe teclas hasta que se le hace clic.
+      text(document.hasFocus() ? 'APRETA ENTER' : 'HACE CLIC', W / 2, Math.min(btnY - 24, lb + 80), 24, '#ffd23f', 'center');
+    }
+    const bw = 240, gap = 16;
+    pixButton(tablaBtn, W / 2 - bw - gap / 2, btnY, bw, 40, menuTop.open ? 'M  CERRAR LA TABLA' : 'M  MEJORES MAGOS');
+    pixButton(volverBtn, W / 2 + gap / 2, btnY, bw, 40, 'ESC  VOLVER A TXT');
     return;
   }
   text('OLEADA ' + wave, 16, 28, 16, '#fff');
@@ -1958,7 +2273,7 @@ function drawHud() {
     break;
   }
   if (waveT > 0) {
-    ctx.globalAlpha = Math.min(1, waveT / 0.5, (2.6 - waveT) / 0.3);
+    ctx.globalAlpha = Math.ceil(Math.min(1, waveT / 0.5, (2.6 - waveT) / 0.3) * 4) / 4;   // aparece y se va por pasos
     text('OLEADA ' + wave, W / 2, H / 2 - 110, 48, '#fff', 'center');
     ctx.globalAlpha = 1;
   } else if (bannerT > 0) text(banner.toUpperCase(), W / 2, H / 3, 16, '#fff', 'center');
@@ -1966,7 +2281,8 @@ function drawHud() {
   if (state === 'pause') {
     ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
     text('PAUSA', W / 2, H / 2 - 110, 64, '#fff', 'center');
-    text('T  ARBOL DE HABILIDADES     P  SEGUIR     ESC  VOLVER A TXT', W / 2, H / 2 - 54, 8, '#e0dccf', 'center');
+    text('ESC O P  SEGUIR     T  ARBOL DE HABILIDADES     V  VOLVER A TXT', W / 2, H / 2 - 54, 8, '#e0dccf', 'center');
+    pixButton(volverBtn, W / 2 - 130, H / 2 - 24, 260, 40, 'V  VOLVER A TXT');
   }
   if (state === 'over') {
     ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(0, 0, W, H);
@@ -1979,15 +2295,7 @@ function drawHud() {
     else if (board.phase === 'error') text(board.aviso || 'NO SE PUDO CONECTAR CON LA TABLA', W / 2, by, 8, '#e5534b', 'center');
     else if (board.phase === 'listo' || board.phase === 'entrar') {
       // La tabla: el ID pseudoanónimo de HORDA de cada cuenta (el propio, resaltado).
-      text('MEJORES MAGOS', W / 2, by + 10, 24, '#ffd23f', 'center');
-      board.top.forEach((t, k) => {
-        const y = by + 46 + k * 22, col = k === board.mine ? '#ffd23f' : '#e0dccf';
-        text(String(k + 1) + '.', W / 2 - 150, y, 8, col, 'right');
-        text(t.id, W / 2 - 130, y, 8, col);
-        text(String(t.puntos), W / 2 + 60, y, 8, col, 'right');
-        text('OLEADA ' + t.oleada, W / 2 + 150, y, 8, k === board.mine ? col : '#888', 'right');
-      });
-      if (!board.top.length) text('TODAVIA NO HAY PUNTAJES', W / 2, by + 50, 8, '#888', 'center');
+      drawTabla(board.top, board.mine, W / 2, by);
       if (board.phase === 'listo' && board.mine < 0 && board.puesto > 0) text('TU MEJOR PUNTAJE ESTA EN EL PUESTO ' + board.puesto, W / 2, by + 46 + 10 * 22 + 6, 8, '#ffd23f', 'center');
       if (board.phase === 'entrar') {
         Object.assign(entrarBtn, { x: Math.round(W / 2 - 230), y: Math.round(by + 46 + 10 * 22 - 8), w: 460, h: 40 });
@@ -1996,8 +2304,9 @@ function drawHud() {
         text('ENTRA A TXT PARA GUARDAR TU PUNTAJE · E: ENTRAR', W / 2, entrarBtn.y + 25, 8, hover ? '#ffd23f' : '#e8e0d0', 'center');
       }
     }
-    if (board.phase !== 'enviando' && ((animT * 2) | 0) & 1) text('APRETA ENTER', W / 2, Math.min(H - 40, by + 330), 24, '#ffd23f', 'center');
-    if (board.phase !== 'enviando') text('ESC: VOLVER A TXT', W / 2, Math.min(H - 16, by + 370), 8, '#e0dccf', 'center');
+    const vy = Math.min(H - 52, by + 346);
+    if (board.phase !== 'enviando' && ((animT * 2) | 0) & 1) text('APRETA ENTER', W / 2, vy - 16, 24, '#ffd23f', 'center');
+    if (board.phase !== 'enviando') pixButton(volverBtn, W / 2 - 130, vy, 260, 40, 'ESC  VOLVER A TXT');
   }
 }
 
@@ -2021,12 +2330,14 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 buildSprites();
+buildCorpses();
 buildScenery();
 buildObjects();
 buildIcons();
 buildFx();
 buildOrnaments();
 buildLogo();
+buildFog();
 reset();
 // La letra de la interfaz es propia (horda.css): se espera a que cargue antes del primer dibujo, con
 // un tope de 3 s para no quedar en negro si falla.
