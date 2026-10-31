@@ -974,8 +974,10 @@ function update(dt) {
     player.tx = fyv + fxv / 2; player.ty = fyv - fxv / 2;
     player.aim = Math.atan2(player.ty - player.y, player.tx - player.x);
   }
-  // Táctil: el joystick derecho apunta (dirección de pantalla pasada al mundo, igual que el movimiento) y
-  // dispara mientras se lo mantiene; cuanto más se inclina, más lejos caen frascos y ventisca.
+  // Táctil: el joystick derecho dispara mientras hay un dedo apoyado, aunque esté quieto (en el teléfono, el
+  // pulgar apoyado sin arrastrar no disparaba). Arrastrado, además apunta (dirección de pantalla pasada al
+  // mundo, igual que el movimiento) y cuanto más se inclina, más lejos caen frascos y ventisca. Quieto, tira
+  // hacia donde mira el mago.
   const av = touchMode ? stickVec(sticks.aim) : null;
   touchAiming = !!(av && av.m);
   if (touchAiming) {
@@ -983,7 +985,7 @@ function update(dt) {
     player.aim = Math.atan2(wy, wx);
     player.tx = player.x + wx / l * reach; player.ty = player.y + wy / l * reach;
   }
-  if (touchMode) { shooting = touchAiming; if (touchAiming) clickQueued = true; }
+  if (touchMode) { shooting = !!sticks.aim; if (shooting) clickQueued = true; }
   player.cd -= dt; player.hurt -= dt; player.noMana -= dt; player.castT -= dt;
   player.mana = Math.min(MANA_MAX, player.mana + MANA_REGEN * dt);
   // Los hechizos de a uno (varita) disparan una vez por clic; si se hace clic durante la recarga, sale apenas puede.
@@ -2473,6 +2475,11 @@ function drawHud() {
     const fx = touchMode ? W - 2 * R - 32 : W - 16, fy = touchMode ? 80 : 24;   // en táctil, debajo de la pausa
     text(`${fps.toFixed(0)} FPS  SIM ${updMs.toFixed(2)}MS`, fx, fy, 8, '#9ad', 'right');
     text(`${nE} ENEMIGOS  ${nB} BALAS`, fx, fy + 16, 8, '#9ad', 'right');
+    if (touchMode) {
+      // Para diagnosticar en el teléfono: qué dedos ve el juego y si está disparando.
+      const mv = stickVec(sticks.move), av = stickVec(sticks.aim), f = (v) => (v ? Math.round(v.m * 100) + '%' : 'NO');
+      text(`MOVER ${f(mv)}  APUNTAR ${f(av)}  DISPARO ${shooting ? 'SI' : 'NO'}  RECARGA ${Math.max(0, player.cd).toFixed(2)}`, fx, fy + 32, 8, '#9ad', 'right');
+    }
   }
   for (let i = 0; i < nE; i++) if (et[i] === 3 && ehp[i] > 0) {
     const bw = touchMode ? Math.max(120, Math.min(360, W - 2 * 260)) : Math.min(520, W - 80), f = ehp[i] / bossMax;
