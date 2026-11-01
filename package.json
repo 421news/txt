@@ -11,6 +11,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "dev:gemini": "node --watch scripts/dev-gemini.js",
     "test": "node --test",
     "probar-moderacion": "node scripts/probar-moderacion.js",
     "fixture": "node scripts/fixture.js"

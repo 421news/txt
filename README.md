@@ -45,6 +45,24 @@ Sin credenciales de Google, en desarrollo `/entrar` ofrece un **acceso de prueba
 
 Para tener algo que mirar, `npm run fixture` carga en la base local 66 publicaciones de ejemplo con respuestas, charlas sobre notas de 421 fechadas en los últimos días (alcanzan para ver la paginación). Se puede correr con el server andando y cuantas veces se quiera: cada vez reemplaza lo que cargó antes. `npm run fixture -- --borrar` las saca. Las cuentas son `fixture-01` a `fixture-16` del acceso de prueba.
 
+### Probar la cápsula Gemini
+
+Con Node y `openssl` en PATH:
+
+```sh
+npm run dev:gemini
+```
+
+Abrí `gemini://127.0.0.1:1965/` en Lagrange u otro cliente Gemini y aceptá el certificado autofirmado **local**. Para guardar, ignorar, publicar o responder, creá una identidad en el cliente y vinculala con el código que te muestra la cápsula: entrá en `http://127.0.0.1:3000/entrar` con un nombre de prueba y pegalo en Mi cuenta → Gemini.
+
+- Solo escucha en `127.0.0.1`; los puertos 3000 y 1965 deben estar libres.
+- La primera vez genera el certificado y carga los ejemplos existentes (tres publicaciones quedan archivadas para probar esa vista).
+- Conserva la base, el certificado y el secreto de las sesiones en `data/gemini-local/`, fuera de Git y separados de la base habitual. El certificado dura un año; para renovarlo, apagá el comando y borrá solo `cert.pem` y `key.pem` de esa carpeta. El cliente pedirá aceptar el nuevo.
+- No carga el `.env` del repo ni usa Google o APIs externas. **La moderación está simulada y aprueba todo:** es para probar formato y navegación, no el filtro real.
+- Al cambiar el código, Node reinicia el servidor; recargá la página en el cliente. `Ctrl+C` lo apaga.
+
+Para empezar de cero, apagalo y borrá `data/gemini-local/`: se pierden solo los datos de esta prueba, incluidas las cuentas y vinculaciones.
+
 ## Contribuir
 
 Se aceptan pull requests. Antes, leé [CONTRIBUTING.md](CONTRIBUTING.md): ahí está qué cosas no se van a sumar aunque estén bien hechas.
