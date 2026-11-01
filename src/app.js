@@ -204,7 +204,14 @@ export function createApp({
           WHEN 'mensaje' THEN (SELECT p.thread_id FROM posts p WHERE p.id = CAST(i.entity_id AS INTEGER))
           ELSE (SELECT p.thread_id FROM posts p WHERE p.author_id = i.entity_id LIMIT 1) END AS thread_id
       FROM ignorados i WHERE i.user_id = ? ORDER BY i.ignored_at DESC`),
-    // Mensajes propios (/mios): los publicados y los que esperan revisión, en publicaciones visibles.
+    // Mis posteos (/mios): las publicaciones que abrió la cuenta y, aparte, todos sus mensajes; los publicados y
+    // los que esperan revisión, en publicaciones visibles.
+    contarMisPublicaciones: db.prepare(`SELECT COUNT(*) AS n FROM threads t JOIN posts p ON p.id = t.op_post_id
+      WHERE p.user_id = ? AND p.status IN ('published', 'queued') AND p.body != '' AND t.visible = 1`),
+    misPublicaciones: db.prepare(`SELECT t.id, t.subject, t.board, t.reply_count, t.created_at, t.archived, t.locked, p.body, p.status
+      FROM threads t JOIN posts p ON p.id = t.op_post_id
+      WHERE p.user_id = ? AND p.status IN ('published', 'queued') AND p.body != '' AND t.visible = 1
+      ORDER BY t.created_at DESC, t.id DESC LIMIT ? OFFSET ?`),
     contarMios: db.prepare(`SELECT COUNT(*) AS n FROM posts p JOIN threads t ON t.id = p.thread_id
       WHERE p.user_id = ? AND p.status IN ('published', 'queued') AND p.body != '' AND t.visible = 1`),
     mios: db.prepare(`SELECT p.id, p.thread_id, p.body, p.status, p.created_at, t.subject, t.board, t.op_post_id
@@ -1786,14 +1793,16 @@ export function createApp({
     res.redirect(303, '/ignorados');
   });
 
-  // Tus mensajes (pedido del usuario, 2026-10-31: "mis posteos", para encontrar lo propio fácil). Más nuevos
-  // primero, de a 50. Sólo lo ve la cuenta.
+  // Mis posteos (pedido del usuario, 2026-10-31, para encontrar lo propio fácil): las publicaciones que abrió y,
+  // con ?ver=mensajes, todos sus mensajes. Más nuevo primero, de a 50. Sólo lo ve la cuenta.
   app.get('/mios', (req, res) => {
     if (!req.user) return res.redirect(303, '/entrar');
-    const total = q.contarMios.get(req.user.id).n, porPagina = 50, paginas = Math.max(1, Math.ceil(total / porPagina));
+    const ver = req.query.ver === 'mensajes' ? 'mensajes' : 'publicaciones';
+    const totales = { publicaciones: q.contarMisPublicaciones.get(req.user.id).n, mensajes: q.contarMios.get(req.user.id).n };
+    const porPagina = 50, paginas = Math.max(1, Math.ceil(totales[ver] / porPagina));
     const pagina = Math.min(paginas, Math.max(1, Number.parseInt(req.query.pagina, 10) || 1));
-    const lista = q.mios.all(req.user.id, porPagina, (pagina - 1) * porPagina);
-    enviar(res, { titulo: 'Tus mensajes', indexar: false, cuerpo: V.mios(res.locals.ctx, { lista, total, pagina, paginas }) });
+    const lista = (ver === 'mensajes' ? q.mios : q.misPublicaciones).all(req.user.id, porPagina, (pagina - 1) * porPagina);
+    enviar(res, { titulo: 'Mis posteos', indexar: false, cuerpo: V.mios(res.locals.ctx, { ver, lista, totales, pagina, paginas }) });
   });
 
   app.get('/cuenta', (req, res) => {

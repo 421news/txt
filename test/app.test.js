@@ -2039,9 +2039,13 @@ test('secciones: barra agrupada a lo 4chan, índice con cantidades y las nuevas 
   const ana = await s.entrar('ana');
   await s.pedir('/b/actualidad/hilo', { sesion: ana, datos: { asunto: 'Elecciones', cuerpo: 'qué onda' } });
   const portada = await s.texto('/b/actualidad');
-  // Madre con el nombre, las que cuelgan con el código y el nombre en el title; la activa marcada.
-  assert.match(portada, /\[<a href="\/b\/vida-real" title="Vida real" class="madre">Vida real<\/a> \/ <a href="\/b\/actualidad" title="Actualidad" class="hija activa" aria-current="page">act<\/a>/);
-  assert.ok(portada.includes('<a href="/b/txt" title="txt" class="madre">txt</a>') && portada.includes('href="/secciones"'));
+  // Barra de escritorio (2026-10-31): sólo las 4 categorías principales y el índice; en una subsección se marca
+  // su categoría. Se sigue pudiendo publicar en todas.
+  const barra = portada.match(/<nav class="secciones"[\s\S]*?<\/nav>/)[0];
+  assert.equal(barra.match(/class="madre/g).length, 4);
+  assert.ok(barra.includes('[<a href="/b/vida-real" class="madre activa">Vida real</a>]') && barra.includes('href="/secciones"'));
+  assert.ok(!barra.includes('/b/actualidad') && !barra.includes('/b/txt'));
+  assert.ok((await s.texto('/b/vida-real')).includes('<a href="/b/vida-real" class="madre activa" aria-current="page">Vida real</a>'));
   assert.ok((await s.texto('/', ana)).includes('<optgroup label="Vida real">'));
   // La línea de "pseudoanónimo y moderado" ya no está en la portada; sí en el índice, con el link a las normas.
   assert.ok(!(await s.texto('/')).includes('Pseudoanónimo y moderado'));
@@ -2125,7 +2129,27 @@ test('Ignorados: lista lo que ignora la cuenta (solo la suya), deja de ignorar y
   assert.ok(cuenta.includes('href="/ignorados"') && cuenta.includes('href="/mios"'));
 });
 
-test('Mis mensajes: los propios, más nuevos primero, en revisión marcados, sin borrados ni ocultos, de a 50', async (t) => {
+test('Mis posteos: las publicaciones que abrió la cuenta, y aparte todos sus mensajes', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Primera de ana', cuerpo: 'uno' } });
+  s.avanzar(31);
+  await s.pedir('/b/juegos/hilo', { sesion: bea, datos: { asunto: 'De bea', cuerpo: 'dos' } });
+  s.avanzar(31);
+  await s.pedir('/h/2/responder', { sesion: ana, datos: { cuerpo: 'respuesta-de-ana' } });
+  s.avanzar(3600);   // hay un mínimo entre dos publicaciones nuevas de la misma cuenta
+  await s.pedir('/b/juegos/hilo', { sesion: ana, datos: { asunto: 'Segunda de ana', cuerpo: 'tres' } });
+  const p = await s.texto('/mios', ana);
+  assert.ok(p.includes('<h1>Mis posteos</h1>') && p.includes('Publicaciones que abriste (2)') && p.includes('Todos tus mensajes (3)'));
+  assert.ok(p.indexOf('Segunda de ana') < p.indexOf('Primera de ana'));
+  assert.ok(!p.includes('De bea') && !p.includes('respuesta-de-ana'));
+  assert.ok((await s.texto('/mios?ver=mensajes', ana)).includes('respuesta-de-ana'));
+  assert.ok((await s.texto('/cuenta', ana)).includes('href="/mios">Mis posteos</a>'));
+});
+
+test('Mis posteos, todos los mensajes: los propios, más nuevos primero, en revisión marcados, sin borrados ni ocultos, de a 50', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
   const ana = await s.entrar('ana');
@@ -2136,18 +2160,18 @@ test('Mis mensajes: los propios, más nuevos primero, en revisión marcados, sin
   await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'de-bea' } });
   s.avanzar(31);
   await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'segundo-de-ana' } });
-  const pagina = await s.texto('/mios', ana);
-  assert.ok(pagina.includes('Todo lo que escribiste (2)'));
+  const pagina = await s.texto('/mios?ver=mensajes', ana);
+  assert.ok(pagina.includes('Todos tus mensajes (2)'));
   assert.ok(pagina.indexOf('segundo-de-ana') < pagina.indexOf('primero-de-ana'), 'más nuevos primero');
   assert.ok(!pagina.includes('de-bea'));
   assert.ok(pagina.includes('href="/h/1#p3"') && pagina.includes('abriste esta publicación'));
   s.db.prepare("UPDATE posts SET status = 'queued' WHERE id = 3").run();
-  assert.ok((await s.texto('/mios', ana)).includes('en revisión'));
+  assert.ok((await s.texto('/mios?ver=mensajes', ana)).includes('en revisión'));
   s.db.prepare("UPDATE posts SET status = 'removed' WHERE id = 3").run();
-  assert.ok(!(await s.texto('/mios', ana)).includes('segundo-de-ana'));
+  assert.ok(!(await s.texto('/mios?ver=mensajes', ana)).includes('segundo-de-ana'));
   // De a 50 por página.
   for (let i = 0; i < 55; i++) { s.avanzar(31); await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: `numero-${i}-fin` } }); }
-  const p1 = await s.texto('/mios', ana), p2 = await s.texto('/mios?pagina=2', ana);
+  const p1 = await s.texto('/mios?ver=mensajes', ana), p2 = await s.texto('/mios?ver=mensajes&pagina=2', ana);
   assert.ok(p1.includes('numero-54-fin') && !p1.includes('numero-4-fin') && p2.includes('numero-4-fin') && p2.includes('primero-de-ana'));
-  assert.ok((await s.texto('/mios?pagina=99', ana)).includes('primero-de-ana'), 'una página de más va a la última');
+  assert.ok((await s.texto('/mios?ver=mensajes&pagina=99', ana)).includes('primero-de-ana'), 'una página de más va a la última');
 });

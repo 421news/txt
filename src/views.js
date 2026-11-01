@@ -73,13 +73,17 @@ function botonTema(ruta, tema) {
 // HORDA (2026-10-31): el juego de 421, en los menús (≡ Menú de escritorio y Secciones del celular).
 const linkHorda = (ctx) => (ctx.horda ? html`<a href="/horda" title="El juego de 421">HORDA</a>` : '');
 
-// Barra de secciones de escritorio, a lo 4chan (2026-10-24): [MADRE / cod / cod] por grupo, el nombre
-// completo en el title, y al final el índice. Termina abierta: el que la llama cierra el <nav>.
+// Barra de secciones de escritorio: sólo las 4 categorías principales y el índice (2026-10-31, pedido del
+// usuario; desde el 2026-10-24 iba a lo 4chan, [MADRE / cod / cod], con txt aparte). Las subsecciones y txt
+// siguen en el índice, en el menú del celular y al publicar. Estando en una subsección se marca su categoría.
+// Termina abierta: el que la llama cierra el <nav>.
 function barraSecciones(ruta) {
-  const actual = ruta.split('?')[0].match(/^\/b\/([^/]+)/)?.[1];
-  const link = (b, texto, clase) =>
-    html`<a href="/b/${b.slug}" title="${b.nombre}" class="${clase}${actual === b.slug ? ' activa' : ''}"${actual === b.slug ? raw(' aria-current="page"') : ''}>${texto}</a>`;
-  return html`<nav class="secciones" aria-label="Secciones">${GRUPOS.map(({ madre, hijas }) => html`<span class="grupo">[${link(madre, madre.nombre, 'madre')}${hijas.map((b) => html` / ${link(b, b.codigo, 'hija')}`)}]</span>`)}<span class="grupo">[<a href="/secciones" title="Todas las secciones"${ruta.split('?')[0] === '/secciones' ? raw(' class="activa" aria-current="page"') : ''}>índice</a>]</span>`;
+  const actual = boardBySlug(ruta.split('?')[0].match(/^\/b\/([^/]+)/)?.[1]);
+  const link = (b) => {
+    const activa = actual?.grupo === b.slug, exacta = actual?.slug === b.slug;
+    return html`<a href="/b/${b.slug}" class="madre${activa ? ' activa' : ''}"${exacta ? raw(' aria-current="page"') : ''}>${b.nombre}</a>`;
+  };
+  return html`<nav class="secciones" aria-label="Secciones">${GRUPOS.filter(({ madre }) => madre.slug !== 'txt').map(({ madre }) => html`<span class="grupo">[${link(madre)}]</span>`)}<span class="grupo">[<a href="/secciones" title="Todas las secciones"${ruta.split('?')[0] === '/secciones' ? raw(' class="activa" aria-current="page"') : ''}>índice</a>]</span>`;
 }
 
 // Barra inferior para celular (en escritorio se oculta por CSS y queda la barra de arriba).
@@ -99,7 +103,7 @@ function barraAbajo(ctx) {
     ? html`<a href="/respuestas"${activa(camino === '/respuestas')}><b>✉${novedades ? html`<span class="badge">${novedades}</span>` : ''}</b>Respuestas</a>
   <details class="abajo-menu derecha"><summary${activa(['/cuenta', '/guardados', '/ignorados', '/mios', '/mod'].includes(camino))}><b>☺${ctx.pendientesMod ? html`<span class="badge" title="Para moderar">${ctx.pendientesMod}</span>` : ''}</b>Cuenta</summary>
     <div class="menu-abajo">
-      <a href="/mios">Mis mensajes</a>
+      <a href="/mios">Mis posteos</a>
       <a href="/guardados">Guardados</a>
       <a href="/ignorados">Ignorados</a>
       <a href="/cuenta">Mi cuenta</a>
@@ -204,7 +208,7 @@ ${zocalo421(ctx.notas421)}<header class="cabecera">
       <details class="menu-cab">
         <summary class="icono" aria-label="Menú">${ICONOS.menu}<span>Menú</span></summary>
         <div class="menu-desplegable">
-          ${user ? html`<a href="/respuestas">Respuestas${ctx.novedades ? ` (${ctx.novedades})` : ''}</a><a href="/mios">Mis mensajes</a><a href="/guardados">Guardados</a><a href="/ignorados">Ignorados</a><a href="/cuenta">Mi cuenta</a>` : html`<a href="/entrar">Entrar</a>`}
+          ${user ? html`<a href="/respuestas">Respuestas${ctx.novedades ? ` (${ctx.novedades})` : ''}</a><a href="/mios">Mis posteos</a><a href="/guardados">Guardados</a><a href="/ignorados">Ignorados</a><a href="/cuenta">Mi cuenta</a>` : html`<a href="/entrar">Entrar</a>`}
           ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas y costos</a>` : ''}
           <a href="/top">Más comentadas</a>
           ${linkHorda(ctx)}
@@ -1099,15 +1103,24 @@ export function ignorados(ctx, { lista }) {
 ${lista.length ? html`<ul class="mias">${lista.map(fila)}</ul>` : html`<p>No estás ignorando nada.</p>`}`;
 }
 
-// Los mensajes de la cuenta, más nuevos primero.
-export function mios(ctx, { lista, total, pagina, paginas }) {
-  return html`<h1>Tus mensajes</h1>
-<p class="ayuda">Todo lo que escribiste${total ? ` (${total})` : ''}, lo más nuevo primero. Solo lo ves vos. Las publicaciones donde participaste, con su última actividad, están en <a href="/respuestas">Respuestas</a>.</p>
-${lista.length
-  ? html`<ul class="mias">${lista.map((p) => html`<li><a href="/h/${p.thread_id}#p${p.id}">${p.subject}</a> <span class="ayuda">· ${boardBySlug(p.board)?.nombre ?? p.board} · ${fecha(p.created_at)}${p.id === p.op_post_id ? ' · abriste esta publicación' : ''}${p.status === 'queued' ? ' · en revisión' : ''}</span>
-  <div class="extracto">${extracto(textoPlano(p.body), 200)}</div></li>`)}</ul>
-${paginacion(pagina, paginas)}`
-  : html`<p>Todavía no escribiste nada.</p>`}`;
+// Mis posteos (2026-10-31, pedido del usuario): por defecto las publicaciones que abrió la cuenta; con
+// ?ver=mensajes, todo lo que escribió. Más nuevo primero, de a 50.
+export function mios(ctx, { ver, lista, totales, pagina, paginas }) {
+  const pestaña = (v, nombre, n) => (ver === v
+    ? html`<strong aria-current="page">${nombre} (${n})</strong>`
+    : html`<a href="/mios${v === 'mensajes' ? '?ver=mensajes' : ''}">${nombre} (${n})</a>`);
+  const estado = (t) => [t.archived ? 'archivada' : t.locked ? 'cerrada' : '', t.status === 'queued' ? 'en revisión' : ''].filter(Boolean).map((x) => ` · ${x}`).join('');
+  return html`<h1>Mis posteos</h1>
+<p class="filtros-top">${pestaña('publicaciones', 'Publicaciones que abriste', totales.publicaciones)} · ${pestaña('mensajes', 'Todos tus mensajes', totales.mensajes)}</p>
+<p class="ayuda">Lo más nuevo primero. Solo lo ves vos. Dónde te respondieron está en <a href="/respuestas">Respuestas</a>.</p>
+${!lista.length
+  ? html`<p>${ver === 'mensajes' ? 'Todavía no escribiste nada.' : 'Todavía no abriste ninguna publicación.'}</p>`
+  : ver === 'mensajes'
+    ? html`<ul class="mias">${lista.map((p) => html`<li><a href="/h/${p.thread_id}#p${p.id}">${p.subject}</a> <span class="ayuda">· ${boardBySlug(p.board)?.nombre ?? p.board} · ${fecha(p.created_at)}${p.id === p.op_post_id ? ' · abriste esta publicación' : ''}${p.status === 'queued' ? ' · en revisión' : ''}</span>
+  <div class="extracto">${extracto(textoPlano(p.body), 200)}</div></li>`)}</ul>`
+    : html`<ul class="mias">${lista.map((t) => html`<li><a href="/h/${t.id}">${t.subject}</a> <span class="ayuda">· ${boardBySlug(t.board)?.nombre ?? t.board} · ${fecha(t.created_at)} · ${t.reply_count} ${t.reply_count === 1 ? 'respuesta' : 'respuestas'}${estado(t)}</span>
+  <div class="extracto">${extracto(textoPlano(t.body), 200)}</div></li>`)}</ul>`}
+${paginacion(pagina, paginas, ver === 'mensajes' ? { ver } : {})}`;
 }
 
 export function cuenta(ctx, { suspendida, error, llaves = [], geminiUrl = null } = {}) {
@@ -1115,7 +1128,7 @@ export function cuenta(ctx, { suspendida, error, llaves = [], geminiUrl = null }
 <p>Para el resto del foro sos pseudoanónimo. De tu cuenta de Google solo guardamos un identificador (ver <a href="/privacidad">Privacidad</a>).</p>
 <h2>Lo tuyo</h2>
 <ul class="mias">
-  <li><a href="/mios">Mis mensajes</a> <span class="ayuda">· todo lo que escribiste, lo más nuevo primero</span></li>
+  <li><a href="/mios">Mis posteos</a> <span class="ayuda">· las publicaciones que abriste y todo lo que escribiste</span></li>
   <li><a href="/guardados">Guardados</a> <span class="ayuda">· publicaciones que guardaste para después</span></li>
   <li><a href="/ignorados">Ignorados</a> <span class="ayuda">· publicaciones, mensajes y autores que ignorás, para dejar de ignorarlos</span></li>
 </ul>
