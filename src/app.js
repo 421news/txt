@@ -197,6 +197,22 @@ export function createApp({
       FROM guardados g JOIN threads t ON t.id = g.thread_id
       WHERE g.user_id = @yo AND t.visible = 1
       ORDER BY ignorado, CASE WHEN ignorado THEN t.created_at ELSE g.created_at END DESC LIMIT 200`),
+    // Lo que ignora la cuenta (/ignorados): para un mensaje, su publicación; para un autor, la publicación donde
+    // tiene ese ID (author_id vale sólo dentro de una). Sin publicación visible no se puede abrir, pero se lista
+    // igual para poder dejar de ignorarlo.
+    ignoradosDe: db.prepare(`SELECT i.entity_type AS tipo, i.entity_id AS id, i.ignored_at,
+        CASE i.entity_type
+          WHEN 'hilo' THEN CAST(i.entity_id AS INTEGER)
+          WHEN 'mensaje' THEN (SELECT p.thread_id FROM posts p WHERE p.id = CAST(i.entity_id AS INTEGER))
+          ELSE (SELECT p.thread_id FROM posts p WHERE p.author_id = i.entity_id LIMIT 1) END AS thread_id
+      FROM ignorados i WHERE i.user_id = ? ORDER BY i.ignored_at DESC`),
+    // Mensajes propios (/mios): los publicados y los que esperan revisión, en publicaciones visibles.
+    contarMios: db.prepare(`SELECT COUNT(*) AS n FROM posts p JOIN threads t ON t.id = p.thread_id
+      WHERE p.user_id = ? AND p.status IN ('published', 'queued') AND p.body != '' AND t.visible = 1`),
+    mios: db.prepare(`SELECT p.id, p.thread_id, p.body, p.status, p.created_at, t.subject, t.board, t.op_post_id
+      FROM posts p JOIN threads t ON t.id = p.thread_id
+      WHERE p.user_id = ? AND p.status IN ('published', 'queued') AND p.body != '' AND t.visible = 1
+      ORDER BY p.created_at DESC, p.id DESC LIMIT ? OFFSET ?`),
     crearUsuario: db.prepare('INSERT INTO users (identidad, role, created_at) VALUES (?, ?, ?)'),
     hacerAdmin: db.prepare("UPDATE users SET role = 'admin' WHERE id = ?"),
     quitarAdmin: db.prepare("UPDATE users SET role = 'user' WHERE id = ?"),
@@ -715,6 +731,15 @@ export function createApp({
   const ESTADOS = { todas: null, abiertas: 0, archivadas: 1 };
   // Web, Gemini y texto comparten los filtros y la consulta: las primeras 25, sin paginación.
   // Sin páginas por pedido del usuario: las 83 páginas del ranking original no tenían sentido.
+  // Peso neto acumulado (issue #38, pedido del usuario: público, en Más comentadas): todo el texto publicado
+  // y visible, a un millón de caracteres por kilo. Recorre todos los mensajes, así que se guarda 10 minutos.
+  const contarCaracteres = db.prepare(`SELECT COALESCE(SUM(length(p.body)), 0) AS n FROM posts p
+    JOIN threads t ON t.id = p.thread_id WHERE p.status = 'published' AND t.visible = 1`);
+  let peso = { t: -Infinity, kilos: 0 };
+  const pesoNeto = () => {
+    if (now() - peso.t > 10 * 60_000) peso = { t: now(), kilos: contarCaracteres.get().n / 1_000_000 };
+    return peso.kilos;
+  };
   function datosTop(req) {
     const filtros = {
       periodo: Object.hasOwn(PERIODOS, req.query.periodo) ? req.query.periodo : 'siempre',
@@ -726,7 +751,7 @@ export function createApp({
       desde: PERIODOS[filtros.periodo] ? now() - PERIODOS[filtros.periodo] * DIA : 0,
       limite: LIMITS.topPorPagina, offset: 0,
     });
-    return { filtros, hilos };
+    return { filtros, hilos, kilos: pesoNeto() };
   }
 
   // Documento de una ruta de lectura, o null si no existe o no es visible para este lector. Lo usan
@@ -1009,13 +1034,13 @@ export function createApp({
 
   // Más comentadas: por cantidad de respuestas, con filtros de estado, sección y período (cuándo se abrió).
   app.get('/top', (req, res) => {
-    const { filtros, hilos } = datosTop(req);
+    const { filtros, hilos, kilos } = datosTop(req);
     res.locals.ctx.ruta = rutaDeLaPagina(req, '/top');
     const filtrado = filtros.periodo !== 'siempre' || filtros.estado !== 'todas' || filtros.seccion;
     enviar(res, {
       titulo: 'Más comentadas',
       descripcion: 'Las publicaciones de txt con más respuestas, abiertas y archivadas.',
-      cuerpo: V.top(res.locals.ctx, { hilos, filtros }),
+      cuerpo: V.top(res.locals.ctx, { hilos, filtros, kilos }),
       canonical: '/top',
       indexar: !filtrado,
     });
@@ -1739,6 +1764,38 @@ export function createApp({
   app.get('/guardados', (req, res) => {
     if (!req.user) return res.redirect(303, '/entrar');
     enviar(res, { titulo: 'Guardados', indexar: false, cuerpo: V.guardados(res.locals.ctx, { lista: q.guardados.all({ yo: req.user.id }) }) });
+  });
+
+  // Lo que ignorás, con un botón para dejar de ignorar cada cosa (pedido del usuario, 2026-10-31: no había
+  // forma de encontrarlo sin volver a cruzárselo en el foro). Sólo lo ve la cuenta.
+  app.get('/ignorados', (req, res) => {
+    if (!req.user) return res.redirect(303, '/entrar');
+    const lista = q.ignoradosDe.all(req.user.id).map((f) => {
+      const t = f.thread_id ? q.hilo.get(f.thread_id) : null;
+      const visible = t && t.visible;
+      const post = f.tipo === 'mensaje' ? q.post.get(Number(f.id)) : null;
+      // El extracto sólo de lo publicado: lo que retiró un mod no vuelve a aparecer acá.
+      const muestra = visible && post && post.status === 'published' && post.body;
+      return { ...f, subject: visible ? t.subject : null, extracto: muestra ? extracto(textoPlano(post.body), 160) : '' };
+    });
+    enviar(res, { titulo: 'Ignorados', indexar: false, aviso: req.query.aviso, cuerpo: V.ignorados(res.locals.ctx, { lista }) });
+  });
+
+  app.post('/ignorados/quitar', (req, res) => {
+    if (!exigirUsuario(req, res)) return;
+    const tipo = String(req.body.tipo ?? ''), id = String(req.body.id ?? '');
+    if (['hilo', 'mensaje', 'autor'].includes(tipo) && id) q.dejarDeIgnorar.run(req.user.id, tipo, id);
+    res.redirect(303, '/ignorados');
+  });
+
+  // Tus mensajes (pedido del usuario, 2026-10-31: "mis posteos", para encontrar lo propio fácil). Más nuevos
+  // primero, de a 50. Sólo lo ve la cuenta.
+  app.get('/mios', (req, res) => {
+    if (!req.user) return res.redirect(303, '/entrar');
+    const total = q.contarMios.get(req.user.id).n, porPagina = 50, paginas = Math.max(1, Math.ceil(total / porPagina));
+    const pagina = Math.min(paginas, Math.max(1, Number.parseInt(req.query.pagina, 10) || 1));
+    const lista = q.mios.all(req.user.id, porPagina, (pagina - 1) * porPagina);
+    enviar(res, { titulo: 'Tus mensajes', indexar: false, cuerpo: V.mios(res.locals.ctx, { lista, total, pagina, paginas }) });
   });
 
   app.get('/cuenta', (req, res) => {

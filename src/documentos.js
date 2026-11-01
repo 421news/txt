@@ -12,7 +12,7 @@
 import { BOARDS, GRUPOS, LIMITS, boardBySlug } from './config.js';
 import { NORMAS } from './normas.js';
 import { extracto, textoPlano } from './format.js';
-import { fecha } from './views.js';
+import { fecha, kilosTexto } from './views.js';
 
 const t = (nivel, texto) => ({ tipo: 'titulo', nivel, texto });
 const p = (texto) => ({ tipo: 'parrafo', texto });
@@ -160,7 +160,7 @@ function ranking(hilos) {
   ]);
 }
 
-export function docTop({ siteName, hilos, filtros }) {
+export function docTop({ siteName, hilos, filtros, kilos = null }) {
   const opciones = (clave, valores) => valores.map(([valor, nombre]) => {
     const f = { ...filtros, [clave]: valor };
     const query = new URLSearchParams();
@@ -172,6 +172,7 @@ export function docTop({ siteName, hilos, filtros }) {
   return [
     ...encabezado(siteName), t(2, 'Más comentadas'),
     p(`Las ${LIMITS.topPorPagina} publicaciones con más respuestas, abiertas y archivadas.`),
+    ...(kilos === null ? [] : [p(`Peso neto acumulado: ${kilosTexto(kilos)} (todo lo publicado en txt, a un kilo por millón de caracteres).`)]),
     t(3, 'Estado'), ...opciones('estado', [['todas', 'Todas'], ['abiertas', 'Abiertas'], ['archivadas', 'Archivadas']]),
     t(3, 'Período'), ...opciones('periodo', [['siempre', 'Siempre'], ['anio', 'Último año'], ['mes', 'Último mes'], ['semana', 'Última semana']]),
     t(3, 'Sección'), ...opciones('seccion', [['', 'Todas'], ...BOARDS.map((b) => [b.slug, b.nombre])]),

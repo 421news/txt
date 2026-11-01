@@ -6,6 +6,9 @@ import { createApp, limpiarTexto } from '../src/app.js';
 import { formatear } from '../src/format.js';
 import { crearModerador } from '../src/moderation.js';
 
+// Los menús de cuenta tienen el link a /ignorados (2026-10-31): las comprobaciones de "nada ignorado" no lo cuentan.
+const sinMenu = (h) => h.replaceAll('href="/ignorados">Ignorados', '');
+
 // Google falso: el "code" con el que vuelve el login es el nombre de la persona.
 const googleFalso = {
   urlAutorizacion: ({ state }) => `https://google.test/auth?state=${state}`,
@@ -1741,7 +1744,7 @@ test('ignorar un mensaje: colapsado y al final de la publicación, solo para qui
 
   // Para el resto, igual que siempre.
   const deCami = await s.texto('/h/1', cami);
-  assert.ok(antes(deCami, 'id="p2"', 'id="p3"') && !deCami.includes('ignorado'));
+  assert.ok(antes(deCami, 'id="p2"', 'id="p3"') && !sinMenu(deCami).includes('ignorado'));
 
   await ignorar(s, ana, 2, {});
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 0);
@@ -1777,7 +1780,7 @@ test('ignorar autor: todos sus mensajes en esa publicación (por su ID ahí) y e
   assert.ok(hilo.includes('2 mensajes ignorados'));
   // En otra publicación bea tiene otro ID: no se ignora.
   const dos = await s.texto('/h/2', ana);
-  assert.ok(dos.includes('hilo-de-bea') && !dos.includes('ignorado'));
+  assert.ok(dos.includes('hilo-de-bea') && !sinMenu(dos).includes('ignorado'));
   assert.notEqual(s.db.prepare('SELECT author_id FROM posts WHERE id = 5').get().author_id, id);
 });
 
@@ -1809,7 +1812,7 @@ test('ignorar hilo: al final de la portada y la sección, colapsado y por creaci
   }
   // Para los demás, el orden de siempre: fijado, bump.
   const deBea = await s.texto('/', bea);
-  assert.ok(antes(deBea, 'href="/h/2"', 'href="/h/1"') && antes(deBea, 'href="/h/1"', 'href="/h/3"') && !deBea.includes('ignorad'));
+  assert.ok(antes(deBea, 'href="/h/2"', 'href="/h/1"') && antes(deBea, 'href="/h/1"', 'href="/h/3"') && !sinMenu(deBea).includes('ignorad'));
   // En la publicación, el mensaje inicial queda primero y colapsado.
   assert.match(await s.texto('/h/1', ana), /<article class="post op ignorado" id="p1"><details>/);
 });
@@ -1863,7 +1866,7 @@ test('búsqueda, Guardados y Donde participaste: lo ignorado al final', async (t
   const buscar = await s.texto('/buscar?q=palabraclave', ana);
   assert.ok(antes(buscar, 'href="/h/2#p2"', 'class="separador-ignorados"'));
   assert.ok(antes(buscar, 'class="separador-ignorados"', 'href="/h/1#p1"') && antes(buscar, 'class="separador-ignorados"', 'href="/h/1#p3"'));
-  assert.ok(!(await s.texto('/buscar?q=palabraclave', bea)).includes('ignorado'));
+  assert.ok(!sinMenu(await s.texto('/buscar?q=palabraclave', bea)).includes('ignorado'));
 });
 
 test('versión texto con sesión: lo ignorado al final, solo el título o la cabecera', async (t) => {
@@ -2079,4 +2082,90 @@ test('secciones: barra agrupada a lo 4chan, índice con cantidades y las nuevas 
   assert.ok(gem().includes('Actualidad · /act/ · 0 publicaciones'));
   // El ícono de Más comentadas está en la barra (el CSS lo muestra solo cuando no está la cuarta columna).
   assert.ok(indice.includes('class="icono top-icono" href="/top"'));
+});
+
+test('peso neto en Más comentadas: público, en kilos, también en .txt; sólo cuenta lo publicado y visible', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Kilos', cuerpo: 'x'.repeat(4000) } });
+  for (let i = 0; i < 3; i++) { s.avanzar(31); await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: `${i}`.repeat(3000) } }); }
+  // 13.000 caracteres = 0,013 kilos → con una decimal, 0.
+  const web = await s.texto('/top');
+  assert.match(web, /<p class="peso-neto"><strong>0 kilos<\/strong>/);
+  assert.ok((await s.texto('/top.txt')).includes('Peso neto acumulado: 0 kilos'));
+  // Lo oculto no cuenta; y se guarda 10 minutos.
+  s.db.prepare("UPDATE posts SET body = ? WHERE id = 1").run('y'.repeat(2_600_000));
+  assert.match(await s.texto('/top'), /0 kilos/, 'todavía el valor guardado');
+  s.avanzar(11 * 60);
+  assert.match(await s.texto('/top'), /2,6 kilos/);
+  s.db.prepare('UPDATE threads SET visible = 0 WHERE id = 1').run();
+  s.avanzar(11 * 60);
+  assert.match(await s.texto('/top'), /<strong>0 kilos/);
+});
+
+test('Ignorados: lista lo que ignora la cuenta (solo la suya), deja de ignorar y no muestra lo que retiró un mod', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  assert.equal((await s.pedir('/ignorados')).headers.get('location'), '/entrar');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Tema de ana', cuerpo: 'arranque' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'mensaje-de-bea' } });
+  s.avanzar(31);
+  await s.pedir('/b/juegos/hilo', { sesion: bea, datos: { asunto: 'Tema de bea', cuerpo: 'otro' } });
+  await ignorar(s, ana, 2, { mensaje: '1', autor: '1' });
+  await ignorar(s, ana, 3, { hilo: '1' });
+
+  const pagina = await s.texto('/ignorados', ana);
+  assert.ok(pagina.includes('<strong>Publicación:</strong> <a href="/h/2">Tema de bea</a>'));
+  assert.ok(pagina.includes('<a href="/h/1#p2">No.2</a> en <a href="/h/1">Tema de ana</a>'));
+  assert.ok(pagina.includes('mensaje-de-bea'), 'extracto del mensaje ignorado');
+  assert.match(pagina, /<strong>Autor:<\/strong> ID [A-Za-z0-9_-]{8} en <a href="\/h\/1">Tema de ana<\/a>/);
+  assert.ok((await s.texto('/ignorados', bea)).includes('No estás ignorando nada.'));
+
+  // Lo que retiró un mod no vuelve a aparecer en el extracto.
+  s.db.prepare("UPDATE posts SET status = 'removed' WHERE id = 2").run();
+  assert.ok(!(await s.texto('/ignorados', ana)).includes('mensaje-de-bea'));
+
+  // Dejar de ignorar: con CSRF, sólo lo propio.
+  assert.equal((await s.pedir('/ignorados/quitar', { cookie: ana.cookie, datos: { tipo: 'hilo', id: '2' } })).status, 403);
+  await s.pedir('/ignorados/quitar', { sesion: bea, datos: { tipo: 'hilo', id: '2' } });
+  assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM ignorados WHERE entity_type = 'hilo'").get().n, 1, 'bea no toca lo de ana');
+  const r = await s.pedir('/ignorados/quitar', { sesion: ana, datos: { tipo: 'hilo', id: '2' } });
+  assert.equal(r.headers.get('location'), '/ignorados');
+  assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM ignorados WHERE entity_type = 'hilo'").get().n, 0);
+  await s.pedir('/ignorados/quitar', { sesion: ana, datos: { tipo: 'cualquiera', id: '1' } });
+  assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ignorados').get().n, 2);
+  // En los menús de la cuenta y en Mi cuenta.
+  const cuenta = await s.texto('/cuenta', ana);
+  assert.ok(cuenta.includes('href="/ignorados"') && cuenta.includes('href="/mios"'));
+});
+
+test('Mis mensajes: los propios, más nuevos primero, en revisión marcados, sin borrados ni ocultos, de a 50', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const bea = await s.entrar('bea');
+  assert.equal((await s.pedir('/mios')).headers.get('location'), '/entrar');
+  await s.pedir('/b/cultura/hilo', { sesion: ana, datos: { asunto: 'Abierta por ana', cuerpo: 'primero-de-ana' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: bea, datos: { cuerpo: 'de-bea' } });
+  s.avanzar(31);
+  await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: 'segundo-de-ana' } });
+  const pagina = await s.texto('/mios', ana);
+  assert.ok(pagina.includes('Todo lo que escribiste (2)'));
+  assert.ok(pagina.indexOf('segundo-de-ana') < pagina.indexOf('primero-de-ana'), 'más nuevos primero');
+  assert.ok(!pagina.includes('de-bea'));
+  assert.ok(pagina.includes('href="/h/1#p3"') && pagina.includes('abriste esta publicación'));
+  s.db.prepare("UPDATE posts SET status = 'queued' WHERE id = 3").run();
+  assert.ok((await s.texto('/mios', ana)).includes('en revisión'));
+  s.db.prepare("UPDATE posts SET status = 'removed' WHERE id = 3").run();
+  assert.ok(!(await s.texto('/mios', ana)).includes('segundo-de-ana'));
+  // De a 50 por página.
+  for (let i = 0; i < 55; i++) { s.avanzar(31); await s.pedir('/h/1/responder', { sesion: ana, datos: { cuerpo: `numero-${i}-fin` } }); }
+  const p1 = await s.texto('/mios', ana), p2 = await s.texto('/mios?pagina=2', ana);
+  assert.ok(p1.includes('numero-54-fin') && !p1.includes('numero-4-fin') && p2.includes('numero-4-fin') && p2.includes('primero-de-ana'));
+  assert.ok((await s.texto('/mios?pagina=99', ana)).includes('primero-de-ana'), 'una página de más va a la última');
 });

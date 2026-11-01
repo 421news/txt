@@ -103,9 +103,11 @@ function barraAbajo(ctx) {
   <a href="${publicar}"><b>+</b>Publicar</a>
   ${user
     ? html`<a href="/respuestas"${activa(camino === '/respuestas')}><b>✉${novedades ? html`<span class="badge">${novedades}</span>` : ''}</b>Respuestas</a>
-  <details class="abajo-menu derecha"><summary${activa(camino === '/cuenta' || camino === '/guardados' || camino === '/mod')}><b>☺${ctx.pendientesMod ? html`<span class="badge" title="Para moderar">${ctx.pendientesMod}</span>` : ''}</b>Cuenta</summary>
+  <details class="abajo-menu derecha"><summary${activa(['/cuenta', '/guardados', '/ignorados', '/mios', '/mod'].includes(camino))}><b>☺${ctx.pendientesMod ? html`<span class="badge" title="Para moderar">${ctx.pendientesMod}</span>` : ''}</b>Cuenta</summary>
     <div class="menu-abajo">
+      <a href="/mios">Mis mensajes</a>
       <a href="/guardados">Guardados</a>
+      <a href="/ignorados">Ignorados</a>
       <a href="/cuenta">Mi cuenta</a>
       ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas y costos</a>` : ''}
       <a href="/normas">Normas</a>
@@ -208,7 +210,7 @@ ${zocalo421(ctx.notas421)}<header class="cabecera">
       <details class="menu-cab">
         <summary class="icono" aria-label="Menú">${ICONOS.menu}<span>Menú</span></summary>
         <div class="menu-desplegable">
-          ${user ? html`<a href="/respuestas">Respuestas${ctx.novedades ? ` (${ctx.novedades})` : ''}</a><a href="/guardados">Guardados</a><a href="/cuenta">Mi cuenta</a>` : html`<a href="/entrar">Entrar</a>`}
+          ${user ? html`<a href="/respuestas">Respuestas${ctx.novedades ? ` (${ctx.novedades})` : ''}</a><a href="/mios">Mis mensajes</a><a href="/guardados">Guardados</a><a href="/ignorados">Ignorados</a><a href="/cuenta">Mi cuenta</a>` : html`<a href="/entrar">Entrar</a>`}
           ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas y costos</a>` : ''}
           <a href="/top">Más comentadas</a>
           ${linkHorda(ctx)}
@@ -407,7 +409,13 @@ const PERIODOS_TOP = [['siempre', 'Siempre'], ['anio', 'Último año'], ['mes', 
 const ESTADOS_TOP = [['todas', 'Todas'], ['abiertas', 'Abiertas'], ['archivadas', 'Archivadas']];
 
 // Página /top: las 25 con más respuestas de cada filtro, sin páginas. Filtros como links (sin formulario ni JavaScript).
-export function top(ctx, { hilos, filtros }) {
+// Peso neto (issue #38): un millón de caracteres = un kilo. Con una decimal mientras sea menos de 10.
+export const kilosTexto = (k) => {
+  const n = k < 10 ? Math.round(k * 10) / 10 : Math.round(k);
+  return `${n.toLocaleString('es-AR')} ${n === 1 ? 'kilo' : 'kilos'}`;
+};
+
+export function top(ctx, { hilos, filtros, kilos = null }) {
   const url = (cambio) => {
     const f = { ...filtros, ...cambio };
     const p = new URLSearchParams();
@@ -422,6 +430,7 @@ export function top(ctx, { hilos, filtros }) {
   return html`<header class="tablon-cabecera">
   <h1>Más comentadas</h1>
   <p>Las ${LIMITS.topPorPagina} publicaciones con más respuestas, abiertas y archivadas.</p>
+  ${kilos === null ? '' : html`<p class="peso-neto"><strong>${kilosTexto(kilos)}</strong> <span class="ayuda">de peso neto acumulado: todo lo publicado en txt, a un kilo por millón de caracteres.</span></p>`}
 </header>
 <nav class="filtros-top" aria-label="Filtros">
   <p><span class="ayuda">Estado:</span> ${ESTADOS_TOP.map(([v, n]) => opcion({ estado: v }, n, filtros.estado === v))}</p>
@@ -1076,9 +1085,47 @@ ${lista.length
   : html`<p>Todavía no guardaste nada.</p>`}`;
 }
 
+// Lo que ignora la cuenta, con un botón para dejar de ignorar cada cosa.
+export function ignorados(ctx, { lista }) {
+  const QUE = { hilo: 'Publicación', mensaje: 'Mensaje', autor: 'Autor' };
+  const fila = (f) => {
+    const donde = f.subject
+      ? f.tipo === 'hilo'
+        ? html`<a href="/h/${f.thread_id}">${f.subject}</a>`
+        : f.tipo === 'mensaje'
+          ? html`<a href="/h/${f.thread_id}#p${f.id}">No.${f.id}</a> en <a href="/h/${f.thread_id}">${f.subject}</a>`
+          : html`ID ${f.id} en <a href="/h/${f.thread_id}">${f.subject}</a>`
+      : html`<span class="ayuda">${f.tipo === 'autor' ? `ID ${f.id}` : f.tipo === 'mensaje' ? `No.${f.id}` : ''} (ya no está a la vista)</span>`;
+    return html`<li><strong>${QUE[f.tipo]}:</strong> ${donde} <span class="ayuda">· desde ${fecha(f.ignored_at)}</span>
+  <form method="post" action="/ignorados/quitar" class="en-linea"><input type="hidden" name="_csrf" value="${ctx.csrf}"><input type="hidden" name="tipo" value="${f.tipo}"><input type="hidden" name="id" value="${f.id}"><button>Dejar de ignorar</button></form>
+  ${f.extracto ? html`<div class="extracto">${f.extracto}</div>` : ''}</li>`;
+  };
+  return html`<h1>Ignorados</h1>
+<p class="ayuda">Lo que elegiste ignorar. Solo lo ves vos: nadie más se entera y no se oculta para otros. En el foro, lo ignorado se ve colapsado y va al final. Un autor se ignora dentro de una publicación (su ID cambia en cada una).</p>
+${lista.length ? html`<ul class="mias">${lista.map(fila)}</ul>` : html`<p>No estás ignorando nada.</p>`}`;
+}
+
+// Los mensajes de la cuenta, más nuevos primero.
+export function mios(ctx, { lista, total, pagina, paginas }) {
+  return html`<h1>Tus mensajes</h1>
+<p class="ayuda">Todo lo que escribiste${total ? ` (${total})` : ''}, lo más nuevo primero. Solo lo ves vos. Las publicaciones donde participaste, con su última actividad, están en <a href="/respuestas">Respuestas</a>.</p>
+${lista.length
+  ? html`<ul class="mias">${lista.map((p) => html`<li><a href="/h/${p.thread_id}#p${p.id}">${p.subject}</a> <span class="ayuda">· ${boardBySlug(p.board)?.nombre ?? p.board} · ${fecha(p.created_at)}${p.id === p.op_post_id ? ' · abriste esta publicación' : ''}${p.status === 'queued' ? ' · en revisión' : ''}</span>
+  <div class="extracto">${extracto(textoPlano(p.body), 200)}</div></li>`)}</ul>
+${paginacion(pagina, paginas)}`
+  : html`<p>Todavía no escribiste nada.</p>`}`;
+}
+
 export function cuenta(ctx, { suspendida, error, llaves = [], geminiUrl = null } = {}) {
   return html`<h1>Cuenta</h1>
 <p>Para el resto del foro sos pseudoanónimo. De tu cuenta de Google solo guardamos un identificador (ver <a href="/privacidad">Privacidad</a>).</p>
+<h2>Lo tuyo</h2>
+<ul class="mias">
+  <li><a href="/mios">Mis mensajes</a> <span class="ayuda">· todo lo que escribiste, lo más nuevo primero</span></li>
+  <li><a href="/guardados">Guardados</a> <span class="ayuda">· publicaciones que guardaste para después</span></li>
+  <li><a href="/ignorados">Ignorados</a> <span class="ayuda">· publicaciones, mensajes y autores que ignorás, para dejar de ignorarlos</span></li>
+</ul>
+<p class="ayuda">Solo lo ves vos.</p>
 ${preferencias(ctx.tema, ctx.vista)}
 ${geminiUrl ? gemini(ctx, llaves, geminiUrl) : ''}
 <h2>Borrar la cuenta</h2>
