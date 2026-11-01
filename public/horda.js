@@ -90,7 +90,8 @@ const DECALS = {
   pebble: [['sS', 'ss']],
   shroom: [['.M.', 'MMm', '.w.']],
   bone: [['W...', '.ww.', '..wW'], ['...W', '.ww.', 'Ww..']],
-  grave: [['.SS.', 'SSSS', '.Ss.', '.Ss.', 'gggg'], ['.S.', 'SSS', '.S.', '.s.', 'ggg']],
+  // Tumbas pintadas en el piso (se atraviesan): oscuras, para no confundirse con las lápidas, que son obstáculo.
+  grave: [['.ss.', 'ssss', '.sk.', '.sk.', 'gggg'], ['.s.', 'sss', '.k.', '.k.', 'ggg']],
 };
 function decal(rows, x, y) {
   x = snap(x); y = snap(y);
@@ -1513,12 +1514,16 @@ const OBJ = {};
 function outlined(w, h, draw) {
   const tmp = makeCanvas(w, h), tg = tmp.getContext('2d');
   draw(tg);
-  const sil = makeCanvas(w, h), sg = sil.getContext('2d');
+  return binarize(conContorno(tmp));
+}
+// Copia de un dibujo con un contorno casi negro de un píxel alrededor de la silueta.
+function conContorno(tmp) {
+  const w = tmp.width, h = tmp.height, sil = makeCanvas(w, h), sg = sil.getContext('2d');
   sg.drawImage(tmp, 0, 0); sg.globalCompositeOperation = 'source-in'; sg.fillStyle = '#0c0e0a'; sg.fillRect(0, 0, w, h);
   const c = makeCanvas(w, h), g = c.getContext('2d');
   for (const [dx, dy] of [[-1.5, 0], [1.5, 0], [0, -1.5], [0, 1.5]]) g.drawImage(sil, dx, dy);
   g.drawImage(tmp, 0, 0);
-  return binarize(c);
+  return c;
 }
 // ---------- Efectos en 8 bits ----------
 // Proyectiles y explosiones son sprites de píxeles (cada píxel del mapa se dibuja de 2x2 o más), sin
@@ -1632,20 +1637,22 @@ function buildObjects() {
 
 // Bosque muerto: pinos ralos casi negros, robles pelados y retorcidos, y un árbol ceniza sin hojas.
 function buildScenery() {
+  // Colores de árboles y rocas: el mismo tono apagado, pero más claros que el piso (antes el pino y la
+  // copa del retorcido tenían el brillo del pasto y se perdían). Además llevan contorno (abajo).
   const deadPine = (g) => {
-    box(g, TAX, TAY, 0, 0, 0, 5, 5, 16, '#2e2620');
-    box(g, TAX, TAY, 0, 0, 12, 22, 22, 9, '#1f261c'); box(g, TAX, TAY, 0, 0, 22, 17, 17, 9, '#232a1f');
-    box(g, TAX, TAY, 0, 0, 31, 10, 10, 9, '#272e22'); box(g, TAX, TAY, 0, 0, 40, 2.4, 2.4, 10, '#3a3028');
-    box(g, TAX, TAY, -6, 0, 26, 9, 1.6, 1.6, '#3a3028');   // rama seca que asoma
+    box(g, TAX, TAY, 0, 0, 0, 5, 5, 16, '#463a30');
+    box(g, TAX, TAY, 0, 0, 12, 22, 22, 9, '#34402d'); box(g, TAX, TAY, 0, 0, 22, 17, 17, 9, '#3a4732');
+    box(g, TAX, TAY, 0, 0, 31, 10, 10, 9, '#415037'); box(g, TAX, TAY, 0, 0, 40, 2.4, 2.4, 10, '#5a4a3c');
+    box(g, TAX, TAY, -6, 0, 26, 9, 1.6, 1.6, '#5a4a3c');   // rama seca que asoma
   };
   const twisted = (g) => {
-    const bark = '#3d3229';
+    const bark = '#5a4a3d';
     box(g, TAX, TAY, 0, 0, 0, 8, 8, 9, bark); box(g, TAX, TAY, 1.5, -1, 9, 6.5, 6.5, 9, bark);
     box(g, TAX, TAY, -0.5, -2.5, 18, 5.5, 5.5, 9, bark); box(g, TAX, TAY, 1, -4, 27, 4.5, 4.5, 7, bark);
     box(g, TAX, TAY, 6, -3, 22, 12, 2, 2, bark); box(g, TAX, TAY, 11, -3, 24, 2, 2, 7, bark);
     box(g, TAX, TAY, -4, -8, 28, 2, 10, 2, bark); box(g, TAX, TAY, -4, -12, 30, 2, 2, 6, bark);
     box(g, TAX, TAY, 3, 2, 32, 2, 8, 2, bark); box(g, TAX, TAY, 3, 6, 34, 2, 2, 5, bark);
-    box(g, TAX, TAY, 1, -4, 34, 11, 11, 5, '#262b20'); box(g, TAX, TAY, -6, -12, 35, 7, 7, 4, '#22271d');
+    box(g, TAX, TAY, 1, -4, 34, 11, 11, 5, '#3b4630'); box(g, TAX, TAY, -6, -12, 35, 7, 7, 4, '#36402c');
   };
   const ashen = (g) => {
     const bark = '#77736a';
@@ -1657,7 +1664,8 @@ function buildScenery() {
   };
   for (const draw of [deadPine, twisted, ashen]) {
     for (const keep of [1, 0.4]) {
-      const t = makeCanvas(TW, TH); draw(t.getContext('2d')); binarize(t, keep);
+      const t0 = makeCanvas(TW, TH); draw(t0.getContext('2d'));
+      const t = binarize(conContorno(t0), keep);
       const c = makeCanvas(TW, TH), g = c.getContext('2d');
       pixEllipse(g, TAX, TAY, 22, 10, 'rgba(0,0,0,.35)');
       g.drawImage(t, 0, 0);
@@ -1678,7 +1686,7 @@ function buildScenery() {
       box(g, TAX, 48, 0, 0, 21, 5, 8, 2, '#6a6d6f');
       onFace(g, TAX, 48, 2.5, -0.8, 0.8, 7, 18, '#2c2d2e'); onFace(g, TAX, 48, 2.5, -3.5, 3.5, 13.5, 15, '#2c2d2e');
     }
-    ROCKS.push(binarize(c));
+    ROCKS.push(binarize(conContorno(c)));
   }
 }
 
