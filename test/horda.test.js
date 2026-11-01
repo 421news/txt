@@ -189,7 +189,7 @@ test('HORDA: el link en los menús y la vuelta a /horda después de entrar', asy
   const s = await montar();
   t.after(s.cerrar);
   const portada = await (await s.pedir('/')).text();
-  assert.equal(portada.match(/<a href="\/horda"[^>]*>HORDA<\/a>/g)?.length, 2, 'Menú de escritorio y Secciones del celular');
+  assert.equal(portada.match(/<a href="\/horda"[^>]*>horda<\/a>/gi)?.length, 2, 'barra de secciones de escritorio ([horda]) y Secciones del celular');
 
   const entrar = await (await s.pedir('/entrar?volver=%2Fhorda')).text();
   assert.ok(entrar.includes('href="/auth/google?volver=%2Fhorda"'));

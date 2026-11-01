@@ -84,9 +84,10 @@ function barraSecciones(ruta, horda) {
     const activa = actual?.grupo === b.slug, exacta = actual?.slug === b.slug;
     return html`<a href="/b/${b.slug}" class="madre${activa ? ' activa' : ''}"${exacta ? raw(' aria-current="page"') : ''}>${b.nombre}</a>`;
   };
-  return html`<nav class="secciones" aria-label="Secciones">${GRUPOS.filter(({ madre }) => madre.slug !== 'txt').map(({ madre }) => html`<span class="grupo">[${link(madre)}]</span>`)}<span class="grupo">[<a href="/secciones" title="Todas las secciones"${ruta.split('?')[0] === '/secciones' ? raw(' class="activa" aria-current="page"') : ''}>índice</a>]</span><span class="grupo foro">${linkFuera('/top', 'Más comentadas', ruta)}${horda ? html` · ${linkFuera('/horda', 'HORDA', ruta)}` : ''}</span>`;
+  return html`<nav class="secciones" aria-label="Secciones">${GRUPOS.filter(({ madre }) => madre.slug !== 'txt').map(({ madre }) => html`<span class="grupo">[${link(madre)}]</span>`)}<span class="grupo">[<a href="/secciones" title="Todas las secciones"${ruta.split('?')[0] === '/secciones' ? raw(' class="activa" aria-current="page"') : ''}>índice</a>]</span><span class="grupo">[${linkFuera('/top', 'más comentadas', ruta)}]</span>${horda ? html`<span class="grupo">[${linkFuera('/horda', 'horda', ruta)}]</span>` : ''}`;
 }
-// Lo del foro que no es una sección (2026-10-31, opción C del usuario: antes estaba en el menú de arriba).
+// Lo del foro que no es una sección (2026-10-31, opción C del usuario: antes estaba en el menú de arriba). Entre
+// corchetes y en minúscula, como el índice: las mayúsculas quedan para las secciones.
 const linkFuera = (href, texto, ruta) => html`<a href="${href}"${ruta.split('?')[0] === href ? raw(' class="activa" aria-current="page"') : ''}>${texto}</a>`;
 
 // Menú de la cuenta, el mismo en escritorio (botón Cuenta de arriba) y en el celular (Cuenta, abajo): sólo lo

@@ -2160,7 +2160,7 @@ test('menú Cuenta (opción C, 2026-10-31): sólo lo personal; Más comentadas y
   assert.deepEqual([...menu.matchAll(/<a href="([^"]+)">([^<]+)<\/a>/g)].map((m) => m[2]), ['Mis posteos', 'Guardados', 'Ignorados', 'Ajustes']);
   assert.ok(menu.includes('action="/salir"') && !menu.includes('/normas') && !menu.includes('/formato') && !menu.includes('/top'));
   const barra = portada.match(/<nav class="secciones"[\s\S]*?<\/nav>/)[0];
-  assert.ok(barra.includes('<a href="/top">Más comentadas</a>') && barra.includes('<a href="/horda">HORDA</a>'));
+  assert.ok(barra.includes('[<a href="/top">más comentadas</a>]') && barra.includes('[<a href="/horda">horda</a>]'));
   assert.ok(portada.includes('<footer class="pie">') && /<footer[\s\S]*href="\/normas"[\s\S]*href="\/formato"/.test(portada), 'Normas y Formato siguen en el pie');
   // Las cuatro páginas comparten el encabezado con pestañas.
   for (const [ruta, nombre] of [['/mios', 'Posteos'], ['/guardados', 'Guardados'], ['/ignorados', 'Ignorados'], ['/cuenta', 'Ajustes']]) {
