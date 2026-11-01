@@ -66,8 +66,6 @@ export function createApp({
   alcanceKey = null,
   jevActivo = false,
   umbralJev = null,
-  // Título de la última nota de 421 para el link de la barra (src/nota421.js); null = sin título.
-  ultimaNota421 = () => null,
   // Últimas notas de 421 para el zócalo de arriba de todo (src/nota421.js); [] = sin zócalo.
   notas421 = () => [],
   // HORDA (/horda): el juego y su tabla de puntajes. false (env HORDA=off) apaga las rutas y el link.
@@ -501,7 +499,7 @@ export function createApp({
     const pendientesMod = esMod(req.user) && !suspendido(req.user) ? q.contarPendientesMod.get().n : 0;
     const cookies = leerCookies(req.headers.cookie);
     const tema = TEMAS.includes(cookies.tema) ? cookies.tema : null;
-    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, pendientesMod, tema, vista: vistaDe(req), ruta: req.originalUrl, codigoUrl, nota421: ultimaNota421(), notas421: notas421(), sombraActiva: !!sombra, jevActivo, horda };
+    res.locals.ctx = { user: req.user, csrf: req.csrf, siteName, baseUrl, ahora: now(), novedades, pendientesMod, tema, vista: vistaDe(req), ruta: req.originalUrl, codigoUrl, notas421: notas421(), sombraActiva: !!sombra, jevActivo, horda };
     if (req.method === 'POST') {
       const origen = req.get('origin');
       if (origen && origen !== `${req.protocol}://${req.get('host')}`) return res.status(403).send('Origen no permitido');

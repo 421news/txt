@@ -581,9 +581,6 @@ button.enlace::before, button.enlace::after { content: none; }
 .secciones a.madre { text-transform: uppercase; font-size: 0.7rem; }
 .secciones a:hover { background: transparent; color: var(--fosforo); }
 .secciones a.activa { color: var(--fosforo); border-bottom: 2px solid var(--fosforo); }
-.secciones a.leer-421 { margin-left: auto; text-transform: uppercase; font-size: 0.7rem; }
-.secciones a.leer-421, .menu-abajo a.leer-421 { color: var(--fosforo); }
-.menu-abajo a.leer-421 { border-top: 1px solid var(--borde); margin-top: 0.3rem; padding-top: 0.5rem; }
 
 /* --- Botón de tema ---------------------------------------------------------------------- */
 /* Desplegable con todos los temas; la opción elegida va marcada. Reusa el menú de la cabecera. */

@@ -3,7 +3,6 @@ import { estatico } from './estaticos.js';
 import { BOARDS, GRUPOS, LIMITS, boardBySlug } from './config.js';
 import { NORMAS } from './normas.js';
 import { formatear, extracto, textoPlano } from './format.js';
-import { URL_421 } from './nota421.js';
 
 const formatoFecha = new Intl.DateTimeFormat('es-AR', {
   dateStyle: 'short',
@@ -71,16 +70,11 @@ function botonTema(ruta, tema) {
 </details>`;
 }
 
-// "Leé 421 ↗": al final de las secciones (y del menú Secciones en el celular). txt es de 421; el
-// title muestra la última nota. Marcado con utm_source=txt para medirlo en GA4 de 421.
-const leer421 = (ctx) =>
-  html`<a class="leer-421" href="${URL_421}"${ctx.nota421 ? html` title="Última nota: ${ctx.nota421}"` : ''}>Leé 421 ↗</a>`;
-
 // HORDA (2026-10-31): el juego de 421, en los menús (≡ Menú de escritorio y Secciones del celular).
 const linkHorda = (ctx) => (ctx.horda ? html`<a href="/horda" title="El juego de 421">HORDA</a>` : '');
 
 // Barra de secciones de escritorio, a lo 4chan (2026-10-24): [MADRE / cod / cod] por grupo, el nombre
-// completo en el title, y al final el índice. Termina abierta: el que la llama agrega "Leé 421" y cierra el <nav>.
+// completo en el title, y al final el índice. Termina abierta: el que la llama cierra el <nav>.
 function barraSecciones(ruta) {
   const actual = ruta.split('?')[0].match(/^\/b\/([^/]+)/)?.[1];
   const link = (b, texto, clase) =>
@@ -98,7 +92,7 @@ function barraAbajo(ctx) {
   return html`<nav class="abajo" aria-label="Navegación">
   <a href="/"${activa(camino === '/')}><b>⌂</b>Inicio</a>
   <details class="abajo-menu"><summary${activa(!!seccion)}><b>☰</b>Secciones</summary>
-    <div class="menu-abajo">${GRUPOS.map(({ madre, hijas }) => html`<a class="madre" href="/b/${madre.slug}">${madre.nombre}</a>${hijas.map((b) => html`<a class="hija" href="/b/${b.slug}">${b.nombre}</a>`)}`)}<a class="todas" href="/secciones">Todas las secciones</a><a href="/top">Más comentadas</a>${linkHorda(ctx)}${leer421(ctx)}</div>
+    <div class="menu-abajo">${GRUPOS.map(({ madre, hijas }) => html`<a class="madre" href="/b/${madre.slug}">${madre.nombre}</a>${hijas.map((b) => html`<a class="hija" href="/b/${b.slug}">${b.nombre}</a>`)}`)}<a class="todas" href="/secciones">Todas las secciones</a><a href="/top">Más comentadas</a>${linkHorda(ctx)}</div>
   </details>
   <a href="${publicar}"><b>+</b>Publicar</a>
   ${user
@@ -221,7 +215,7 @@ ${zocalo421(ctx.notas421)}<header class="cabecera">
       </details>
     </div>
   </div>
-  ${barraSecciones(ruta)}${leer421(ctx)}</nav>
+  ${barraSecciones(ruta)}</nav>
 </header>
 <main>
 ${aviso && Object.hasOwn(AVISOS, aviso) ? html`<p class="aviso">${AVISOS[aviso]}</p>` : ''}

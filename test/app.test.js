@@ -15,7 +15,7 @@ const googleFalso = {
   canjearCodigo: async ({ code }) => ({ sub: `sub-${code}`, email: `${code}@gmail.com` }),
 };
 
-async function montar({ google = googleFalso, sombra = null, production = false, alcanceKey = null, ultimaNota421, notas421 } = {}) {
+async function montar({ google = googleFalso, sombra = null, production = false, alcanceKey = null, notas421 } = {}) {
   const db = openDb(':memory:');
   const reloj = { t: 1_800_000_000_000 };
   const filtro = { decision: 'approve' };
@@ -42,7 +42,6 @@ async function montar({ google = googleFalso, sombra = null, production = false,
     geminiUrl: 'gemini://prueba',
     production,
     alcanceKey,
-    ultimaNota421,
     notas421,
   });
   const server = app.listen(0, '127.0.0.1');
@@ -1496,28 +1495,11 @@ test('aviso de moderación: los mods ven cuántos mensajes esperan en /mod, y na
   assert.ok((await s.texto('/', mod)).includes('Moderación (1)'));
 });
 
-test('Leé 421: al final de las secciones y del menú del celular, con la última nota en el title', async (t) => {
+test('sin "Leé 421" (2026-10-31): el zócalo de arriba ya lleva a 421', async (t) => {
   const s = await montar();
   t.after(s.cerrar);
   const pagina = await s.texto('/');
-  const link = 'href="https://www.421.news/es/?utm_source=txt&amp;utm_medium=secciones"';
-  assert.equal(pagina.split(`<a class="leer-421" ${link}>Leé 421 ↗</a>`).length - 1, 2, 'barra de secciones y menú del celular, sin title si no hay nota');
-});
-
-test('Leé 421: la última nota se pide a Ghost y va escapada en el title; si Ghost falla, queda la anterior', async (t) => {
-  const { crearUltimaNota } = await import('../src/nota421.js');
-  let respuesta = { ok: true, json: async () => ({ posts: [{ title: 'Nota <con> "comillas"' }] }) };
-  const pedidos = [];
-  const errores = t.mock.method(console, 'error', () => {});
-  const titulo = crearUltimaNota({ pedir: async (url) => (pedidos.push(url), respuesta), cada: 60_000 });
-  await new Promise((r) => setImmediate(r));
-  assert.equal(titulo(), 'Nota <con> "comillas"');
-  assert.match(pedidos[0], /421bn\.ghost\.io\/ghost\/api\/content\/posts\/\?key=\w+&limit=1&fields=title&filter=tag:hash-es/);
-  assert.equal(errores.mock.callCount(), 0);
-
-  const s = await montar({ ultimaNota421: titulo });
-  t.after(s.cerrar);
-  assert.ok((await s.texto('/')).includes('title="Última nota: Nota &lt;con&gt; &quot;comillas&quot;">Leé 421 ↗</a>'));
+  assert.ok(!pagina.includes('leer-421') && !pagina.includes('Leé 421'));
 });
 
 test('zócalo de 421: últimas notas arriba de todo, escapadas, con la copia oculta; sin notas no se dibuja', async (t) => {

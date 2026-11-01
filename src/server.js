@@ -8,7 +8,7 @@ import { crearModerador, crearModeradorEscalonado, MODELO_RAPIDO } from './moder
 import { crearGoogle } from './google.js';
 import { crearCapsula } from './gemini.js';
 import { crearSombra, crearFiltroMixto, UMBRAL_LIMPIO } from './sombra.js';
-import { crearUltimaNota, crearUltimasNotas } from './nota421.js';
+import { crearUltimasNotas } from './nota421.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
 const production = process.env.NODE_ENV === 'production';
@@ -56,7 +56,6 @@ const claudeEscalonado = String(process.env.MODERACION_HAIKU || 'on').toLowerCas
 const umbralJev = (() => { const u = Number(process.env.JEV_UMBRAL); return u >= 0.05 && u <= 0.9 ? u : UMBRAL_LIMPIO; })();
 const app = createApp({
   db,
-  ultimaNota421: crearUltimaNota(),
   notas421: crearUltimasNotas(),
   secret,
   baseUrl,
