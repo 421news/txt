@@ -1,5 +1,6 @@
 import tls from 'node:tls';
 import { aGemtext } from './documentos.js';
+import { GRUPOS } from './config.js';
 
 // Cápsula Gemini (gemini://…). Protocolo: el cliente abre TLS, manda la URL terminada en CRLF, y el
 // servidor responde "<estado> <meta>\r\n" y el cuerpo. Estados usados: 10 pedir texto, 20 éxito,
@@ -123,7 +124,7 @@ ${opciones.map(([nombre, titulo]) => `=> /p/${id}/ignorar/${nombre}/${datos.opci
       const user = escritura.usuario(huella);
       if (!user) return paginaVincular(huella);
       if (segmentos.length === 1) {
-        return pagina(`# Publicar\n¿En qué sección?\n${escritura.secciones.map((b) => `=> /publicar/${b.slug} ${b.nombre}`).join('\n')}\n`);
+        return pagina(`# Publicar\n¿En qué sección?\n${GRUPOS.map(({ madre, hijas }) => `\n## ${madre.slug === 'txt' ? 'El foro' : madre.nombre}\n${[madre, ...hijas].map((b) => `=> /publicar/${b.slug} ${b.nombre}`).join('\n')}`).join('\n')}\n`);
       }
       const board = escritura.tablon(segmentos[1]);
       if (!board) return '51 No encontrado';

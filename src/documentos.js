@@ -9,7 +9,7 @@
 // Los que solo tienen sentido en la web (publicar, entrar) van con `web: true`. Un bloque con
 // `solo: 'gemini'` o `solo: 'texto'` sale únicamente en ese formato (en Gemini se puede escribir).
 
-import { BOARDS, boardBySlug } from './config.js';
+import { BOARDS, GRUPOS, LIMITS, boardBySlug } from './config.js';
 import { NORMAS } from './normas.js';
 import { extracto, textoPlano } from './format.js';
 import { fecha } from './views.js';
@@ -27,7 +27,7 @@ function encabezado(siteName) {
     t(1, `${siteName} · foro de texto de 421`),
     { ...p('Solo texto, pseudoanónimo y moderado. Para publicar o responder, entrá desde la web.'), solo: 'texto' },
     { ...p('Solo texto, pseudoanónimo y moderado. Para escribir desde acá, tu programa de Gemini tiene que usar un certificado vinculado a una cuenta de txt (la primera vez te da un código para pegar en la web).'), solo: 'gemini' },
-    { tipo: 'menu', items: [link('/', 'Portada'), ...BOARDS.map((b) => link(`/b/${b.slug}`, b.nombre)), link('/normas', 'Normas')] },
+    { tipo: 'menu', items: [link('/', 'Portada'), link('/secciones', 'Secciones'), link('/top', 'Más comentadas'), ...BOARDS.map((b) => link(`/b/${b.slug}`, b.nombre)), link('/normas', 'Normas')] },
     { ...link('/publicar', 'Publicar'), solo: 'gemini' },
     sep(),
   ];
@@ -37,14 +37,18 @@ function encabezado(siteName) {
 // o la cabecera, como colapsado en la web.
 const avisoIgnorados = (n, singular, plural) => p(`${n === 1 ? `1 ${singular}` : `${n} ${plural}`}.`);
 
-function listaHilos(hilos, { conTablon }) {
+function listaHilos(hilos, { conTablon, userId }) {
   if (!hilos.length) return [p('No hay publicaciones todavía.')];
   const ignoradas = hilos.filter((h) => h.ignorado);
   return hilos.flatMap((h) => {
     const marca = h.ignorado ? '[Ignorada] ' : h.fijado ? '[Fijada] ' : '';
     const titulo = link(`/h/${h.id}`, `${marca}${conTablon ? `[${boardBySlug(h.board)?.nombre ?? h.board}] ` : ''}${h.subject} (${h.reply_count} ${h.reply_count === 1 ? 'respuesta' : 'respuestas'})`);
-    if (h.ignorado) return [...(h === ignoradas[0] ? [avisoIgnorados(ignoradas.length, 'publicación ignorada', 'publicaciones ignoradas')] : []), titulo];
-    return [titulo, { tipo: 'detalle', texto: `${fecha(h.bumped_at)} · ${extracto(textoPlano(h.op_body), 160)}` }];
+    const acciones = userId == null ? [] : [
+      { ...link(`/h/${h.id}/guardar${h.guardado ? '/quitar' : ''}`, h.guardado ? 'Sacar de guardados' : 'Guardar'), solo: 'gemini' },
+      ...(h.op_user_id === userId ? [] : [{ ...link(`/p/${h.op_post_id}/ignorar`, 'Ignorar / dejar de ignorar'), solo: 'gemini' }]),
+    ];
+    if (h.ignorado) return [...(h === ignoradas[0] ? [avisoIgnorados(ignoradas.length, 'publicación ignorada', 'publicaciones ignoradas')] : []), titulo, ...acciones];
+    return [titulo, { tipo: 'detalle', texto: `${fecha(h.bumped_at)} · ${extracto(textoPlano(h.op_body), 160)}` }, ...acciones];
   });
 }
 
@@ -57,18 +61,25 @@ function paginacion(ruta, pagina, paginas) {
   return bloques;
 }
 
-export function docPortada({ siteName, hilos, pagina, paginas }) {
-  return [...encabezado(siteName), t(2, 'Últimas publicaciones'), ...listaHilos(hilos, { conTablon: true }), ...paginacion('/', pagina, paginas)];
+export function docPortada({ siteName, hilos, pagina, paginas, masComentadas, userId }) {
+  return [
+    ...encabezado(siteName), t(2, 'Últimas publicaciones'),
+    ...listaHilos(hilos, { conTablon: true, userId }), ...paginacion('/', pagina, paginas),
+    ...(masComentadas ? [sep(), t(2, 'Más comentadas'),
+      t(3, 'Abiertas'), ...ranking(masComentadas.abiertas),
+      t(3, 'Archivadas'), ...ranking(masComentadas.archivadas),
+      link('/top', 'Ver todas las más comentadas')] : []),
+  ];
 }
 
-export function docTablon({ siteName, board, hilos, pagina, paginas, archivo }) {
+export function docTablon({ siteName, board, hilos, pagina, paginas, archivo, userId }) {
   const ruta = archivo ? `/b/${board.slug}/archivo` : `/b/${board.slug}`;
   return [
     ...encabezado(siteName),
     t(2, archivo ? `Archivo de ${board.nombre}` : board.nombre),
     p(board.descripcion),
     ...(archivo ? [] : [link(`/b/${board.slug}/archivo`, `Archivo de ${board.nombre}`)]),
-    ...listaHilos(hilos, { conTablon: false }),
+    ...listaHilos(hilos, { conTablon: false, userId }),
     ...paginacion(ruta, pagina, paginas),
   ];
 }
@@ -124,6 +135,50 @@ export function docGuardados({ siteName, hilos }) {
   ];
 }
 
+export function docSecciones({ siteName, cantidades }) {
+  return [
+    ...encabezado(siteName), t(2, 'Secciones'),
+    p('Pseudoanónimo y moderado: cada mensaje se revisa antes de publicarse.'),
+    ...GRUPOS.flatMap(({ madre, hijas }) => [
+      t(3, madre.slug === 'txt' ? 'El foro' : madre.nombre),
+      ...[madre, ...hijas].flatMap((b) => [
+        link(`/b/${b.slug}`, `${b.nombre} · /${b.codigo}/ · ${cantidades[b.slug] ?? 0} ${(cantidades[b.slug] ?? 0) === 1 ? 'publicación' : 'publicaciones'}`),
+        p(b.descripcion),
+      ]),
+    ]),
+    link('/top', 'Más comentadas'),
+  ];
+}
+
+function ranking(hilos) {
+  if (!hilos.length) return [p('No hay publicaciones con respuestas para estos filtros.')];
+  const ignoradas = hilos.filter((h) => h.ignorado);
+  return hilos.flatMap((h) => [
+    ...(h === ignoradas[0] ? [avisoIgnorados(ignoradas.length, 'publicación ignorada', 'publicaciones ignoradas')] : []),
+    link(`/h/${h.id}`, `${h.ignorado ? '[Ignorada] ' : ''}${h.subject} (${h.reply_count} ${h.reply_count === 1 ? 'respuesta' : 'respuestas'})`),
+    p(`${boardBySlug(h.board)?.nombre ?? h.board} · ${fecha(h.created_at)} · ${h.archived ? 'archivada' : h.locked ? 'cerrada' : 'abierta'}`),
+  ]);
+}
+
+export function docTop({ siteName, hilos, filtros }) {
+  const opciones = (clave, valores) => valores.map(([valor, nombre]) => {
+    const f = { ...filtros, [clave]: valor };
+    const query = new URLSearchParams();
+    if (f.estado !== 'todas') query.set('estado', f.estado);
+    if (f.periodo !== 'siempre') query.set('periodo', f.periodo);
+    if (f.seccion) query.set('seccion', f.seccion);
+    return link(`/top${query.size ? `?${query}` : ''}`, `${filtros[clave] === valor ? '[Actual] ' : ''}${nombre}`);
+  });
+  return [
+    ...encabezado(siteName), t(2, 'Más comentadas'),
+    p(`Las ${LIMITS.topPorPagina} publicaciones con más respuestas, abiertas y archivadas.`),
+    t(3, 'Estado'), ...opciones('estado', [['todas', 'Todas'], ['abiertas', 'Abiertas'], ['archivadas', 'Archivadas']]),
+    t(3, 'Período'), ...opciones('periodo', [['siempre', 'Siempre'], ['anio', 'Último año'], ['mes', 'Último mes'], ['semana', 'Última semana']]),
+    t(3, 'Sección'), ...opciones('seccion', [['', 'Todas'], ...BOARDS.map((b) => [b.slug, b.nombre])]),
+    t(3, 'Publicaciones'), ...ranking(hilos),
+  ];
+}
+
 export function docNormas({ siteName }) {
   return [
     ...encabezado(siteName),
@@ -160,7 +215,7 @@ export function docSinTexto({ siteName }) {
   return [
     ...encabezado(siteName),
     t(2, 'Esta página no tiene versión texto'),
-    p('La versión texto está para las páginas de lectura: la portada, cada sección y su archivo, cada publicación, las normas y esta explicación.'),
+    p('La versión texto está para las páginas de lectura: la portada, el índice de secciones, las más comentadas, cada sección y su archivo, cada publicación, las normas y esta explicación.'),
     link('/texto', 'Cómo leer txt en texto'),
   ];
 }
