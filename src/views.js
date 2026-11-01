@@ -48,6 +48,7 @@ const ICONOS = {
   luna: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
   correo: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 7l9 6 9-6"/>'),
   menu: svg('<path d="M4 6h16M4 12h16M4 18h16"/>'),
+  persona: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>'),
   catalogo: svg('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>'),
   lista: svg('<path d="M9 5h12M9 12h12M9 19h12M3 5h1M3 12h1M3 19h1"/>'),
   lupa: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
@@ -77,13 +78,30 @@ const linkHorda = (ctx) => (ctx.horda ? html`<a href="/horda" title="El juego de
 // usuario; desde el 2026-10-24 iba a lo 4chan, [MADRE / cod / cod], con txt aparte). Las subsecciones y txt
 // siguen en el índice, en el menú del celular y al publicar. Estando en una subsección se marca su categoría.
 // Termina abierta: el que la llama cierra el <nav>.
-function barraSecciones(ruta) {
+function barraSecciones(ruta, horda) {
   const actual = boardBySlug(ruta.split('?')[0].match(/^\/b\/([^/]+)/)?.[1]);
   const link = (b) => {
     const activa = actual?.grupo === b.slug, exacta = actual?.slug === b.slug;
     return html`<a href="/b/${b.slug}" class="madre${activa ? ' activa' : ''}"${exacta ? raw(' aria-current="page"') : ''}>${b.nombre}</a>`;
   };
-  return html`<nav class="secciones" aria-label="Secciones">${GRUPOS.filter(({ madre }) => madre.slug !== 'txt').map(({ madre }) => html`<span class="grupo">[${link(madre)}]</span>`)}<span class="grupo">[<a href="/secciones" title="Todas las secciones"${ruta.split('?')[0] === '/secciones' ? raw(' class="activa" aria-current="page"') : ''}>índice</a>]</span>`;
+  return html`<nav class="secciones" aria-label="Secciones">${GRUPOS.filter(({ madre }) => madre.slug !== 'txt').map(({ madre }) => html`<span class="grupo">[${link(madre)}]</span>`)}<span class="grupo">[<a href="/secciones" title="Todas las secciones"${ruta.split('?')[0] === '/secciones' ? raw(' class="activa" aria-current="page"') : ''}>índice</a>]</span><span class="grupo foro">${linkFuera('/top', 'Más comentadas', ruta)}${horda ? html` · ${linkFuera('/horda', 'HORDA', ruta)}` : ''}</span>`;
+}
+// Lo del foro que no es una sección (2026-10-31, opción C del usuario: antes estaba en el menú de arriba).
+const linkFuera = (href, texto, ruta) => html`<a href="${href}"${ruta.split('?')[0] === href ? raw(' class="activa" aria-current="page"') : ''}>${texto}</a>`;
+
+// Menú de la cuenta, el mismo en escritorio (botón Cuenta de arriba) y en el celular (Cuenta, abajo): sólo lo
+// personal, cada opción una pestaña de Mi cuenta (2026-10-31, opción C del usuario). Normas y Formato quedaron en
+// el pie (y Formato al lado de publicar); Respuestas tiene su ícono; Más comentadas y HORDA, la barra de secciones.
+function menuCuenta(ctx) {
+  return html`${PESTAÑAS_CUENTA.map(([href, nombre]) => html`<a href="${href}">${nombre}</a>`)}
+      ${esMod(ctx.user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas y costos</a>` : ''}
+      <form method="post" action="/salir"><input type="hidden" name="_csrf" value="${ctx.csrf}"><button class="enlace">Salir</button></form>`;
+}
+const PESTAÑAS_CUENTA = [['/mios', 'Mis posteos'], ['/guardados', 'Guardados'], ['/ignorados', 'Ignorados'], ['/cuenta', 'Ajustes']];
+// Encabezado común de las páginas de la cuenta: "Mi cuenta" y las cuatro pestañas.
+function cabeceraCuenta(actual) {
+  return html`<h1>Mi cuenta</h1>
+<nav class="filtros-top pestanas-cuenta" aria-label="Mi cuenta"><p>${PESTAÑAS_CUENTA.map(([href, nombre]) => html`<a href="${href}"${href === actual ? raw(' aria-current="true"') : ''}>${nombre.replace('Mis posteos', 'Posteos')}</a>`)}</p></nav>`;
 }
 
 // Barra inferior para celular (en escritorio se oculta por CSS y queda la barra de arriba).
@@ -101,17 +119,8 @@ function barraAbajo(ctx) {
   <a href="${publicar}"><b>+</b>Publicar</a>
   ${user
     ? html`<a href="/respuestas"${activa(camino === '/respuestas')}><b>✉${novedades ? html`<span class="badge">${novedades}</span>` : ''}</b>Respuestas</a>
-  <details class="abajo-menu derecha"><summary${activa(['/cuenta', '/guardados', '/ignorados', '/mios', '/mod'].includes(camino))}><b>☺${ctx.pendientesMod ? html`<span class="badge" title="Para moderar">${ctx.pendientesMod}</span>` : ''}</b>Cuenta</summary>
-    <div class="menu-abajo">
-      <a href="/mios">Mis posteos</a>
-      <a href="/guardados">Guardados</a>
-      <a href="/ignorados">Ignorados</a>
-      <a href="/cuenta">Mi cuenta</a>
-      ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas y costos</a>` : ''}
-      <a href="/normas">Normas</a>
-      <a href="/formato">Formato</a>
-      <form method="post" action="/salir"><input type="hidden" name="_csrf" value="${csrf}"><button class="enlace">Salir</button></form>
-    </div>
+  <details class="abajo-menu derecha"><summary${activa([...PESTAÑAS_CUENTA.map(([h]) => h), '/mod'].includes(camino))}><b>☺${ctx.pendientesMod ? html`<span class="badge" title="Para moderar">${ctx.pendientesMod}</span>` : ''}</b>Cuenta</summary>
+    <div class="menu-abajo">${menuCuenta(ctx)}</div>
   </details>`
     : html`<a href="/entrar"${activa(camino === '/entrar')}><b>→</b>Entrar</a>
   <a href="/normas"${activa(camino === '/normas')}><b>§</b>Normas</a>`}
@@ -205,21 +214,15 @@ ${zocalo421(ctx.notas421)}<header class="cabecera">
       ${user
         ? html`<a class="icono correo${ctx.novedades ? ' hay-novedades' : ''}" href="/respuestas" title="Respuestas" aria-label="Respuestas${ctx.novedades ? ` (${ctx.novedades} nuevas)` : ''}">${ICONOS.correo}${ctx.novedades ? html`<span class="badge">${ctx.novedades}</span>` : ''}</a>`
         : html`<a class="icono" href="/entrar">Entrar</a>`}
-      <details class="menu-cab">
-        <summary class="icono" aria-label="Menú">${ICONOS.menu}<span>Menú</span></summary>
-        <div class="menu-desplegable">
-          ${user ? html`<a href="/respuestas">Respuestas${ctx.novedades ? ` (${ctx.novedades})` : ''}</a><a href="/mios">Mis posteos</a><a href="/guardados">Guardados</a><a href="/ignorados">Ignorados</a><a href="/cuenta">Mi cuenta</a>` : html`<a href="/entrar">Entrar</a>`}
-          ${esMod(user) ? html`<a href="/mod">Moderación${ctx.pendientesMod ? ` (${ctx.pendientesMod})` : ''}</a><a href="/mod/estadisticas">Estadísticas y costos</a>` : ''}
-          <a href="/top">Más comentadas</a>
-          ${linkHorda(ctx)}
-          <a href="/normas">Normas</a>
-          <a href="/formato">Formato</a>
-          ${user ? html`<form method="post" action="/salir"><input type="hidden" name="_csrf" value="${csrf}"><button class="enlace">Salir</button></form>` : ''}
-        </div>
-      </details>
+      ${user
+        ? html`<details class="menu-cab">
+        <summary class="icono" aria-label="Cuenta">${ICONOS.persona}<span>Cuenta</span></summary>
+        <div class="menu-desplegable">${menuCuenta(ctx)}</div>
+      </details>`
+        : ''}
     </div>
   </div>
-  ${barraSecciones(ruta)}</nav>
+  ${barraSecciones(ruta, ctx.horda)}</nav>
 </header>
 <main>
 ${aviso && Object.hasOwn(AVISOS, aviso) ? html`<p class="aviso">${AVISOS[aviso]}</p>` : ''}
@@ -1076,7 +1079,7 @@ const filaIgnorada = (t, lista) =>
     : '';
 
 export function guardados(ctx, { lista }) {
-  return html`<h1>Guardados</h1>
+  return html`${cabeceraCuenta('/guardados')}
 <p class="ayuda">Publicaciones que guardaste para leer después. Solo las ves vos. Cuando alguien comenta en una, te avisa en Respuestas. Se guardan o se sacan con el botón "Guardar" de cada publicación.</p>
 ${lista.length
   ? html`<ul class="mias">${lista.map((t) => html`${filaIgnorada(t, lista)}<li${t.ignorado ? raw(' class="ignorado"') : ''}><a href="/h/${t.id}">${t.subject}</a> <span class="ayuda">· ${boardBySlug(t.board)?.nombre ?? t.board} · ${t.reply_count} respuestas · ${fecha(t.bumped_at)}${t.archived ? ' · archivada' : ''}</span>${t.ignorado ? marcaIgnorada(t) : ''}</li>`)}</ul>`
@@ -1098,7 +1101,7 @@ export function ignorados(ctx, { lista }) {
   <form method="post" action="/ignorados/quitar" class="en-linea"><input type="hidden" name="_csrf" value="${ctx.csrf}"><input type="hidden" name="tipo" value="${f.tipo}"><input type="hidden" name="id" value="${f.id}"><button>Dejar de ignorar</button></form>
   ${f.extracto ? html`<div class="extracto">${f.extracto}</div>` : ''}</li>`;
   };
-  return html`<h1>Ignorados</h1>
+  return html`${cabeceraCuenta('/ignorados')}
 <p class="ayuda">Lo que elegiste ignorar. Solo lo ves vos: nadie más se entera y no se oculta para otros. En el foro, lo ignorado se ve colapsado y va al final. Un autor se ignora dentro de una publicación (su ID cambia en cada una).</p>
 ${lista.length ? html`<ul class="mias">${lista.map(fila)}</ul>` : html`<p>No estás ignorando nada.</p>`}`;
 }
@@ -1110,7 +1113,7 @@ export function mios(ctx, { ver, lista, totales, pagina, paginas }) {
     ? html`<strong aria-current="page">${nombre} (${n})</strong>`
     : html`<a href="/mios${v === 'mensajes' ? '?ver=mensajes' : ''}">${nombre} (${n})</a>`);
   const estado = (t) => [t.archived ? 'archivada' : t.locked ? 'cerrada' : '', t.status === 'queued' ? 'en revisión' : ''].filter(Boolean).map((x) => ` · ${x}`).join('');
-  return html`<h1>Mis posteos</h1>
+  return html`${cabeceraCuenta('/mios')}
 <p class="filtros-top">${pestaña('publicaciones', 'Publicaciones que abriste', totales.publicaciones)} · ${pestaña('mensajes', 'Todos tus mensajes', totales.mensajes)}</p>
 <p class="ayuda">Lo más nuevo primero. Solo lo ves vos. Dónde te respondieron está en <a href="/respuestas">Respuestas</a>.</p>
 ${!lista.length
@@ -1124,15 +1127,8 @@ ${paginacion(pagina, paginas, ver === 'mensajes' ? { ver } : {})}`;
 }
 
 export function cuenta(ctx, { suspendida, error, llaves = [], geminiUrl = null } = {}) {
-  return html`<h1>Cuenta</h1>
-<p>Para el resto del foro sos pseudoanónimo. De tu cuenta de Google solo guardamos un identificador (ver <a href="/privacidad">Privacidad</a>).</p>
-<h2>Lo tuyo</h2>
-<ul class="mias">
-  <li><a href="/mios">Mis posteos</a> <span class="ayuda">· las publicaciones que abriste y todo lo que escribiste</span></li>
-  <li><a href="/guardados">Guardados</a> <span class="ayuda">· publicaciones que guardaste para después</span></li>
-  <li><a href="/ignorados">Ignorados</a> <span class="ayuda">· publicaciones, mensajes y autores que ignorás, para dejar de ignorarlos</span></li>
-</ul>
-<p class="ayuda">Solo lo ves vos.</p>
+  return html`${cabeceraCuenta('/cuenta')}
+<p>Para el resto del foro sos pseudoanónimo. De tu cuenta de Google solo guardamos un identificador (ver <a href="/privacidad">Privacidad</a>). Lo que está en estas pestañas lo ves solo vos.</p>
 ${preferencias(ctx.tema, ctx.vista)}
 ${geminiUrl ? gemini(ctx, llaves, geminiUrl) : ''}
 <h2>Borrar la cuenta</h2>

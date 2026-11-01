@@ -2142,11 +2142,34 @@ test('Mis posteos: las publicaciones que abrió la cuenta, y aparte todos sus me
   s.avanzar(3600);   // hay un mínimo entre dos publicaciones nuevas de la misma cuenta
   await s.pedir('/b/juegos/hilo', { sesion: ana, datos: { asunto: 'Segunda de ana', cuerpo: 'tres' } });
   const p = await s.texto('/mios', ana);
-  assert.ok(p.includes('<h1>Mis posteos</h1>') && p.includes('Publicaciones que abriste (2)') && p.includes('Todos tus mensajes (3)'));
+  assert.ok(p.includes('<h1>Mi cuenta</h1>') && p.includes('<a href="/mios" aria-current="true">Posteos</a>'));
+  assert.ok(p.includes('Publicaciones que abriste (2)') && p.includes('Todos tus mensajes (3)'));
   assert.ok(p.indexOf('Segunda de ana') < p.indexOf('Primera de ana'));
   assert.ok(!p.includes('De bea') && !p.includes('respuesta-de-ana'));
   assert.ok((await s.texto('/mios?ver=mensajes', ana)).includes('respuesta-de-ana'));
   assert.ok((await s.texto('/cuenta', ana)).includes('href="/mios">Mis posteos</a>'));
+});
+
+test('menú Cuenta (opción C, 2026-10-31): sólo lo personal; Más comentadas y HORDA en la barra; Mi cuenta con pestañas', async (t) => {
+  const s = await montar();
+  t.after(s.cerrar);
+  const ana = await s.entrar('ana');
+  const portada = await s.texto('/', ana);
+  const menu = portada.match(/<details class="menu-cab">[\s\S]*?<\/details>/)[0];
+  assert.ok(menu.includes('aria-label="Cuenta"'));
+  assert.deepEqual([...menu.matchAll(/<a href="([^"]+)">([^<]+)<\/a>/g)].map((m) => m[2]), ['Mis posteos', 'Guardados', 'Ignorados', 'Ajustes']);
+  assert.ok(menu.includes('action="/salir"') && !menu.includes('/normas') && !menu.includes('/formato') && !menu.includes('/top'));
+  const barra = portada.match(/<nav class="secciones"[\s\S]*?<\/nav>/)[0];
+  assert.ok(barra.includes('<a href="/top">Más comentadas</a>') && barra.includes('<a href="/horda">HORDA</a>'));
+  assert.ok(portada.includes('<footer class="pie">') && /<footer[\s\S]*href="\/normas"[\s\S]*href="\/formato"/.test(portada), 'Normas y Formato siguen en el pie');
+  // Las cuatro páginas comparten el encabezado con pestañas.
+  for (const [ruta, nombre] of [['/mios', 'Posteos'], ['/guardados', 'Guardados'], ['/ignorados', 'Ignorados'], ['/cuenta', 'Ajustes']]) {
+    const h = await s.texto(ruta, ana);
+    assert.ok(h.includes('<h1>Mi cuenta</h1>') && h.includes(`<a href="${ruta}" aria-current="true">${nombre}</a>`), ruta);
+  }
+  // Sin sesión no hay menú de cuenta (queda Entrar).
+  const anon = await s.texto('/');
+  assert.ok(!anon.includes('class="menu-cab"') && anon.includes('href="/entrar">Entrar</a>'));
 });
 
 test('Mis posteos, todos los mensajes: los propios, más nuevos primero, en revisión marcados, sin borrados ni ocultos, de a 50', async (t) => {

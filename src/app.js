@@ -1808,13 +1808,13 @@ export function createApp({
   app.get('/cuenta', (req, res) => {
     if (!req.user) return res.redirect(303, '/entrar');
     const llaves = db.prepare('SELECT huella, created_at, ultimo_uso FROM gemini_llaves WHERE user_id = ? ORDER BY created_at').all(req.user.id);
-    enviar(res, { titulo: 'Cuenta', indexar: false, aviso: req.query.aviso, cuerpo: V.cuenta(res.locals.ctx, { suspendida: suspendido(req.user), llaves, geminiUrl }) });
+    enviar(res, { titulo: 'Ajustes', indexar: false, aviso: req.query.aviso, cuerpo: V.cuenta(res.locals.ctx, { suspendida: suspendido(req.user), llaves, geminiUrl }) });
   });
 
   app.post('/cuenta/borrar', (req, res) => {
     if (!exigirUsuario(req, res)) return;
     const volver = (error) =>
-      enviar(res, { titulo: 'Cuenta', indexar: false, cuerpo: V.cuenta(res.locals.ctx, { suspendida: suspendido(req.user), error }) }, 422);
+      enviar(res, { titulo: 'Ajustes', indexar: false, cuerpo: V.cuenta(res.locals.ctx, { suspendida: suspendido(req.user), error }) }, 422);
     if (suspendido(req.user)) return volver('Mientras dure la suspensión no se puede borrar la cuenta.');
     if (req.body.confirmar !== '1') return volver('Marcá la casilla para confirmar.');
     if (enVuelo.has(req.user.id)) return volver('Tenés un mensaje revisándose. Esperá unos segundos y probá de nuevo.');
