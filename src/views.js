@@ -52,8 +52,6 @@ const ICONOS = {
   catalogo: svg('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>'),
   lista: svg('<path d="M9 5h12M9 12h12M9 19h12M3 5h1M3 12h1M3 19h1"/>'),
   lupa: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
-  grafico: svg('<path d="M4 20V4M4 20h16"/><path d="M8 16l4-5 3 3 5-7"/>'),
-  podio: svg('<path d="M4 20h4v-6H4zM10 20h4V8h-4zM16 20h4V4h-4z"/>'),
   escudo: svg('<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M12 8v4M12 16h.01"/>'),
   marcador: svg('<path d="M6 3h12v18l-6-4.5L6 21z"/>'),
   marcadorLleno: svg('<path d="M6 3h12v18l-6-4.5L6 21z" fill="currentColor"/>'),
@@ -206,8 +204,7 @@ ${zocalo421(ctx.notas421)}<header class="cabecera">
     <a class="marca" href="/">${siteName}</a>
     <div class="cab-der">
       <a class="icono lupa" href="/buscar" title="Buscar" aria-label="Buscar">${ICONOS.lupa}</a>
-      <a class="icono top-icono" href="/top" title="Más comentadas" aria-label="Más comentadas">${ICONOS.podio}</a>
-      <a class="icono stats" href="/estadisticas" title="Estadísticas" aria-label="Estadísticas">${ICONOS.grafico}</a>
+      ${esListado(ruta) ? selectorVista(ctx.vista, ruta) : ''}
       ${botonTema(ruta, tema)}
       ${ctx.pendientesMod
         ? html`<a class="icono mod-pendientes" href="/mod" title="Moderación: ${ctx.pendientesMod} para revisar" aria-label="Moderación (${ctx.pendientesMod} para revisar)">${ICONOS.escudo}<span class="badge">${ctx.pendientesMod}</span></a>`
@@ -302,6 +299,10 @@ function catalogo(ctx, hilos, { conTablon = false } = {}) {
 
 // Los links pasan por /vista, que guarda la elección en una cookie y vuelve acá. El `volver` va sin
 // query: cada vista trae distinta cantidad de hilos por página, así que la página N no es la misma.
+// Catálogo o lista: arriba, con los demás botones, sólo donde hay un listado de publicaciones (portada, secciones
+// y sus archivos). Hasta el 2026-10-31 iba debajo de Publicar; ese día salieron de arriba Más comentadas y
+// Estadísticas (son páginas, no acciones: están en la barra de secciones y en el pie).
+const esListado = (ruta = '/') => /^\/(b\/[a-z-]+(\/archivo)?)?$/.test(ruta.split('?')[0]);
 function selectorVista(vista, ruta = '/') {
   const volver = encodeURIComponent(ruta.split('?')[0]);
   const opcion = (v, nombre) =>
@@ -369,7 +370,6 @@ ${paginaActual < totalPaginas ? html`<a href="${url(paginaActual + 1)}" rel="nex
 export function portada(ctx, { hilos, vista, pagina: actual, paginas, form, masComentadas }) {
   return html`<h1 class="solo-lector">Últimas publicaciones</h1>
 ${formHilo(ctx, null, form)}
-${selectorVista(vista, ctx.ruta)}
 <div class="portada-con-top">
 <div class="portada-listado">${listado(ctx, hilos, vista, { conTablon: true })}</div>
 ${actual === 1 && masComentadas ? bloqueMasComentadas(masComentadas) : ''}
@@ -514,7 +514,6 @@ export function tablon(ctx, { board, hilos, vista, pagina: actual, paginas, arch
     : html`<a href="/b/${board.slug}/archivo">Archivo</a>`}</p>
 </header>
 ${archivo ? '' : formHilo(ctx, board, form)}
-${selectorVista(vista, ctx.ruta)}
 ${listado(ctx, hilos, vista, {})}
 ${paginacion(actual, paginas, vista === 'lista' ? { vista } : {})}`;
 }

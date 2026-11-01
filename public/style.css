@@ -346,9 +346,10 @@ li.separador { list-style: none; }
 .form-reportar .opcion .ayuda { display: block; margin-left: 1.6rem; font-size: 0.8rem; }
 
 /* Catálogo: grilla de fichas. La ficha entera es un link. */
-.vistas { display: flex; justify-content: flex-end; gap: 0.4rem; margin: 0.25rem 0 1rem; }
-.vistas .icono { justify-content: center; width: 2rem; height: 2rem; padding: 0; }
-.vistas .icono svg { width: 16px; height: 16px; }
+/* Catálogo o lista, en la cabecera junto a la lupa (2026-10-31): un par de íconos pegados, el elegido relleno. */
+.vistas { display: flex; }
+.vistas .icono { justify-content: center; }
+.vistas .icono + .icono { margin-left: -1px; }
 .vistas [aria-current="true"] { background: var(--fosforo); color: var(--fondo); }
 .solo-eww { display: none; }
 .catalogo { display: grid; grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr)); gap: 0.75rem; }
@@ -597,7 +598,7 @@ button.enlace::before, button.enlace::after { content: none; }
 @media (max-width: 40rem) {
   html { scroll-padding-top: 4.5rem; }
   /* Arriba queda solo la marca y el tema; lo demás baja a la barra inferior. */
-  .cabecera .secciones, .cabecera .correo, .cabecera .menu-cab:not(.boton-tema), .cab-der > a.icono:not(.a-claro):not(.a-oscuro):not(.lupa):not(.stats):not(.top-icono) { display: none; }
+  .cabecera .secciones, .cabecera .correo, .cabecera .menu-cab:not(.boton-tema), .cab-der > a.icono:not(.a-claro):not(.a-oscuro):not(.lupa) { display: none; }
   body { padding-bottom: 4.2rem; }
 
   .abajo {
@@ -725,7 +726,6 @@ mark { background: var(--fosforo); color: var(--fondo); padding: 0 0.1rem; }
   body:has(.portada-con-top) .cabecera { padding-inline: max(1rem, calc((100vw - 67.5rem) / 2)); }
   .portada-con-top { display: grid; grid-template-columns: minmax(0, 1fr) 14.5rem; gap: 0.75rem; align-items: start; }
   .portada-con-top > .mas-comentadas { display: flex; margin: 0; position: sticky; top: 6rem; }
-  .cab-der > a.top-icono { display: none; }
 }
 .mas-comentadas .ficha-barra h2 { margin: 0; font: inherit; }
 .mas-comentadas .ficha-barra a { text-transform: none; }

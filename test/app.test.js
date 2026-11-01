@@ -2066,8 +2066,15 @@ test('secciones: barra agrupada a lo 4chan, índice con cantidades y las nuevas 
   assert.ok((await terminal.text()).includes('Actualidad · /act/ · 1 publicación'));
   s.db.prepare('UPDATE threads SET visible = 0 WHERE id = 1').run();
   assert.ok(gem().includes('Actualidad · /act/ · 0 publicaciones'));
-  // El ícono de Más comentadas está en la barra (el CSS lo muestra solo cuando no está la cuarta columna).
-  assert.ok(indice.includes('class="icono top-icono" href="/top"'));
+  // Arriba sólo acciones (2026-10-31): sin los íconos de Más comentadas y Estadísticas (están en la barra y en el pie),
+  // y catálogo/lista en la cabecera sólo donde hay un listado.
+  const cab = (h) => h.match(/<header class="cabecera">[\s\S]*?<\/header>/)[0];
+  assert.ok(!cab(indice).includes('top-icono') && !cab(indice).includes('href="/estadisticas"'));
+  assert.ok(!cab(indice).includes('class="vistas"'), 'en el índice no hay listado');
+  assert.ok(cab(portada).includes('class="vistas"') && cab(await s.texto('/')).includes('class="vistas"'));
+  assert.ok(cab(await s.texto('/b/actualidad/archivo')).includes('href="/vista?v=lista&amp;volver=%2Fb%2Factualidad%2Farchivo"'));
+  assert.ok(!(await s.texto('/')).match(/<\/header>[\s\S]*class="vistas"/), 'ya no va debajo de Publicar');
+  assert.ok((await s.texto('/')).includes('href="/estadisticas"'), 'Estadísticas sigue en el pie');
 });
 
 test('peso neto en Más comentadas: público, en kilos, también en .txt; sólo cuenta lo publicado y visible', async (t) => {
