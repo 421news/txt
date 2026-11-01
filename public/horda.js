@@ -413,8 +413,10 @@ function spendPoint(w) {
   points--;
   if (!unlocked[w]) {
     unlocked[w] = true;
+    // Queda en la primera casilla libre pero no se elige sola (pedido del usuario, 2026-10-31): si subiste de nivel
+    // rodeado y desbloqueaste Muro, el próximo clic tenía que ser la misma habilidad que venías usando.
     const free = slots.indexOf(-1);
-    if (free >= 0) { slots[free] = w; player.weapon = w; }
+    if (free >= 0) slots[free] = w;
     say('Nueva habilidad: ' + WEAPONS[w].name + (free >= 0 ? (touchMode ? ' (casilla ' : ' (tecla ') + (free + 1) + ')' : ''));
   } else { const kind = PERKS[WEAPONS[w].id][level[w]]; level[w]++; say(`${WEAPONS[w].name}: ${PERK_NAME[kind]}`, 3); }
 }
