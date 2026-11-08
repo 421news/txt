@@ -44,11 +44,11 @@ function listaHilos(hilos, { conTablon, userId }) {
     const marca = h.ignorado ? '[Ignorada] ' : h.fijado ? '[Fijada] ' : '';
     const titulo = link(`/h/${h.id}`, `${marca}${conTablon ? `[${boardBySlug(h.board)?.nombre ?? h.board}] ` : ''}${h.subject} (${h.reply_count} ${h.reply_count === 1 ? 'respuesta' : 'respuestas'})`);
     const acciones = userId == null ? [] : [
-      { ...link(`/h/${h.id}/guardar${h.guardado ? '/quitar' : ''}`, h.guardado ? 'Sacar de guardados' : 'Guardar'), solo: 'gemini' },
-      ...(h.op_user_id === userId ? [] : [{ ...link(`/p/${h.op_post_id}/ignorar`, 'Ignorar / dejar de ignorar'), solo: 'gemini' }]),
+      { ...link(`/h/${h.id}/guardar${h.guardado ? '/quitar' : ''}`, h.guardado ? '↳ Sacar de guardados' : '↳ Guardar'), solo: 'gemini' },
+      ...(h.op_user_id === userId ? [] : [{ ...link(`/p/${h.op_post_id}/ignorar`, '↳ Ignorar / dejar de ignorar'), solo: 'gemini' }]),
     ];
-    if (h.ignorado) return [...(h === ignoradas[0] ? [avisoIgnorados(ignoradas.length, 'publicación ignorada', 'publicaciones ignoradas')] : []), titulo, ...acciones];
-    return [titulo, { tipo: 'detalle', texto: `${fecha(h.bumped_at)} · ${extracto(textoPlano(h.op_body), 160)}` }, ...acciones];
+    if (h.ignorado) return [...(h === ignoradas[0] ? [avisoIgnorados(ignoradas.length, 'publicación ignorada', 'publicaciones ignoradas')] : []), titulo, ...acciones, { ...sep(), solo: 'gemini' }];
+    return [titulo, { tipo: 'detalle', texto: `${fecha(h.bumped_at)} · ${extracto(textoPlano(h.op_body), 160)}` }, ...acciones, { ...sep(), solo: 'gemini' }];
   });
 }
 
