@@ -1009,7 +1009,7 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
 
   // Las acciones de los listados usan las mismas rutas y la cuenta vinculada.
   const listado = await pedir('gemini://localhost/b/cultura');
-  assert.ok(listado.includes('=> /h/1/guardar Guardar') && listado.includes('=> /p/1/ignorar Ignorar / dejar de ignorar'));
+  assert.ok(listado.includes('=> /h/1/guardar ↳ Guardar') && listado.includes('=> /p/1/ignorar ↳ Ignorar / dejar de ignorar'));
   assert.ok(!(await s.texto('/b/cultura.txt', bob)).includes('/h/1/guardar'));
 
   // Ignorar: cada opción se cambia por separado; solo afecta a la cuenta vinculada.
@@ -1038,7 +1038,7 @@ test('Gemini: vincular un certificado con un código, responder y publicar en pa
   assert.ok((await pedir('gemini://localhost/h/1/guardar')).includes('Guardada'));
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM guardados').get().n, 1);
   assert.ok((await pedir('gemini://localhost/h/1')).includes('=> /h/1/guardar/quitar Sacar de guardados'));
-  assert.ok((await pedir('gemini://localhost/')).includes('=> /h/1/guardar/quitar Sacar de guardados'));
+  assert.ok((await pedir('gemini://localhost/')).includes('=> /h/1/guardar/quitar ↳ Sacar de guardados'));
   assert.ok((await pedir('gemini://localhost/guardados')).includes('=> /h/1 [Cultura] Libros'));
   assert.ok((await pedir('gemini://localhost/h/1/guardar/quitar')).includes('Sacada de guardados'));
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM guardados').get().n, 0);

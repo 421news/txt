@@ -43,9 +43,11 @@ function listaHilos(hilos, { conTablon, userId }) {
   return hilos.flatMap((h) => {
     const marca = h.ignorado ? '[Ignorada] ' : h.fijado ? '[Fijada] ' : '';
     const titulo = link(`/h/${h.id}`, `${marca}${conTablon ? `[${boardBySlug(h.board)?.nombre ?? h.board}] ` : ''}${h.subject} (${h.reply_count} ${h.reply_count === 1 ? 'respuesta' : 'respuestas'})`);
+    // En gemtext cada link va en su línea y se ve igual que el título: la flecha marca que la acción es de la
+    // publicación de arriba y no otra publicación más.
     const acciones = userId == null ? [] : [
-      { ...link(`/h/${h.id}/guardar${h.guardado ? '/quitar' : ''}`, h.guardado ? 'Sacar de guardados' : 'Guardar'), solo: 'gemini' },
-      ...(h.op_user_id === userId ? [] : [{ ...link(`/p/${h.op_post_id}/ignorar`, 'Ignorar / dejar de ignorar'), solo: 'gemini' }]),
+      { ...link(`/h/${h.id}/guardar${h.guardado ? '/quitar' : ''}`, `↳ ${h.guardado ? 'Sacar de guardados' : 'Guardar'}`), solo: 'gemini' },
+      ...(h.op_user_id === userId ? [] : [{ ...link(`/p/${h.op_post_id}/ignorar`, '↳ Ignorar / dejar de ignorar'), solo: 'gemini' }]),
     ];
     if (h.ignorado) return [...(h === ignoradas[0] ? [avisoIgnorados(ignoradas.length, 'publicación ignorada', 'publicaciones ignoradas')] : []), titulo, ...acciones];
     return [titulo, { tipo: 'detalle', texto: `${fecha(h.bumped_at)} · ${extracto(textoPlano(h.op_body), 160)}` }, ...acciones];
